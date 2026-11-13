@@ -54,6 +54,7 @@ python tools/fetch_osm.py
 python tools/fetch_plateau.py
 python tools/fetch_gsi.py
 python tools/fetch_dem.py      # 地形 (標高)。build_city.py より先に実行
+python tools/fetch_lidar.py    # 点群 (建物の形)。build_city.py より先に実行
 python tools/build_city.py
 ```
 
@@ -65,6 +66,21 @@ python tools/build_city.py
 - 自動分類（`build_city.py` の `classify`）: 国土地理院の種別（普通/堅ろう/無壁舎）・PLATEAU 実測高さ・面積・OSM の土地利用と店舗位置から
   `style`（house / apartment / commercial / industrial / lowrise / public / carport / parking / small）、`floors`（階数）、
   `roof`（戸建ての切妻/寄棟。実測高さ = 棟の高さとして壁を低くする）、`shops`（1階の店）を全建物に付ける
+
+### 建物の形（点群から自動で作り直す）
+神奈川県が公開している航空レーザ測量の点群（1㎡ あたり約 10 点、令和3年度測量、CC BY 4.0）から、建物 1 棟ごとの形を実測に合わせる。個別の指示は不要。
+```
+python tools/fetch_lidar.py     # 点群 8 図郭 (約 800MB) を取得 → data/raw/lidar_dsm.bin (0.5m の高さ格子)
+python tools/build_city.py      # 高さ格子があれば自動で適用
+python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json にその場で適用。--undo で元に戻す
+```
+`tools/lidar_shape.py` が輪郭の中の屋根の高さを読み、次を行う:
+- **段**: 高さがなだらかにつながる所を「部分」に分ける（2階建ての母屋と平屋の下屋、ビルの低層部と高層部、塔屋）。低い段から順に「その高さ以上の所」の輪郭を積み上げる。上の段は別の建物データ（`part` = 元の建物の id、`minH` = 下の段の高さ、小さいものは `plain` = 窓なしの壁）
+- **欠け**: 輪郭の中で地面の高さしかない所（中庭、輪郭が実際より大きい所）を建物から除く
+- **屋根**: 部分ごとに 平ら / 切妻 / 寄棟 / 片流れ を当てはめ、棟の向き・勾配・軒の高さ・棟のずれ（`off`）を実測から決める。L 字やコの字は長方形に分けてそれぞれに屋根を付ける（`roofs`）
+- **高さ**: PLATEAU の値を点群の値で置き換える（元の値は `lidar.h0`）
+- 点群に写っていない建物（測量後の新築）、外観設定（`appearance.json`）の建物、修正モードで高さを変えた建物（`fixed`）、車庫は元のまま
+- 標準ライブラリだけで動く（numpy があれば取得が速い）
 
 ### 建物データの方針（旧: PLATEAU ベース）
 - 建物の形と高さは PLATEAU (LOD1, 実測高さ) を正とする。戸塚エリアは LOD2/テクスチャ未整備 (2020/2022/2024 年度版で確認)。
@@ -138,3 +154,4 @@ python tools/build_city.py
 - 地図データ © OpenStreetMap contributors (ODbL)
 - 建物の輪郭: 国土地理院ベクトルタイル／標高: 国土地理院 標高タイル
 - 建物データ: 国土交通省 Project PLATEAU 3D都市モデル 横浜市 (2024年度)
+- 建物の形: 神奈川県 令和3年度 横浜南部、湘南、横須賀三浦 3次元点群データ (CC BY 4.0, G空間情報センター)

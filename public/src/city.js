@@ -152,7 +152,7 @@ const ROOF_TILE = ['#5d636b', '#6e5446', '#4f5a6a', '#7a6b5c', '#454b55', '#8a8f
 function buildBuildings(buildings) {
   const office = new GB(), house = new GB(), roof = new GB(), pitched = new GB(), euro = new GB();
   for (const b of buildings) {
-    const rnd = hash(b.id + (b.name || ''));
+    const rnd = hash((b.part || b.id) + (b.name || '')); // 上の段 (part) は元の建物と同じ色にする
     const area = Math.abs(signedArea(b.outer));
     const style = b.style || ((HOUSE_KINDS.has(b.kind) || (!b.kind && b.h < 9.5 && area < 180)) ? 'house' : 'apartment');
     const isHouse = STYLE_FACADE[style] !== 'office';
@@ -178,7 +178,7 @@ function buildBuildings(buildings) {
     const isEuro = b.facade === 'euro';
     const F = { ...FACADE[isEuro ? 'euro' : isHouse ? 'house' : 'office'] };
     if (style === 'industrial' || style === 'lowrise') F.bay = 6;
-    const wallGB = isEuro ? euro : isHouse ? house : office;
+    const wallGB = b.plain ? roof : isEuro ? euro : isHouse ? house : office; // plain = 窓のない壁 (塔屋など)
     let wc;
     if (b.color) { try { wc = col(b.color); } catch { /* ignore */ } }
     if (!wc) wc = col((isHouse ? HOUSE_WALL : OFFICE_WALL)[Math.floor(rnd() * (isHouse ? HOUSE_WALL.length : OFFICE_WALL.length))]);
@@ -207,7 +207,12 @@ function buildBuildings(buildings) {
         per += len;
       }
     }
-    if (r) addPitched(pitched, roof, r, y1, col(ROOF_TILE[Math.floor(rnd() * ROOF_TILE.length)]), wc);
+    const tile = col(ROOF_TILE[Math.floor(rnd() * ROOF_TILE.length)]);
+    if (r) addPitched(pitched, roof, r, y1, tile, wc);
+    else if (b.roofs) { // 点群から作った段: 部分ごとの屋根 (下の平らな面は屋根に隠れる)
+      for (const r2 of b.roofs) addPitched(pitched, roof, r2, y1, tile, wc);
+      addFlat(roof, b.outer, b.holes, y1, rc, UP);
+    }
     else if (b.mansard) addMansard(roof, b.outer, y1, col(b.mansard), rc);
     else addFlat(roof, b.outer, b.holes, y1, rc, UP);
     if (y0 > 0.1) addFlat(roof, b.outer, b.holes, y0, rc.map(v => v * 0.6), DOWN);
@@ -218,13 +223,35 @@ function buildBuildings(buildings) {
 // 切妻 / 寄棟屋根。uv: u = 軒方向 (m), v = 斜面方向 (m)
 function addPitched(gb, gableGB, r, y0, color, wallColor) {
   const E = 0.45, L = r.len / 2 + E, W = r.wid / 2 + E, [ux, uz] = r.u, [cx, cz] = r.c;
+  if (r.t === 'shed') { // 片流れ: t = up * 幅/2 の側が高い
+    const up = r.up || 1, W0 = r.wid / 2, L0 = r.len / 2, k = r.rise / (2 * W0);
+    const Q = (s, t) => [cx + ux * s - uz * t, y0 + k * (t * up + W0), cz + uz * s + ux * t];
+    const B = (s, t) => [cx + ux * s - uz * t, y0, cz + uz * s + ux * t];
+    const n = norm([uz * up * k, 1, -ux * up * k]);
+    const sl = Math.hypot(2 * W, 2 * W * k);
+    const a = Q(-L, -W * up), b = Q(L, -W * up), c = Q(L, W * up), d = Q(-L, W * up);
+    gb.tri(a, b, c, n, [0, 0], [2 * L, 0], [2 * L, sl], color);
+    gb.tri(a, c, d, n, [0, 0], [2 * L, sl], [0, sl], color);
+    const dn = [-n[0], -n[1], -n[2]], under = wallColor.map(v => v * 0.8);
+    const lo = (p) => [p[0], p[1] - 0.06, p[2]];
+    gableGB.tri(lo(a), lo(b), lo(c), dn, Z2, Z2, Z2, under); // 軒裏
+    gableGB.tri(lo(a), lo(c), lo(d), dn, Z2, Z2, Z2, under);
+    for (const end of [-1, 1]) { // 両端の三角の壁
+      gableGB.tri(B(end * L0, -W0 * up), B(end * L0, W0 * up), Q(end * L0, W0 * up), [ux * end, 0, uz * end], Z2, Z2, Z2, wallColor);
+    }
+    const hn = [-uz * up, 0, ux * up]; // 高い側の壁
+    gableGB.tri(B(-L0, W0 * up), B(L0, W0 * up), Q(L0, W0 * up), hn, Z2, Z2, Z2, wallColor);
+    gableGB.tri(B(-L0, W0 * up), Q(L0, W0 * up), Q(-L0, W0 * up), hn, Z2, Z2, Z2, wallColor);
+    return;
+  }
   const hip = r.t === 'hip' ? Math.min(W, L * 0.6) : 0;
   const P = (s, t, y) => [cx + ux * s - uz * t, y, cz + uz * s + ux * t];
-  const top = y0 + r.rise, slope = Math.hypot(W, r.rise);
-  const r0 = P(-L + hip, 0, top), r1 = P(L - hip, 0, top);
+  const top = y0 + r.rise, off = r.off || 0; // off = 棟の中心からのずれ (m)
+  const r0 = P(-L + hip, off, top), r1 = P(L - hip, off, top);
   for (const side of [-1, 1]) {
     const e0 = P(-L, side * W, y0), e1 = P(L, side * W, y0);
-    const n = normalOf(e0, e1, r1, side, ux, uz, W, r.rise);
+    const run = W - side * off, slope = Math.hypot(run, r.rise);
+    const n = normalOf(e0, e1, r1, side, ux, uz, run, r.rise);
     gb.tri(e0, e1, r1, n, [0, 0], [2 * L, 0], [2 * L - hip, slope], color);
     gb.tri(e0, r1, r0, n, [0, 0], [2 * L - hip, slope], [hip, slope], color);
   }

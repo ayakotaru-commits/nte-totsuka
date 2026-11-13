@@ -20,6 +20,7 @@ GSI = ROOT / "data" / "raw" / "gsi_bldg.json"
 APPEARANCE = ROOT / "data" / "appearance.json"
 TERRAIN = ROOT / "public" / "data" / "terrain.json"
 PLATEAU_ROAD = ROOT / "data" / "raw" / "plateau_road.json"
+LIDAR_DSM = ROOT / "data" / "raw" / "lidar_dsm.bin"
 
 
 M_LAT = 110574.0
@@ -697,7 +698,8 @@ def apply_corrections(buildings, corr):
         for b in buildings:
             if match(b, c):
                 b["h"] = c["h"]; nh += 1
-    adds = [{"id": a["id"], "outer": a["outer"], "h": a["h"], "src": "user", **({"kind": a["kind"]} if a.get("kind") else {})}
+                b["fixed"] = True  # 手で直した高さは、点群による形の作り直しより優先する
+    adds = [{"id": a["id"], "outer": a["outer"], "h": a["h"], "src": "user", "fixed": True, **({"kind": a["kind"]} if a.get("kind") else {})}
             for a in corr.get("add_buildings", [])]
     print(f"corrections: removed {before - len(buildings)}, height changed {nh}, added {len(adds)}")
     return buildings + adds
@@ -936,6 +938,14 @@ def main():
             b["y"] = round(min(Ht(x, z) for x, z in b["outer"]), 2)
         print("terrain: building bases set")
 
+    # 点群 (fetch_lidar.py) があれば、建物の形 (段・屋根・欠け) を実測に合わせて作り直す
+    lidar_note = None
+    if LIDAR_DSM.exists() and Ht:
+        import lidar_shape
+        ref = json.loads(TERRAIN.read_text(encoding="utf-8"))["ref"]
+        buildings = lidar_shape.apply(buildings, ref)
+        lidar_note = "建物の形: 神奈川県 3次元点群データ (CC BY 4.0)"
+
     # 名前付き建物を POI に追加
     for b in buildings:
         if b.get("name"):
@@ -958,7 +968,7 @@ def main():
         "sites": sites,
         "start": {**dict(zip(("x", "z"), proj(START["lat"], START["lon"]))), **({"face": list(proj(*START["face_toward"]))} if START.get("face_toward") else {})},
         "waypoints": [{"name": w["name"], "x": proj(w["lat"], w["lon"])[0], "z": proj(w["lat"], w["lon"])[1]} for w in WAYPOINTS],
-        "attribution": "(c) OpenStreetMap contributors (ODbL)" + (" / " + plateau_note if plateau_note else ""),
+        "attribution": "(c) OpenStreetMap contributors (ODbL)" + (" / " + plateau_note if plateau_note else "") + (" / " + lidar_note if lidar_note else ""),
         "buildings": buildings,
         "roads": roads,
         "roadAreas": road_areas,
