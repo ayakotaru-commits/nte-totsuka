@@ -791,6 +791,7 @@ def main():
     els = data["elements"]
 
     buildings, parts, roads, rails, areas, waterways, pois = [], [], [], [], [], [], []
+    street_nodes = []  # 信号機・歩行者用信号・バス停 (名前の無いものも)
 
     for el in els:
         t = el.get("tags", {})
@@ -886,6 +887,18 @@ def main():
                     a["name"] = t["name"]
                 areas.append(a)
 
+        if el["type"] == "node":
+            sk = ("signal" if t.get("highway") == "traffic_signals"
+                  else "bus_stop" if t.get("highway") == "bus_stop"
+                  else "crossing_signal" if t.get("crossing") == "traffic_signals" else None)
+            if sk:
+                p = proj(el["lat"], el["lon"])
+                if in_limit(p, 30):
+                    n = {"kind": sk, "x": p[0], "z": p[1]}
+                    if t.get("name"):
+                        n["name"] = t["name"]
+                    street_nodes.append(n)
+
         if el["type"] == "node" and t.get("name"):
             p = proj(el["lat"], el["lon"])
             if in_limit(p):
@@ -953,10 +966,11 @@ def main():
         "waterways": waterways,
         "areas": areas,
         "pois": pois,
+        "streetNodes": street_nodes,
     }
     DST.parent.mkdir(parents=True, exist_ok=True)
     DST.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print(f"buildings={len(buildings)} roads={len(roads)} rails={len(rails)} water={len(waterways)} areas={len(areas)} pois={len(pois)}")
+    print(f"buildings={len(buildings)} roads={len(roads)} rails={len(rails)} water={len(waterways)} areas={len(areas)} pois={len(pois)} street_nodes={len(street_nodes)}")
     print(f"-> {DST} ({DST.stat().st_size // 1024} KB)")
 
 

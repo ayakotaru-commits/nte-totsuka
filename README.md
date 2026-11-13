@@ -77,12 +77,14 @@ python tools/build_city.py
 ### 街並みディテール（お試し中・スタート地点の半径250m）
 ゲーム内は V キーでまとめてオン/オフ。段階ごとの有効/無効は `public/src/detail/config.js`。
 1. 路上の小物: 電柱・電線・街灯・横断歩道・停止線と「止まれ」・ガードパイプ・自販機・カーブミラー（道路データから自動配置）
+   - 信号機・バス停（`public/src/detail/street.js`）: OSM の信号（`highway=traffic_signals`）の交差点に、横型3灯の車両用信号（左側・横断歩道の先・車道へ張り出す）と、横断歩道の両端に歩行者用信号を置く。青22秒→黄3秒→全赤2秒で縦横が交互に切り替わり、歩行者用は青の終わりに点滅。単路の押しボタン式（`crossing=traffic_signals`）は横断歩道も描く。バス停（`highway=bus_stop`）は最寄りの道路の縁に、丸い標識・停留所名の板・時刻表を置く
+   - 位置は `city.json` の `streetNodes`。無い（古いデータの）場合は `pois` の名前付きの信号・バス停だけを使う。名前の無い信号も出すには `fetch_osm.py` → `build_city.py` を実行し直す
 2. 素材テクスチャ: Poly Haven の CC0 素材（`python tools/fetch_detail_textures.py` で取得）を道路・歩道・外壁・屋根に重ねる
 3. 建物の作り分け: 戸建ての切妻/寄棟屋根、集合住宅の南向きベランダ、店舗・病院の看板と日よけ
 
 完全に戻す手順:
 - `public/src/detail/`、`public/assets/detail/`、`tools/fetch_detail_textures.py` を削除
-- `public/src/main.js` の `// detail (お試し)` と書かれた4行を削除
+- `public/src/main.js` の `// detail (お試し)` と書かれた5行を削除
 - `public/index.html` のヘルプから「V ディテール」を削除
 
 ### 道路（PLATEAU の道路面）

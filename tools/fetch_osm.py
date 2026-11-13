@@ -33,6 +33,8 @@ QUERY = f"""
   way["leisure"]({bbox});
   way["amenity"]({bbox});
   node["name"]({bbox});
+  node["highway"~"^(traffic_signals|bus_stop)$"]({bbox});
+  node["crossing"="traffic_signals"]({bbox});
 );
 out geom;
 """
