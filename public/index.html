@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TOTSUKA</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud-location">
+  <div class="area">横浜市戸塚区</div>
+  <div class="place" id="place">—</div>
+</div>
+<canvas id="minimap" width="200" height="200"></canvas>
+<div id="hud-time">昼</div>
+<div id="hud-goal"></div>
+<canvas id="bigmap" hidden></canvas>
+<div id="map-help" hidden><b>M</b> / <b>Esc</b> 閉じる　<b>ホイール</b> 拡大縮小　<b>ドラッグ</b> 移動　<b>F</b> 現在地へ</div>
+
+<div id="help">
+  <b>WASD</b> 移動　<b>Shift</b> ダッシュ　<b>C</b> 歩き切替　<b>Space</b> ジャンプ（2段）<br>
+  <b>マウス</b> 視点　<b>ホイール</b> ズーム　<b>E</b> 修正モード　<b>P</b> ストリートビュー　<b>M</b> 大きいマップ　<b>V</b> ディテール　<b>T</b> 時間帯　<b>R</b> スタート地点に戻る　<b>G</b> 街をGLB出力　<b>H</b> ヘルプ表示切替
+</div>
+<div id="credit">地図データ © OpenStreetMap contributors (ODbL)</div>
+
+<div id="overlay">
+  <div class="box">
+    <h1>TOTSUKA</h1>
+    <p id="status">読み込み中…</p>
+    <p class="sub">クリックで開始（Escでマウス解放）</p>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# 取得データのキャッシュ (tools/fetch_*.py で再取得できる。約140MB)
+data/raw/
+
+# 個人のトークン
+data/mapillary_token.txt
+
+# Python
+__pycache__/
+*.pyc
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.vscode/
