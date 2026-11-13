@@ -345,7 +345,7 @@ const SIDEWALK = '#b3ab9e', MARK = '#e8e4d8';
 
 export const AREA_STYLE = {
   residential: ['#aaa79c', 0.01], commercial: ['#a8a39b', 0.01], railway: ['#8e867b', 0.012], farm: ['#a7ae7c', 0.012],
-  grass: ['#86a85f', 0.02], wood: ['#5b7a45', 0.02], park: ['#80a75c', 0.022], school: ['#c4b9a2', 0.02],
+  grass: ['#86a85f', 0.02], wood: ['#5b7a45', 0.021], park: ['#80a75c', 0.022], school: ['#c4b9a2', 0.02],
   parking: ['#76777a', 0.024], pitch: ['#6f9d52', 0.026], plaza: ['#cbc1ae', 0.05], water: ['#4f7d9c', 0.03], platform: ['#b9b4aa', 0.11],
 };
 
