@@ -208,9 +208,13 @@ function buildBuildings(buildings) {
       }
     }
     const tile = col(ROOF_TILE[Math.floor(rnd() * ROOF_TILE.length)]);
-    if (r) addPitched(pitched, roof, r, y1, tile, wc);
+    if (r && r.t === 'skel') addSkelRoof(pitched, b.outer, y1, r, tile);
+    else if (r) addPitched(pitched, roof, r, y1, tile, wc);
     else if (b.roofs) { // 点群から作った段: 部分ごとの屋根 (下の平らな面は屋根に隠れる)
-      for (const r2 of b.roofs) addPitched(pitched, roof, r2, y1, tile, wc);
+      for (const r2 of b.roofs) {
+        if (r2.t === 'skel') addSkelRoof(pitched, b.outer, y1, r2, tile);
+        else addPitched(pitched, roof, r2, y1, tile, wc);
+      }
       addFlat(roof, b.outer, b.holes, y1, rc, UP);
     }
     else if (b.mansard) addMansard(roof, b.outer, y1, col(b.mansard), rc);
@@ -218,6 +222,57 @@ function buildBuildings(buildings) {
     if (y0 > 0.1) addFlat(roof, b.outer, b.holes, y0, rc.map(v => v * 0.6), DOWN);
   }
   return { office: office.geometry(), house: house.geometry(), roof: roof.geometry(), pitched: pitched.geometry(), euro: euro.geometry() };
+}
+
+// 輪郭に沿った寄棟 (L 字などどんな形にも掛かる): 高さ = 勾配 k x 輪郭までの距離。
+// 輪郭を 1 m のマスで切り分け、各頂点を距離に応じて持ち上げる
+function addSkelRoof(gb, ring, y0, r, color) {
+  const n = ring.length;
+  const dist = (x, z) => {
+    let best = Infinity;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const ax = ring[j][0], az = ring[j][1], ex = ring[i][0] - ax, ez = ring[i][1] - az, l2 = ex * ex + ez * ez;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2)) : 0;
+      const d = Math.hypot(x - ax - ex * t, z - az - ez * t);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  let minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity;
+  for (const [x, z] of ring) { minx = Math.min(minx, x); maxx = Math.max(maxx, x); minz = Math.min(minz, z); maxz = Math.max(maxz, z); }
+  const C = 1.0;
+  // 多角形を 1 辺 (軸 ax の値 lim, keep = 残す側) で切る
+  const cut = (poly, ax, lim, ge) => {
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[(i + poly.length - 1) % poly.length], b = poly[i];
+      const ia = ge ? a[ax] >= lim : a[ax] <= lim, ib = ge ? b[ax] >= lim : b[ax] <= lim;
+      if (ia !== ib) { const t = (lim - a[ax]) / (b[ax] - a[ax]); const m = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; m[ax] = lim; out.push(m); }
+      if (ib) out.push(b);
+    }
+    return out;
+  };
+  for (let x0 = minx; x0 < maxx; x0 += C) {
+    const col = cut(cut(ring, 0, x0, true), 0, x0 + C, false);
+    if (col.length < 3) continue;
+    for (let z0 = minz; z0 < maxz; z0 += C) {
+      let cell = cut(cut(col, 1, z0, true), 1, z0 + C, false);
+      cell = cell.filter((p, i) => { const q = cell[(i + 1) % cell.length]; return Math.abs(p[0] - q[0]) > 1e-6 || Math.abs(p[1] - q[1]) > 1e-6; });
+      if (cell.length < 3) continue;
+      let faces;
+      try { faces = THREE.ShapeUtils.triangulateShape(cell.map(([x, z]) => new THREE.Vector2(x, z)), []); } catch { continue; }
+      const P = cell.map(([x, z]) => [x, y0 + r.k * dist(x, z), z]);
+      for (const [i, j, k] of faces) {
+        const a = P[i], b = P[j], c = P[k];
+        const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let nn = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+        const l = Math.hypot(...nn);
+        if (l < 1e-9) continue;
+        nn = nn.map(v => v / l * (nn[1] < 0 ? -1 : 1));
+        gb.tri(a, b, c, nn, [a[0], a[2]], [b[0], b[2]], [c[0], c[2]], color);
+      }
+    }
+  }
 }
 
 // 切妻 / 寄棟屋根。uv: u = 軒方向 (m), v = 斜面方向 (m)

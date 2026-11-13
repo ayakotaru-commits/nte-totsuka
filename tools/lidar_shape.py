@@ -31,6 +31,8 @@ LEVEL_TOL = 0.8     # 段の高さがこれ未満の差なら同じ段にする 
 VOID_H = 2.0        # これより低い部分は建物ではない (地面・中庭)
 MIN_PART = 6.0      # これより小さい部分は隣にまとめる (m2)
 SKIP_STYLES = {"carport", "gate", "hall"}
+MIN_INLIER = 0.68  # 当てはめに合うマスの割合の下限 (輪郭の端のマスは屋根より低いことが多い)
+STATS = None  # 調査用 (リストを入れると、部分ごとの当てはめ結果がたまる)
 
 
 # ---------------------------------------------------------------- 高さ格子
@@ -170,7 +172,57 @@ def dissolve(pieces, p0, q0, cs):
 
 
 # ---------------------------------------------------------------- 屋根の当てはめ
-def fit_roof(cells, cs):
+def robust_lsq(ds, hs, keep0):
+    """h = e + k * d を、外れたマスを除きながら当てはめる。戻り値 (e, k, rms, 使ったマスの割合) または None"""
+    n = len(hs)
+    use = keep0
+    res = None
+    for it in range(3):
+        m = len(use)
+        if m < 0.6 * n:
+            return None
+        md = sum(ds[i] for i in use) / m
+        mh = sum(hs[i] for i in use) / m
+        sdd = sum((ds[i] - md) ** 2 for i in use)
+        k = sum((ds[i] - md) * (hs[i] - mh) for i in use) / sdd if sdd > 1e-9 else 0.0
+        e = mh - k * md
+        rms = math.sqrt(sum((e + k * ds[i] - hs[i]) ** 2 for i in use) / m)
+        res = (e, k, rms, m / n)
+        if it < 2:
+            lim = max(0.45, 2.0 * rms)
+            use = [i for i in keep0 if abs(e + k * ds[i] - hs[i]) <= lim]
+    return res
+
+
+def accept(rms, rms_flat, rise, eave, relaxed):
+    """当てはめを採用するか。relaxed = 形は合いきらないが、平らよりは実物に近い場合も採用する"""
+    if eave < 1.8:
+        return False
+    if relaxed:
+        return rise >= 0.6 and rms_flat >= 0.25 and rms <= 0.9 and rms <= 0.88 * rms_flat
+    return rise >= 0.45 and rms <= 0.4 and rms <= 0.75 * rms_flat
+
+
+def fit_skel(dh, relaxed=False):
+    """どんな輪郭にも掛けられる寄棟: 高さ = 軒 + 勾配 x (輪郭までの距離)。dh: [(距離, 高さ)]
+    戻り値: None または {"t": "skel", "eave", "k", "rise", "rms"}"""
+    n = len(dh)
+    if n < 12:
+        return None
+    ds, hs = [d for d, _ in dh], [h for _, h in dh]
+    med = median(hs)
+    keep0 = [i for i in range(n) if abs(hs[i] - med) <= 3.0]
+    flat = robust_lsq([0.0] * n, hs, keep0)
+    r = robust_lsq(ds, hs, keep0)
+    if not flat or not r or r[3] < MIN_INLIER or not 0.1 <= r[1] <= 1.3:
+        return None
+    rise = r[1] * max(ds)
+    if not accept(r[2], flat[2], rise, r[0], relaxed):
+        return None
+    return {"t": "skel", "eave": r[0], "k": r[1], "rise": rise, "rms": r[2], "w": n}
+
+
+def fit_roof(cells, cs, relaxed=False):
     """cells: [(p, q, h)] (建物の向きにそろえた座標, 基礎からの高さ)。長方形に近い部分に屋根の形を当てはめる。
     戻り値: None (平ら) または {"t", "rise", "eave", "axis" (棟の向き 0 = p 軸, 1 = q 軸), "pc", "qc", "lp", "lq", "up"}"""
     n = len(cells)
@@ -187,25 +239,7 @@ def fit_roof(cells, cs):
     # 輪郭の端のマスは地面や隣の屋根を拾うことがあるので、外れたマスを除きながら当てはめる
     keep0 = [i for i in range(n) if abs(hs[i] - med) <= 3.0]
 
-    def lsq(ds):
-        """h = e + k * d を当てはめる。戻り値 (e, k, rms, 使ったマスの割合)"""
-        use = keep0
-        res = None
-        for it in range(3):
-            m = len(use)
-            if m < 0.6 * n:
-                return None
-            md = sum(ds[i] for i in use) / m
-            mh = sum(hs[i] for i in use) / m
-            sdd = sum((ds[i] - md) ** 2 for i in use)
-            k = sum((ds[i] - md) * (hs[i] - mh) for i in use) / sdd if sdd > 1e-9 else 0.0
-            e = mh - k * md
-            rms = math.sqrt(sum((e + k * ds[i] - hs[i]) ** 2 for i in use) / m)
-            res = (e, k, rms, m / n)
-            if it < 2:
-                lim = max(0.45, 2.0 * rms)
-                use = [i for i in keep0 if abs(e + k * ds[i] - hs[i]) <= lim]
-        return res
+    lsq = lambda ds: robust_lsq(ds, hs, keep0)
 
     flat = lsq([0.0] * n)
     if not flat:
@@ -217,7 +251,7 @@ def fit_roof(cells, cs):
     for t, axis, ds, dmax in (("gable", 0, dq, lq / 2), ("gable", 1, dp, lp / 2),
                               ("hip", 0 if lp >= lq else 1, [min(a, b) for a, b in zip(dp, dq)], min(lp, lq) / 2)):
         r = lsq(ds)
-        if r and 0.1 <= r[1] <= 1.3 and r[3] >= 0.8:
+        if r and 0.1 <= r[1] <= 1.3 and r[3] >= MIN_INLIER:
             cands.append((r[2] * (1.0 if t == "gable" else 1.05), t, axis, r[0], r[1] * dmax, 0))
     # 棟が中心からずれた切妻 (両側の軒の高さは同じで、勾配が違う)。d = 軒から棟までを 0..1 にした値
     for axis, vs, lo, span in ((0, qs, qmin, lq), (1, ps, pmin, lp)):
@@ -225,22 +259,23 @@ def fit_roof(cells, cs):
             rg = lo + span * (0.5 + off / 2)   # 棟の位置
             ds = [(v - lo) / (rg - lo) if v < rg else (lo + span - v) / (lo + span - rg) for v in vs]
             r = lsq(ds)
-            if r and r[3] >= 0.8 and 0.1 <= r[1] / (span / 2 * (1 + abs(off))) and r[1] / (span / 2 * (1 - abs(off))) <= 1.3:
+            if r and r[3] >= MIN_INLIER and 0.1 <= r[1] / (span / 2 * (1 + abs(off))) and r[1] / (span / 2 * (1 - abs(off))) <= 1.3:
                 cands.append((r[2] * 1.04, "gable", axis, r[0], r[1], off * span / 2))
     for axis, ds, span in ((0, [q - qmin for q in qs], lq), (1, [p - pmin for p in ps], lp)):  # 片流れ (棟 = 高い側の辺)
         r = lsq(ds)
-        if r and 0.06 <= abs(r[1]) <= 1.0 and r[3] >= 0.8:
+        if r and 0.06 <= abs(r[1]) <= 1.0 and r[3] >= MIN_INLIER:
             e, k = r[0], r[1]
             cands.append((r[2] * 1.02, "shed", axis, e if k > 0 else e + k * span, abs(k) * span, 1 if k > 0 else -1))
     if not cands:
         return None
     rms, t, axis, eave, rise, up = min(cands)
-    if rise < 0.45 or rms > 0.4 or rms > 0.75 * rms_flat or eave < 1.8:
+    if not accept(rms, rms_flat, rise, eave, relaxed):
         return None
     off = 0.0
     if t == "gable" and up:   # up に棟のずれ (m) を入れてある
         off, up = up, 0
-    return {"t": t, "rise": rise, "eave": eave, "axis": axis, "pc": pc, "qc": qc, "lp": lp, "lq": lq, "up": up, "off": off}
+    return {"t": t, "rise": rise, "eave": eave, "axis": axis, "pc": pc, "qc": qc, "lp": lp, "lq": lq, "up": up, "off": off,
+            "rms": rms, "w": n}
 
 
 def split_rects(cells, cs, max_n=3, min_area=12.0, min_side=3.0):
@@ -396,7 +431,9 @@ def shape_building(b, dsm, ref, floors_for=default_floors):
             cells.append(m)
             j, i = divmod(m, nc)
             for mm in ((m - 1) if i > 0 else -1, (m + 1) if i < nc - 1 else -1, m - nc, m + nc):
-                if 0 <= mm < N and inside[mm] and label[mm] < 0 and abs(h[mm] - h[m]) <= STEP_TOL:
+                # 地面の高さのマスは、なだらかにつながっていても屋根とは別にする (下屋の軒先 → 庭 など)
+                if (0 <= mm < N and inside[mm] and label[mm] < 0 and abs(h[mm] - h[m]) <= STEP_TOL
+                        and (h[mm] >= VOID_H) == (h[m] >= VOID_H)):
                     label[mm] = r
                     stack.append(mm)
         regs.append(cells)
@@ -456,20 +493,69 @@ def shape_building(b, dsm, ref, floors_for=default_floors):
     roofs = {}
     for r in live:
         cells = [(p0 + (m % nc + 0.5) * cs, q0 + (m // nc + 0.5) * cs, h[m]) for m in regs[r]]
-        if 20 <= len(cells) * cs * cs <= 700:
-            f = fit_roof(cells, cs)
-            if f:
-                roofs[r] = [f]
-            else:  # L 字など: 長方形に分けて、それぞれに屋根を当てはめる
-                ps_, qs_ = [c_[0] for c_ in cells], [c_[1] for c_ in cells]
-                if len(cells) * cs * cs < 0.78 * (max(ps_) - min(ps_) + cs) * (max(qs_) - min(qs_) + cs):
-                    fs = [f for f in (fit_roof(rc, cs) for rc in split_rects(cells, cs)) if f]
-                    if fs:
-                        roofs[r] = fs
+        if not 20 <= len(cells) * cs * cs <= 700:
+            continue
+        ps_, qs_ = [c_[0] for c_ in cells], [c_[1] for c_ in cells]
+        rect = len(cells) * cs * cs >= 0.78 * (max(ps_) - min(ps_) + cs) * (max(qs_) - min(qs_) + cs)
+        # 1. 長方形の屋根 (切妻・寄棟・片流れ)
+        f = fit_roof(cells, cs)
+        if f:
+            roofs[r] = [f]
+            continue
+        # 2. L 字など: 長方形に分けて、それぞれに屋根 (大半を覆えたときだけ)
+        part_fits = []
+        if not rect:
+            rcs = split_rects(cells, cs)
+            part_fits = [(f, len(rc)) for f, rc in ((fit_roof(rc, cs), rc) for rc in rcs) if f]
+            if part_fits and sum(m for _, m in part_fits) >= 0.7 * len(cells):
+                roofs[r] = [f for f, _ in part_fits]
+                continue
+        # 3. 輪郭に沿った寄棟 (どんな形にも掛けられる)。距離は「この部分より低い所・建物の外」まで
+        ok = bytearray(N)
+        for o in live:
+            if hmed[o] >= hmed[r] - 0.5:
+                for m in regs[o]:
+                    ok[m] = 1
+        dist = [0.0 if not ok[k] else 1e9 for k in range(N)]
+        for order_ in (range(N), range(N - 1, -1, -1)):  # 2 回の走査で距離を広げる (斜めは 1.414)
+            sgn = 1 if order_.start == 0 else -1
+            for k in order_:
+                if not ok[k]:
+                    continue
+                j, i = divmod(k, nc)
+                best = dist[k]
+                for dj, di, w in ((0, -sgn, 1.0), (-sgn, 0, 1.0), (-sgn, -sgn, 1.414), (-sgn, sgn, 1.414)):
+                    jj, ii = j + dj, i + di
+                    v = (dist[jj * nc + ii] if 0 <= jj < nr and 0 <= ii < nc else 0.0) + w
+                    if v < best:
+                        best = v
+                dist[k] = best
+        dh = [((dist[m] - 0.5) * cs, h[m]) for m in regs[r]]
+        top = max(regs[r], key=lambda m: dist[m])
+        where = {"pc": p0 + (top % nc + 0.5) * cs, "qc": q0 + (top // nc + 0.5) * cs}
+        sk = fit_skel(dh)
+        if sk:
+            roofs[r] = [{**sk, **where}]
+            continue
+        # 4. 形は合いきらないが勾配はある: いちばん近い形で近似する (平らのままより実物に近い)
+        cands = [f for f in ((fit_roof(cells, cs, True) if rect else None), fit_skel(dh, True)) if f]
+        if cands:
+            f = min(cands, key=lambda f: f["rms"])
+            roofs[r] = [{**f, **where} if f["t"] == "skel" else f]
+        elif part_fits:
+            roofs[r] = [f for f, _ in part_fits]
+
+    if STATS is not None:  # 調査用: 部分ごとの (面積, 高さのばらつき, 屋根の種類, 長方形か)
+        for r in live:
+            hs_ = sorted(h[m] for m in regs[r])
+            ps_, qs_ = [m % nc for m in regs[r]], [m // nc for m in regs[r]]
+            STATS.append((len(hs_) * cs * cs, hs_[int(len(hs_) * 0.85)] - hs_[int(len(hs_) * 0.15)],
+                          "+".join(f["t"] for f in roofs[r]) if r in roofs else None,
+                          len(hs_) >= 0.78 * (max(ps_) - min(ps_) + 1) * (max(qs_) - min(qs_) + 1), b.get("id"), len(live)))
 
     def eave_of(r):
         fs = roofs[r]
-        return sum(f["eave"] * f["lp"] * f["lq"] for f in fs) / sum(f["lp"] * f["lq"] for f in fs)
+        return sum(f["eave"] * f["w"] for f in fs) / sum(f["w"] for f in fs)
 
     level = {r: (eave_of(r) if r in roofs else hmed[r]) for r in live}
     # 近い高さを同じ段にまとめる
@@ -489,6 +575,8 @@ def shape_building(b, dsm, ref, floors_for=default_floors):
             level[r] = lv
 
     def roof_out(f, at_level):
+        if f["t"] == "skel":
+            return {"t": "skel", "k": round(f["k"], 3), "rise": round(f["rise"], 2)}
         u = (c, s) if f["axis"] == 0 else (-s, c)
         cx, cz = inv(f["pc"], f["qc"])
         ln, wd = (f["lp"], f["lq"]) if f["axis"] == 0 else (f["lq"], f["lp"])
@@ -510,6 +598,10 @@ def shape_building(b, dsm, ref, floors_for=default_floors):
     # ---- 1つの部分だけ・欠けなし: 輪郭はそのまま、高さと屋根だけ直す
     if len(live) == 1 and not void:
         r = live[0]
+        if r in roofs and holes:
+            roofs[r] = [f for f in roofs[r] if f["t"] != "skel"]  # 穴のある輪郭には掛けない
+            if not roofs[r]:
+                del roofs[r]
         if r in roofs and len(roofs[r]) == 1:
             b["roof"] = roof_out(roofs[r][0], level[r])
             b["h"] = round(level[r] + roofs[r][0]["rise"], 1)
@@ -601,7 +693,16 @@ def shape_building(b, dsm, ref, floors_for=default_floors):
             if style:
                 rec["floors"] = floors_for(style, lv - low) if not (style == "house" and li) else 1
             # この輪郭の中にある屋根
-            rf = [roof_out(f, lv) for r in here for f in roofs[r] if point_in((f["pc"], f["qc"]), o_pq)]
+            rf = []
+            for r in here:
+                for f in roofs[r]:
+                    if not point_in((f["pc"], f["qc"]), o_pq):
+                        continue
+                    if f["t"] == "skel":
+                        # 輪郭全体に掛かる屋根なので、穴が無く、この部分が輪郭の大半を占めるときだけ
+                        if hl or len(regs[r]) * cs * cs < 0.6 * abs(area2(o_pq)) / 2 or any(x["t"] == "skel" for x in rf):
+                            continue
+                    rf.append(roof_out(f, lv))
             if rf:
                 rec["roofs"] = rf
             else:
