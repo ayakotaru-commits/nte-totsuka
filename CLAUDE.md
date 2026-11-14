@@ -32,6 +32,11 @@
 - 環境「wachaGru2」に許可済みのホスト: `cyberjapandata.gsi.go.jp`、`assets.cms.plateau.reearth.io`、`www.geospatial.jp`、
   `gic-kanagawa.s3.ap-northeast-1.amazonaws.com`（索引）、`kanagawa-pointcloud.s3.ap-northeast-1.amazonaws.com`（点群・航空写真の本体）ほか。
   別のホストが要るときは、理由を一言添えて許可を申請する。
+- 外観の写真は Wikimedia Commons から見られる（`ja.wikipedia.org`・`commons.wikimedia.org`・`upload.wikimedia.org` を許可済み）。
+  やり方: `curl` でカテゴリのページ（例 `https://commons.wikimedia.org/wiki/Category:Totsukana`）を取り、`File:` の名前を拾う。
+  画像は `https://upload.wikimedia.org/wikipedia/commons/thumb/<md5 の 1 文字>/<md5 の 2 文字>/<名前>/1280px-<名前>`（md5 は空白を `_` にしたファイル名）。
+  API（`api.php`）と続けての取得は回数制限（429）に当たるので、1 枚ごとに 25 秒ほど空ける。`thumb.wikimedia.org` と WebFetch は使えない。
+  写真は見て特徴を書き起こすだけで、保存・使用しない（作業用フォルダに置き、git には入れない）。
 - シェルのヒアドキュメントに `` ` `` を含む文章を書くときは、終端を引用符付き（`<<'EOF'`）にする（README を崩したことがある）。
 
 ## 調べてわかっていること（調べ直さなくてよい）
@@ -41,7 +46,7 @@
 - ローカル座標は実際の距離より約 0.1〜0.3% 短い（`config.py` の 1 度あたりの m が概算のため）。点群・写真との対応はアフィン変換で吸収している（`fetch_lidar.py` の `plane_to_local`）。
 
 ## 残っている課題・次の候補
-- ランドマーク（大きな建物 1 棟ごとの外観）は `data/appearance.json` の `landmarks` と `tools/landmarks.py`（README の「目印になる大きな建物」）。トツカーナと戸塚駅（橋上駅舎）を設定済み。駅のホーム・屋根・架線柱・架線は `build_props.py` の `build_rail()` → `props.json` の `rail` → `detail/station.js`。ホームは線の当たり判定で囲ってあり、上には乗れない。駅舎を支える柱・階段・改札・地下鉄の出入口は無い。持ち主と決めた順番の残り: サクラス戸塚 → 戸塚区総合庁舎 → スタート近くのマンション（ライオンズステージ戸塚ルヴェールの丘、レクセルヒルズ戸塚）→ ネクサスシリーズ → 南戸塚小学校・マルエツ。外観の調べものは検索の要約しか読めない（写真のページは開けないことが多い）ので、色と階の用途は説明文から、屋上は航空写真（`fetch_ortho.py` だけなら約 90MB・1 分）から読む。`build_city.py`・`lidar_shape.py` からの呼び出しは通しでは未確認。夜の窓の明かりも未確認。
+- ランドマーク（大きな建物 1 棟ごとの外観）は `data/appearance.json` の `landmarks` と `tools/landmarks.py`（README の「目印になる大きな建物」）。トツカーナと戸塚駅（橋上駅舎）を設定済み（どちらも Wikimedia Commons の写真を見て直した。トツカーナは北東の角から見た 2 枚だけで、西・南の面は推定）。駅のホーム・屋根・架線柱・架線は `build_props.py` の `build_rail()` → `props.json` の `rail` → `detail/station.js`。ホームは線の当たり判定で囲ってあり、上には乗れない。駅舎を支える柱・階段・改札・地下鉄の出入口は無い。持ち主と決めた順番の残り: サクラス戸塚 → 戸塚区総合庁舎 → スタート近くのマンション（ライオンズステージ戸塚ルヴェールの丘、レクセルヒルズ戸塚）→ ネクサスシリーズ → 南戸塚小学校・マルエツ。外観の調べものは検索の要約しか読めない（写真のページは開けないことが多い）ので、色と階の用途は説明文から、屋上は航空写真（`fetch_ortho.py` だけなら約 90MB・1 分）から読む。`build_city.py`・`lidar_shape.py` からの呼び出しは通しでは未確認。夜の窓の明かりも未確認。
 - 小物・ベランダ・看板・木の配置は `tools/build_props.py` が `public/data/props.json` に書き出す（Unity 移行の準備。ブラウザは読んで置くだけ）。`city.json` を書き換える道具は最後にこれを呼ぶ。配置の決まりを変えるときは JS ではなくここを直す。
 - 当たり判定が無いもの: 敷地の門のアーチの柱、電線、頭より上の看板・日よけ・ベランダ。
 - 横から見た外観（壁の色・窓・看板）を実物に合わせるには、路上から撮った写真が要る。持ち主から「航空写真だけだと横の再現度が低いのでは」と指摘あり（2026-11）。案: Mapillary のトークンをもらう（`data/mapillary_token.txt`）、持ち主が撮った写真をもらう、写真のあるサイトのホストを許可してもらう。
