@@ -1004,8 +1004,35 @@ def build_shapes(city, world, cx, cz, R):
         # (x, z) = 壁の中点、y = 建物の基準の高さ、正面 (yaw) = 壁の外向き。看板は y + 3.35、日よけは y + 2.6
         signs.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(b["base"]), "yaw": round(math.atan2(nx, nz), 4),
                       "w": r3(min(L - 0.6, 7)), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"])})
-    print(f"balcony walls={len(balconies)} (apartments={apts}) shop signs={len(signs)}")
-    return {"balconies": balconies, "signs": signs}
+    # ---------- ランドマークの大きな壁面看板 (tools/landmarks.py の look に sign があるもの) ----------
+    # 外向きの方角 (東西南北) ごとに、いちばん長い壁の中央に 1 枚。(x, z) = 壁の中点、y = 看板の中心の高さ、正面 (yaw) = 壁の外向き
+    big = []
+    looks = city.get("looks") or {}
+    for b in city["buildings"]:
+        sg = (looks.get(b.get("look")) or {}).get("sign")
+        if not sg or b.get("part"):
+            continue
+        L0 = looks[b["look"]]
+        o = b["outer"]
+        s = 1 if js_signed_area(o) > 0 else -1
+        best = {}
+        for i in range(len(o)):
+            a, c = o[i], o[(i + 1) % len(o)]
+            dx, dz = c[0] - a[0], c[1] - a[1]
+            L = math.hypot(dx, dz)
+            if L < 25:
+                continue
+            nx, nz = dz / L * s, -dx / L * s
+            q = ("e" if nx > 0 else "w") if abs(nx) > abs(nz) else ("s" if nz > 0 else "n")
+            if q not in best or L > best[q][0]:
+                best[q] = (L, a, c, nx, nz)
+        for q in sorted(best):
+            L, a, c, nx, nz = best[q]
+            w = min(L * 0.5, 24)
+            big.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(L0["y0"] + sg["floor"] * L0["floor_h"]),
+                        "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * 0.12), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"]})
+    print(f"balcony walls={len(balconies)} (apartments={apts}) shop signs={len(signs)} big signs={len(big)}")
+    return {"balconies": balconies, "signs": signs, "bigSigns": big}
 
 
 # =====================================================================

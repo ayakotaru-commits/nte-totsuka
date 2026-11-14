@@ -138,6 +138,107 @@ function facadeTextures(type) {
   return { map: mk(cv, true), emissiveMap: mk(ev, true) };
 }
 
+// ---- ランドマークの外壁 (city.json の looks。tools/landmarks.py が設定) ----
+// テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
+const LOOK_ROWS = { shop: 0, panel: 1, panel2: 2, parking: 3, glass: 4, plain: 5 };
+const LOOK_NR = 8, LOOK_NB = 8, LOOK_BAY = 6; // 段の数、横のベイ数、1 ベイの幅 (m)
+function lookTextures(L) {
+  const S = 1024, cw = S / LOOK_NB, rh = S / LOOK_NR;
+  const cv = document.createElement('canvas'); cv.width = cv.height = S;
+  const ev = document.createElement('canvas'); ev.width = ev.height = S;
+  const g = cv.getContext('2d'), e = ev.getContext('2d');
+  const rnd = hash('look-' + L.wall + L.accent);
+  g.fillStyle = L.wall; g.fillRect(0, 0, S, S);
+  e.fillStyle = '#000'; e.fillRect(0, 0, S, S);
+  const top = (r) => S - (r + 1) * rh; // 段 r の上端 (テクスチャの v は下から上)
+  const lit = (x, y, w, h, color, a) => { e.fillStyle = color; e.globalAlpha = a; e.fillRect(x, y, w, h); e.globalAlpha = 1; };
+  const glass = (x, y, w, h, c0, c1) => { const gr = g.createLinearGradient(x, y, x, y + h); gr.addColorStop(0, c0); gr.addColorStop(1, c1); g.fillStyle = gr; g.fillRect(x, y, w, h); };
+  for (let bx = 0; bx < LOOK_NB; bx++) {
+    const x0 = bx * cw;
+    // 1 階の店: 柱の間にガラス、上にアクセント色の帯
+    let y = top(LOOK_ROWS.shop);
+    glass(x0 + 8, y + 26, cw - 16, rh - 34, '#a4b8c6', '#5f7486');
+    g.fillStyle = '#33373c';
+    g.fillRect(x0 + 8, y + 26, cw - 16, 3);
+    for (let k = 0; k <= 3; k++) g.fillRect(x0 + 8 + (cw - 16) * k / 3 - 1, y + 26, 2, rh - 34);
+    g.fillStyle = L.accent; g.fillRect(x0, y, cw, 22);
+    g.fillStyle = '#8d8a84'; g.fillRect(x0, y + rh - 8, cw, 8);
+    lit(x0 + 8, y + 29, cw - 16, rh - 40, '#ffe2b0', 0.85);
+    // 白いパネルの壁に、こげ茶の縦の帯 (細い窓入り)。段ごとに帯の位置を半ベイずらす (千鳥)
+    for (const r of [LOOK_ROWS.panel, LOOK_ROWS.panel2]) {
+      y = top(r);
+      g.fillStyle = 'rgba(0,0,0,.10)';
+      g.fillRect(x0, y, 1.5, rh); g.fillRect(x0 + cw / 2, y, 1, rh); g.fillRect(x0, y + rh - 2, cw, 2); g.fillRect(x0, y + rh / 2, cw, 1);
+      const fx = x0 + 14 + (r === LOOK_ROWS.panel2 ? cw / 2 : 0), fw = 36;
+      g.fillStyle = L.accent; g.fillRect(fx, y, fw, rh);
+      glass(fx + 10, y + 16, fw - 20, rh - 36, '#3a4a58', '#222c35');
+      if (rnd() < 0.5) lit(fx + 10, y + 16, fw - 20, rh - 36, '#ffd39a', 0.5 + rnd() * 0.4);
+    }
+    // 駐車場の階: 腰壁の上が暗い開口、柱と横のルーバー
+    y = top(LOOK_ROWS.parking);
+    glass(x0, y + 20, cw, rh - 62, '#1d1f22', '#34373b');
+    g.fillStyle = 'rgba(236,235,230,.5)';
+    for (let k = 0; k < 3; k++) g.fillRect(x0, y + 30 + k * 18, cw, 3);
+    g.fillStyle = L.wall; g.fillRect(x0, y + 20, 12, rh - 62);
+    g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x0, y + rh - 42, cw, 2); g.fillRect(x0, y + rh - 2, cw, 2);
+    lit(x0 + 12, y + 20, cw - 12, rh - 62, '#fff2cc', 0.16);
+    // 入口まわりのガラス面
+    y = top(LOOK_ROWS.glass);
+    glass(x0, y, cw, rh, '#aec4d2', '#6f8698');
+    g.fillStyle = '#55697a'; g.fillRect(x0, y + rh - 16, cw, 16);
+    g.fillStyle = 'rgba(240,244,246,.9)';
+    for (let k = 0; k < 4; k++) g.fillRect(x0 + k * cw / 4, y, 2, rh);
+    g.fillRect(x0, y + rh * 0.45, cw, 2);
+    for (let k = 0; k < 4; k++) if (rnd() < 0.6) lit(x0 + k * cw / 4 + 2, y, cw / 4 - 2, rh - 16, rnd() < 0.7 ? '#ffe2b0' : '#d8ecff', 0.4 + rnd() * 0.4);
+    // 窓のない壁 (屋上の塔屋など)
+    y = top(LOOK_ROWS.plain);
+    g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
+  }
+  const mk = (c) => { const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return t; };
+  return { map: mk(cv), emissiveMap: mk(ev) };
+}
+
+// 輪郭 1 周の壁を、階ごと・入口の前後で切って貼る。y0〜y1 = この建物データ (段) の壁の下端〜上端
+function addLookWalls(gb, b, L, y0, y1) {
+  const fh = L.floor_h, base = L.y0, U = LOOK_BAY * LOOK_NB, W = [1, 1, 1], eps = 0.004;
+  const rings = [[b.outer, false], ...(b.holes || []).map(h => [h, true])];
+  for (const [ring, isHole] of rings) {
+    const s = (signedArea(ring) > 0 ? 1 : -1) * (isHole ? -1 : 1);
+    let per = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i], c = ring[(i + 1) % ring.length];
+      const dx = c[0] - a[0], dz = c[1] - a[1], len = Math.hypot(dx, dz);
+      if (len < 0.01) continue;
+      const ux = dx / len, uz = dz / len, n = [uz * s, 0, -ux * s];
+      // 入口 (doors) の左右 7 m はガラス面
+      const iv = [];
+      if (!isHole) for (const d of L.doors || []) {
+        const t = (d[0] - a[0]) * ux + (d[1] - a[1]) * uz, off = Math.abs((d[0] - a[0]) * uz - (d[1] - a[1]) * ux);
+        if (off <= 8 && t > -4 && t < len + 4) iv.push([Math.max(0, t - 7), Math.min(len, t + 7)]);
+      }
+      const cuts = [...new Set([0, len, ...iv.flat()])].sort((p, q) => p - q);
+      for (let j = 0; j + 1 < cuts.length; j++) {
+        const t0 = cuts[j], t1 = cuts[j + 1];
+        if (t1 - t0 < 0.01) continue;
+        const isGlass = iv.some(([p, q]) => t0 >= p - 1e-6 && t1 <= q + 1e-6);
+        const u0 = (per + t0) / U, u1 = (per + t1) / U;
+        const P = (t, y) => [a[0] + ux * t, y, a[1] + uz * t];
+        for (let k = Math.floor((y0 - base) / fh + 1e-6); base + k * fh < y1 - 1e-6; k++) {
+          const yf = base + k * fh, ya = Math.max(y0, yf), yb = Math.min(y1, yf + fh);
+          let kind = (k >= 0 && L.floors[k]) || 'plain';
+          if (isGlass && k >= 0 && k < (L.glass_floors || 0)) kind = 'glass';
+          else if (kind === 'panel' && k % 2) kind = 'panel2';
+          const row = LOOK_ROWS[kind];
+          const va = (row + Math.max(eps, (ya - yf) / fh)) / LOOK_NR, vb = (row + Math.min(1 - eps, (yb - yf) / fh)) / LOOK_NR;
+          gb.tri(P(t0, ya), P(t1, ya), P(t1, yb), n, [u0, va], [u1, va], [u1, vb], W);
+          gb.tri(P(t0, ya), P(t1, yb), P(t0, yb), n, [u0, va], [u1, vb], [u0, vb], W);
+        }
+      }
+      per += len;
+    }
+  }
+}
+
 const OFFICE_WALL = ['#d9d6cf', '#c9c4ba', '#e6e2da', '#b8bcc2', '#d2c7b4', '#a9aeb5', '#efece6', '#c4b9a8'];
 const HOUSE_WALL = ['#f2ede3', '#e8dcc8', '#d9cdb8', '#f5f2ea', '#c8b8a0', '#e0e0dc', '#d6d0c4'];
 const OFFICE_ROOF = ['#8a8d90', '#9a9a95', '#7d8184', '#a3a29c'];
@@ -160,8 +261,9 @@ function roofColor(hex) {
   return [c.r, c.g, c.b];
 }
 
-function buildBuildings(buildings) {
+function buildBuildings(buildings, looks = {}) {
   const office = new GB(), house = new GB(), roof = new GB(), pitched = new GB(), euro = new GB();
+  const lookGB = {}; // ランドマークの外壁 (外観ごとに 1 つ)
   for (const b of buildings) {
     const rnd = hash((b.part || b.id) + (b.name || '')); // 上の段 (part) は元の建物と同じ色にする
     const area = Math.abs(signedArea(b.outer));
@@ -204,7 +306,9 @@ function buildBuildings(buildings) {
     const uoff = Math.floor(rnd() * TILE), voff = Math.floor(rnd() * TILE) / TILE;
     const U = F.bay * TILE, V = F.floor * TILE;
 
-    const rings = [[b.outer, false], ...(b.holes || []).map(h => [h, true])];
+    const look = b.look && looks[b.look];
+    if (look) addLookWalls(lookGB[b.look] || (lookGB[b.look] = new GB()), b, look, y0, y1);
+    const rings = look ? [] : [[b.outer, false], ...(b.holes || []).map(h => [h, true])];
     for (const [ring, isHole] of rings) {
       const s = (signedArea(ring) > 0 ? 1 : -1) * (isHole ? -1 : 1);
       let per = uoff * F.bay;
@@ -235,7 +339,8 @@ function buildBuildings(buildings) {
     else addFlat(roof, b.outer, b.holes, y1, rc, UP);
     if (y0 > 0.1) addFlat(roof, b.outer, b.holes, y0, rc.map(v => v * 0.6), DOWN);
   }
-  return { office: office.geometry(), house: house.geometry(), roof: roof.geometry(), pitched: pitched.geometry(), euro: euro.geometry() };
+  return { office: office.geometry(), house: house.geometry(), roof: roof.geometry(), pitched: pitched.geometry(), euro: euro.geometry(),
+    looks: Object.fromEntries(Object.entries(lookGB).map(([k, gb]) => [k, gb.geometry()])) };
 }
 
 // 輪郭に沿った寄棟 (L 字などどんな形にも掛かる): 高さ = 勾配 k x 輪郭までの距離。
@@ -677,11 +782,19 @@ export function buildCity(city, world, props = null) {
     water: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.2 }),
   };
 
-  const bg = buildBuildings(city.buildings);
+  const bg = buildBuildings(city.buildings, city.looks || {});
   for (const k of ['office', 'house', 'roof', 'pitched', 'euro']) {
     const mesh = new THREE.Mesh(bg[k], mats[k]);
     mesh.name = 'buildings_' + k;
     mesh.castShadow = mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+  const lookMats = [];
+  for (const [k, geo] of Object.entries(bg.looks)) {
+    const mesh = new THREE.Mesh(geo, wallMat(lookTextures(city.looks[k])));
+    mesh.name = 'buildings_look_' + k;
+    mesh.castShadow = mesh.receiveShadow = true;
+    lookMats.push(mesh.material);
     group.add(mesh);
   }
 
@@ -704,5 +817,5 @@ export function buildCity(city, world, props = null) {
 
   group.add(...buildTrees(props));
 
-  return { group, windowMats: [mats.office, mats.house, mats.euro], waterMat: mats.water, mats };
+  return { group, windowMats: [mats.office, mats.house, mats.euro, ...lookMats], waterMat: mats.water, mats };
 }
