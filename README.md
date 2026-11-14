@@ -32,10 +32,13 @@ tools/                 データ変換ツール (Python, 標準ライブラリ�
   fetch_plateau.py     PLATEAU 横浜市 2024 の CityGML (2GB の ZIP) から該当メッシュだけ部分取得 → data/raw/plateau_bldg.json
   remotezip.py         HTTP Range で巨大 ZIP の一部だけ読むヘルパー
   build_city.py        OSM + PLATEAU → public/data/city.json (ローカル座標)
-  build_props.py       city.json → public/data/props.json (路上の小物・敷地の外構・ベランダ・看板・木の配置と当たり判定)
+  build_props.py       city.json → public/data/props.json (路上の小物・敷地の外構・ベランダ・看板・木・駐車場・柵の配置と当たり判定)
+  lidar_cover.py       点群と航空写真 → 地面の種類 (public/data/cover.json)、木の位置・駐車場・造成地 (data/lots.json)、建物データに無い建物 (city.json)
+  add_areas.py         後から対応した敷地 (工業用地・墓地・寺社・病院) だけを今の city.json に足す (build_city.py を通しで実行しないとき用)
 public/                ゲーム本体 (Three.js r170, CDN 読み込み・ビルド不要)
   data/city.json       街データ (建物・道路・線路・水域・エリア・POI)
   data/props.json      小物・建物の飾り・木の配置と当たり判定 (build_props.py が作る。手で編集しない)
+  data/cover.json      地面の種類 (舗装・草・土など) の格子 (lidar_cover.py が作る。無ければ地面は一色)
   src/city.js          メッシュ生成 (建物押し出し・窓テクスチャ・道路・木。木の位置は props.json)
   src/world.js         当たり判定 (建物フットプリント + props.json の小物)
   src/player.js        移動・ジャンプ
@@ -58,7 +61,7 @@ python tools/fetch_gsi.py
 python tools/fetch_dem.py      # 地形 (標高)。build_city.py より先に実行
 python tools/fetch_lidar.py    # 点群 (建物の形)。build_city.py より先に実行
 python tools/fetch_ortho.py    # 航空写真 (屋根の色)。build_city.py より先に実行。Pillow が必要
-python tools/build_city.py     # 最後に build_props.py も実行する
+python tools/build_city.py     # 点群と航空写真があれば lidar_cover.py も実行する。最後に build_props.py も実行する
 ```
 `python tools/lidar_shape.py`（`--undo` も）で `city.json` を書き換えたときも、続けて `build_props.py` が実行される。
 小物だけを作り直すときは `python tools/build_props.py`（数秒）。
@@ -91,6 +94,31 @@ python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json 
 - 点群に写っていない建物（測量後の新築）、外観設定（`appearance.json`）の建物、修正モードで高さを変えた建物（`fixed`）、車庫は元のまま
 - **屋根の色**: 航空写真（同じ配布元のオルソ画像, 25cm）の、輪郭の中の画素から屋根の色を読んで `rc` に入れる（段ごと。上の段が載っている所は除く）。輪郭の線から 0.75m 以内と、影（暗い側 35%）・てかりや設備（明るい側 15%）を除いた中央値。家の屋根が緑のときは木がかぶさっているとみなして付けない。写真そのものはゲームに貼らない。ゲーム側（`city.js` の `roofColor`）で、白っぽく写る分を少し締めて使う
 - 標準ライブラリだけで動く（numpy があれば取得が速い）。航空写真の取得（`fetch_ortho.py`）だけは JPEG を読むため Pillow が必要
+
+### 空き地を埋める（点群と航空写真から自動で）
+建物も道路も無い所は、元データに何も無いので以前は一色の地面だった。`tools/lidar_cover.py` が、建物の形と同じ点群・航空写真から次を読んで埋める。個別の指示は不要。
+```
+python tools/lidar_cover.py          # numpy が必要。先に fetch_lidar.py と fetch_ortho.py。最後に build_props.py も実行する
+python tools/lidar_cover.py --undo   # 足した建物を消し、cover.json と data/lots.json を削除して元の見た目に戻す
+```
+1 m のマスごとに、点群の高さ・「葉を通り抜けた反射」の割合・反射の強さと、写真の色 (数値) を見る。写真そのものは貼らない。
+- **地面の種類** (`public/data/cover.json`): 草 / 舗装 / 明るい舗装・砂利 / 土 / 木の下。地形の頂点 (2 m 間隔) ごとに 1 文字で、ゲームは地形の色に使う (`terrain.js` の `COVER_COLOR`)。追加の三角形は無い。
+  草は反射が強く色味がある所、舗装は色味の無い灰色、土は茶色。影の中は反射の強さだけで決め、車や塀で読めないマスは周りの多数決で埋める。
+  団地・商業地・工場・病院・寺社の敷地の一色の面は、これがあるときは描かない。見比べるときは URL に `?nocover`
+- **木** (`data/lots.json` の `trees`): 地面より 2.5 m 以上高く、葉を通り抜けた反射が多い所。周りより高い点を高い順に拾い、実際の高さに合わせた大きさで置く。
+  これがあるときは、公園・森・草地に乱数で散らす木は使わない。上限は約 14,000 本 (超えると間隔を広げる)
+- **駐車場** (`parking`): 幅 9 m 以上・400 m2 以上の舗装のかたまり。車が 4 台以上写っているか、OSM の駐車場なら、駐車ますの白線を引く。
+  車は点群に写っていたますにだけ置く。ますの向きは、かたまりを囲む一番小さい長方形の長い辺に合わせた推定
+- **建物データに無い建物** (`city.json` に `src: "lidar"` で足す): 地面より 4.5 m 以上高く、木ではない、幅 5 m 以上・150 m2 以上のかたまり
+  (高さの下限は `NEW_BLD_H` = 4.5 m。工事の仮囲いやトラックでかたまりがつながらない高さ)
+  縁が切り立っていること (盛り土や斜面ではない) を確かめ、線路・ホーム・広場の上と送電鉄塔は除く。輪郭は 1 m の格子からの近似で、段・屋根・屋根の色は
+  `lidar_shape.py` の同じ処理で付ける。種類は推定 (工業用地の中は industrial、ほかは高さで commercial / lowrise)
+- **造成地** (`sites`): 土の地面が周り 25 m 四方の 2 割以上を占める、3,000 m2 以上のかたまり。それを囲む凸多角形の外周に工事の仮囲い (白い板) を置く。中の舗装には駐車ますを引かない
+- 点群・写真は令和3年度。それ以降に変わった所は当時のまま (工事中だった所は工事中のまま)
+
+### 敷地（工業用地・学校・墓地・寺社・病院）
+OSM の土地利用のうち、工業用地 (`industrial`)・墓地 (`cemetery`)・寺社 (`worship`)・病院 (`hospital`) も `city.json` の `areas` に入れる (ミニマップに色が付く)。
+`build_props.py` が、工業用地・学校・墓地の外周に柵を置く。輪郭が道路の上を通る所は内側へ最大 10 m ずらし、ずらしても道路や建物に当たる所 (門・出入口) は空ける。墓地には墓石を並べる (向きは一番長い辺に合わせた推定)。
 
 ### 建物データの方針（旧: PLATEAU ベース）
 - 建物の形と高さは PLATEAU (LOD1, 実測高さ) を正とする。戸塚エリアは LOD2/テクスチャ未整備 (2020/2022/2024 年度版で確認)。
@@ -126,12 +154,16 @@ python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json 
 - `signals` 車両用信号（`reach` 腕の長さ、`axis` 0=主方向 1=交差方向、`offset` 周期のずれ 秒。周期は 青22→黄3→全赤2 秒 × 2 方向）／`pedSignals` 歩行者用信号（正面が向かい側）／`busStops` バス停（`name`）
 - `balconies` 集合住宅のベランダ（壁ごと）: 壁の始点 `x, z`、壁の向き `dx, dz`、外向き `nx, nz`、壁の長さ `len`、建物の基準の高さ `y`、1 階分の高さ `floorH`、階数 `floors`、`dark`（濃い色の手すり）、建物の id `b`。2 階から最上階まで、床の高さ `y + k × floorH`（k = 1 〜 floors−1）に、奥行き 1.1m・手すり壁 1.1m のベランダを付ける（壁の両端 0.4m は空ける）
 - `signs` 店の看板と日よけ: 壁の中点 `x, z`、建物の基準の高さ `y`、正面 = 壁の外向き、幅 `w`、`name`、`cat`、`colors`（地・文字・帯と日よけの色）、建物の id `b`。看板は `y + 3.35`、日よけは `y + 2.6`
+- `trees` 木: `[x, z, y, 大きさの倍率, 0〜1 の乱数]`。乱数は向き（× 6.28 ラジアン）と葉の色の濃さに使う。基準の木は幹の高さ 2.2m、葉は高さ 3.2m を中心に半径 1.7m。
+  位置は `data/lots.json`（点群で見つけた木。大きさ = 実際の高さ ÷ 4.9 m、建物に近い木は葉が壁に入らない大きさに縮める）。無ければ公園・森・草地に乱数で散らす
+- `cars` 駐車場の車: `x, y, z, yaw`、車体の色 `c`。駐車ますの白線は `paint` に入る
+- `fences` 敷地の外周の柵（種類ごと）: `kind`（industrial / school / cemetery は金網、construction は工事の仮囲いの白い板）、`color`、高さ `h`、柱 `posts` `[x, z, y]`、パネル `panels` `[中心x, 中心z, y, yaw, 長さ]`
+- `graves` 墓石: `x, y, z, yaw`
 - `bigSigns` ランドマークの壁面の大きな看板: 壁の中点 `x, z`、看板の中心の高さ `y`、正面 = 壁の外向き、幅 `w`、高さ `h`、`text`、`bg`・`fg`（地と文字の色）、建物の id `b`
 - `rail` 駅と線路（描画は `public/src/detail/station.js`）
   - `platforms` ホーム: 両縁の点列 `left`・`right`（約 4 m ごと）と、各点の上面の高さ `y`（地面 + 1.1 m。川をまたぐ所は前後の高さでならす）。黄色い点字ブロックと縁の白線は描画側で引く
   - `canopies` ホームの屋根: 同じ形で `y` = 屋根の下面の高さ。ホームの両端 8 m と幅 3 m 未満の所には付けない／`columns` 屋根の柱 `[x, z, 下端 y, 上端 y]`
   - `gantries` 架線柱（門形）`[中心 x, 中心 z, 地面 y, 線路に直角な向き dx, dz, 半幅]`: 線路を 50 m ごとに歩き、直角に横切る線路をまとめて 1 つの門にする。ホーム・建物に掛かる所には作らない／`catenary` 架線の線分（線路の真上 5 m）
-- `trees` 木（公園・森・草地）: `[x, z, y, 大きさの倍率, 0〜1 の乱数]`。乱数は向き（× 6.28 ラジアン）と葉の色の濃さに使う。基準の木は幹の高さ 2.2m、葉は高さ 3.2m を中心に半径 1.7m
 - `sites` 敷地の外構（`data/appearance.json` の `sites` から）: 庭（芝生のマス・通路・噴水・円すいの木）、門のアーチ、円形広場、エントランス棟の正面、屋上の塔、日よけ、花壇、オベリスク、天窓、フェンス
 - `colliders` 当たり判定。y0, y1 は下端・上端の絶対高さ
   - `circle` `[x, z, 半径, y0, y1]`（電柱・信号の柱・ミラー・噴水・木など）

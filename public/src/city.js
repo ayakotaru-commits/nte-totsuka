@@ -1,6 +1,6 @@
 // city.json から街のメッシュを組み立てる
 import * as THREE from 'three';
-import { H, drape, buildTerrainMesh, hasTerrain } from './terrain.js';
+import { H, drape, buildTerrainMesh, hasTerrain, hasCover } from './terrain.js';
 import { Bridges } from './bridges.js';
 import { buildStairs } from './stairs.js';
 import { buildWalls } from './walls.js';
@@ -598,6 +598,7 @@ const SIDEWALK = '#b3ab9e', MARK = '#e8e4d8';
 export const AREA_STYLE = {
   residential: ['#aaa79c', 0.01], commercial: ['#a8a39b', 0.01], railway: ['#8e867b', 0.012], farm: ['#a7ae7c', 0.012],
   grass: ['#86a85f', 0.02], wood: ['#5b7a45', 0.021], park: ['#80a75c', 0.022], school: ['#c4b9a2', 0.02],
+  industrial: ['#a39f97', 0.008], hospital: ['#a8a39b', 0.009], worship: ['#b7ad98', 0.011], cemetery: ['#aaa69d', 0.018],
   parking: ['#76777a', 0.024], pitch: ['#6f9d52', 0.026], plaza: ['#cbc1ae', 0.05], water: ['#4f7d9c', 0.03], platform: ['#b9b4aa', 0.11],
 };
 
@@ -672,11 +673,13 @@ function addEdgeLines(gb, city, bridges) {
   }
 }
 
+const COVERED = new Set(['residential', 'commercial', 'industrial', 'hospital', 'worship']);
 function buildGround(city, bridges) {
   const gb = new GB(), water = new GB();
   for (const a of city.areas) {
     const st = AREA_STYLE[a.kind];
     if (!st) continue;
+    if (hasCover() && COVERED.has(a.kind)) continue; // 団地・商業地・工場などの敷地の一色の面は、地面の種類 (cover.json) があればそちらを見せる
     addFlat(a.kind === 'water' ? water : gb, a.outer, a.holes, st[1], col(st[0]));
   }
   for (const w of city.waterways) addRibbon(water, w.pts, w.w, 0.032, col(AREA_STYLE.water[0]));

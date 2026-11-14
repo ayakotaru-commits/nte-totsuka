@@ -8,6 +8,14 @@ let T = null;
 export function setTerrain(data) { T = data; }
 export function hasTerrain() { return !!T; }
 
+// 地面の種類 (data/cover.json。tools/lidar_cover.py が点群と航空写真から読んだもの)。地形の頂点ごとに 1 文字。
+// 無ければ地面は一色のまま。格子が terrain.json と合わないときは使わない
+let C = null;
+export function setCover(data) { C = data && T && data.nx === T.nx && data.nz === T.nz ? data : null; }
+export function hasCover() { return !!C; }
+// 種類ごとの色 (cover.json の classes の名前)。none は元の地面の色
+const COVER_COLOR = { grass: '#8aa364', paved: '#6e6f73', soil: '#b39c7a', woodfloor: '#6d8552', light: '#b3b0a8' };
+
 export function H(x, z) {
   if (!T) return 0;
   let fx = (x - T.minX) / T.step, fz = (z - T.minZ) / T.step;
@@ -38,11 +46,28 @@ export function buildTerrainMesh(color = '#a4a296') {
   const base = new THREE.Color(color), grass = new THREE.Color('#78895c'), wall = new THREE.Color('#aaa8a1'), c = new THREE.Color();
   const sm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const hh = (i, j) => T.h[Math.max(0, Math.min(nz - 1, j)) * nx + Math.max(0, Math.min(nx - 1, i))] / 100;
+  // 地面の種類の色。種類の境目が格子のギザギザに見えないよう、隣の頂点と 1:2:1 でならしてから使う
+  let cov = null;
+  if (C) {
+    const pal = C.classes.map((n) => new THREE.Color(COVER_COLOR[n] || color));
+    const raw = new Float32Array(nx * nz * 3), tmp = new Float32Array(nx * nz * 3);
+    for (let k = 0; k < nx * nz; k++) { const q = pal[C.c.charCodeAt(k) - 48] || base; raw[k * 3] = q.r; raw[k * 3 + 1] = q.g; raw[k * 3 + 2] = q.b; }
+    const pass = (src, dst, di, n, len) => { // di = 隣の頂点までの添字の差, n = その方向の頂点数
+      for (let k = 0; k < len; k++) {
+        const pos = di === 1 ? k % nx : Math.floor(k / nx);
+        const a = pos > 0 ? k - di : k, b2 = pos < n - 1 ? k + di : k;
+        for (let ch = 0; ch < 3; ch++) dst[k * 3 + ch] = (src[a * 3 + ch] + 2 * src[k * 3 + ch] + src[b2 * 3 + ch]) / 4;
+      }
+    };
+    pass(raw, tmp, 1, nx, nx * nz); pass(tmp, raw, nx, nz, nx * nz);
+    cov = raw;
+  }
   const col = new Float32Array(nx * nz * 3);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const gx = (hh(i + 1, j) - hh(i - 1, j)) / (2 * step), gz = (hh(i, j + 1) - hh(i, j - 1)) / (2 * step);
     const slope = Math.hypot(gx, gz);
-    c.copy(base).lerp(grass, sm(0.3, 0.6, slope) * 0.85).lerp(wall, sm(0.75, 1.05, slope));
+    if (cov) c.setRGB(cov[(j * nx + i) * 3], cov[(j * nx + i) * 3 + 1], cov[(j * nx + i) * 3 + 2]); else c.copy(base);
+    c.lerp(grass, sm(0.3, 0.6, slope) * 0.85).lerp(wall, sm(0.75, 1.05, slope));
     const k = (j * nx + i) * 3;
     col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
   }

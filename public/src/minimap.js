@@ -20,7 +20,8 @@ export class Minimap {
     const line = (pts) => { g.beginPath(); pts.forEach(([x, z], i) => i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z))); g.stroke(); };
 
     g.fillStyle = '#e9e6df'; g.fillRect(0, 0, m.width, m.height);
-    const AREA = { grass: '#cfe3b5', wood: '#b4d29a', park: '#c6e2a6', pitch: '#b8dc98', school: '#ece3cd', water: '#9fc8e6', railway: '#dcd6cc', parking: '#dddddd', plaza: '#f3eee3' };
+    const AREA = { grass: '#cfe3b5', wood: '#b4d29a', park: '#c6e2a6', pitch: '#b8dc98', school: '#ece3cd', water: '#9fc8e6', railway: '#dcd6cc', parking: '#dddddd', plaza: '#f3eee3',
+      industrial: '#e3ddd6', cemetery: '#d6dac9', worship: '#e8e1cd', hospital: '#f0dfdf' };
     for (const a of city.areas) {
       if (!AREA[a.kind]) continue;
       g.fillStyle = AREA[a.kind];
