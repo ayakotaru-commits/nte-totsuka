@@ -55,6 +55,7 @@ python tools/fetch_plateau.py
 python tools/fetch_gsi.py
 python tools/fetch_dem.py      # 地形 (標高)。build_city.py より先に実行
 python tools/fetch_lidar.py    # 点群 (建物の形)。build_city.py より先に実行
+python tools/fetch_ortho.py    # 航空写真 (屋根の色)。build_city.py より先に実行。Pillow が必要
 python tools/build_city.py
 ```
 
@@ -71,6 +72,7 @@ python tools/build_city.py
 神奈川県が公開している航空レーザ測量の点群（1㎡ あたり約 10 点、令和3年度測量、CC BY 4.0）から、建物 1 棟ごとの形を実測に合わせる。個別の指示は不要。
 ```
 python tools/fetch_lidar.py     # 点群 8 図郭 (約 800MB) を取得 → data/raw/lidar_dsm.bin (0.5m の高さ格子)
+python tools/fetch_ortho.py     # 航空写真 8 図郭 (約 90MB) を取得 → data/raw/ortho_rgb.bin (0.5m の色の格子)。Pillow が必要 (pip install pillow)
 python tools/build_city.py      # 高さ格子があれば自動で適用
 python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json にその場で適用。--undo で元に戻す
 ```
@@ -83,7 +85,8 @@ python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json 
   - 調査用: `lidar_shape.STATS = []` を入れてから実行すると、部分ごとの（面積, 高さのばらつき, 屋根の種類, …）がたまる
 - **高さ**: PLATEAU の値を点群の値で置き換える（元の値は `lidar.h0`）
 - 点群に写っていない建物（測量後の新築）、外観設定（`appearance.json`）の建物、修正モードで高さを変えた建物（`fixed`）、車庫は元のまま
-- 標準ライブラリだけで動く（numpy があれば取得が速い）
+- **屋根の色**: 航空写真（同じ配布元のオルソ画像, 25cm）の、輪郭の中の画素から屋根の色を読んで \ に入れる（段ごと。上の段が載っている所は除く）。輪郭の線から 0.75m 以内と、影（暗い側 35%）・てかりや設備（明るい側 15%）を除いた中央値。家の屋根が緑のときは木がかぶさっているとみなして付けない。写真そのものはゲームに貼らない。ゲーム側（\ の \）で、白っぽく写る分を少し締めて使う
+- 標準ライブラリだけで動く（numpy があれば取得が速い）。航空写真の取得（\）だけは JPEG を読むため Pillow が必要
 
 ### 建物データの方針（旧: PLATEAU ベース）
 - 建物の形と高さは PLATEAU (LOD1, 実測高さ) を正とする。戸塚エリアは LOD2/テクスチャ未整備 (2020/2022/2024 年度版で確認)。
@@ -157,4 +160,4 @@ python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json 
 - 地図データ © OpenStreetMap contributors (ODbL)
 - 建物の輪郭: 国土地理院ベクトルタイル／標高: 国土地理院 標高タイル
 - 建物データ: 国土交通省 Project PLATEAU 3D都市モデル 横浜市 (2024年度)
-- 建物の形: 神奈川県 令和3年度 横浜南部、湘南、横須賀三浦 3次元点群データ (CC BY 4.0, G空間情報センター)
+- 建物の形・屋根の色: 神奈川県 令和3年度 横浜南部、湘南、横須賀三浦 3次元点群データ（点群・オルソ画像）(CC BY 4.0, G空間情報センター)

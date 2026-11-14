@@ -22,6 +22,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DSM_BIN = ROOT / "data" / "raw" / "lidar_dsm.bin"
 DSM_META = ROOT / "data" / "raw" / "lidar_dsm.json"
+ORTHO_BIN = ROOT / "data" / "raw" / "ortho_rgb.bin"
+ORTHO_META = ROOT / "data" / "raw" / "ortho_rgb.json"
 CITY = ROOT / "public" / "data" / "city.json"
 TERRAIN = ROOT / "public" / "data" / "terrain.json"
 
@@ -52,6 +54,24 @@ class DSM:
             return None
         v = self.a[j * self.nx + i]
         return None if v == self.nodata else v / 100
+
+
+class Ortho:
+    """航空写真から作った色の格子 (fetch_ortho.py)"""
+
+    def __init__(self, bin_path=ORTHO_BIN, meta_path=ORTHO_META):
+        m = json.loads(pathlib.Path(meta_path).read_text(encoding="utf-8"))
+        self.res, self.x0, self.z0, self.nx, self.nz = m["res"], m["minX"], m["minZ"], m["nx"], m["nz"]
+        self.a = pathlib.Path(bin_path).read_bytes()
+
+    def get(self, x, z):
+        """(x, z) の色 (r, g, b)。データ無しは None"""
+        i, j = int((x - self.x0) / self.res), int((z - self.z0) / self.res)
+        if i < 0 or j < 0 or i >= self.nx or j >= self.nz:
+            return None
+        k = (j * self.nx + i) * 3
+        c = self.a[k], self.a[k + 1], self.a[k + 2]
+        return None if c == (0, 0, 0) else c
 
 
 # ---------------------------------------------------------------- 幾何の小道具
@@ -715,11 +735,75 @@ def shape_building(b, dsm, ref, floors_for=default_floors):
     return new
 
 
+# ---------------------------------------------------------------- 屋根の色
+def roof_color(b, ortho, children=()):
+    """建物データ b の屋根の色を航空写真から読む。戻り値 "#rrggbb" または None。
+    children = この建物の上に載っている段の輪郭 (そこは上の段の色なので除く)"""
+    outer, holes = b["outer"], b.get("holes") or []
+    xs, zs = [p[0] for p in outer], [p[1] for p in outer]
+    step = 0.5 if (max(xs) - min(xs)) * (max(zs) - min(zs)) < 4000 else 1.0
+    inner, edge = [], []
+    x = min(xs) + step / 2
+    while x < max(xs):
+        z = min(zs) + step / 2
+        while z < max(zs):
+            if point_in((x, z), outer) and not any(point_in((x, z), r) for r in holes) \
+                    and not any(point_in((x, z), r) for r in children):
+                c = ortho.get(x, z)
+                if c:
+                    # 輪郭の線から 0.75 m 以内は、壁・影・隣の屋根が混ざるので後回し
+                    d = min(seg_dist(x, z, r[i - 1], r[i]) for r in [outer] + holes for i in range(len(r)))
+                    (inner if d >= 0.75 else edge).append(c)
+            z += step
+        x += step
+    px = inner if len(inner) >= 6 else inner + edge
+    if len(px) < 3:
+        return None
+    # 明るさの順に並べ、影 (暗い側 35%) とてかり・設備 (明るい側 15%) を除いた中央値
+    px.sort(key=lambda c: 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2])
+    mid = px[int(len(px) * 0.35):max(int(len(px) * 0.85), int(len(px) * 0.35) + 1)]
+    r, g, bl = (median([c[k] for c in mid]) for k in range(3))
+    if b.get("style") in ("house", "small", "lowrise") and g > 1.1 * r and g > 1.04 * bl:
+        return None  # 家の屋根が緑 = 木がかぶさっている。色は決めない
+    return "#%02x%02x%02x" % (round(r), round(g), round(bl))
+
+
+def seg_dist(x, z, a, b):
+    ex, ez = b[0] - a[0], b[1] - a[1]
+    l2 = ex * ex + ez * ez
+    t = max(0.0, min(1.0, ((x - a[0]) * ex + (z - a[1]) * ez) / l2)) if l2 else 0.0
+    return math.hypot(x - a[0] - ex * t, z - a[1] - ez * t)
+
+
+def apply_colors(buildings, ortho=None):
+    """各建物データに屋根の色 rc を付ける (外観設定の建物・門などは除く)"""
+    ortho = ortho or Ortho()
+    kids = {}
+    for b in buildings:
+        if b.get("part") and b.get("minH"):
+            kids.setdefault(b["part"], []).append(b)
+    n = 0
+    for b in buildings:
+        b.pop("rc", None)
+        if b.get("facade") or b.get("src") == "appearance" or b.get("style") in ("gate", "hall"):
+            continue
+        # 自分より上にある段だけ除く
+        top = b["h"]
+        ch = [k["outer"] for k in kids.get(b.get("part") or b["id"], []) if k is not b and k["minH"] >= top - 0.05]
+        rc = roof_color(b, ortho, ch)
+        if rc:
+            b["rc"] = rc
+            n += 1
+    print(f"ortho: 屋根の色を付けた建物データ {n} / {len(buildings)}")
+    return buildings
+
+
 # ---------------------------------------------------------------- 全体
 def restore(buildings):
     """前回の適用を元に戻す (単体実行を何度しても同じ結果になるように)"""
     out = []
     for b in buildings:
+        b.pop("rc", None)
         if b.get("part"):
             continue
         l = b.pop("lidar", None)
@@ -769,6 +853,8 @@ def apply(buildings, ref, floors_for=default_floors, dsm=None, only=None):
         st["pitched"] += sum(1 for r in [b] + new if r.get("roof") or r.get("roofs"))
         out.extend(new)
     print(f"lidar: 形を直した建物 {st['shaped']} / 追加した段 {st['parts']} / 勾配屋根 {st['pitched']} / 元のまま {st['kept']}")
+    if ORTHO_BIN.exists():  # 航空写真 (fetch_ortho.py) があれば屋根の色も実物に合わせる
+        apply_colors(out)
     return out
 
 
@@ -780,7 +866,9 @@ def main():
             raise SystemExit("data/raw/lidar_dsm.bin がありません。先に python tools/fetch_lidar.py を実行してください")
         ref = json.loads(TERRAIN.read_text(encoding="utf-8"))["ref"] if TERRAIN.exists() else 0.0
         city["buildings"] = apply(city["buildings"], ref)
-        note = "建物の形: 神奈川県 3次元点群データ (CC BY 4.0)"
+        note = "形と屋根の色: 神奈川県 点群・オルソ画像 (CC BY 4.0)"
+        for old in (" / 建物の形: 神奈川県 3次元点群データ (CC BY 4.0)", " / 建物の形・屋根の色: 神奈川県 3次元点群データ・オルソ画像 (CC BY 4.0)"):
+            city["attribution"] = city.get("attribution", "").replace(old, "")  # 以前の版の表記
         if note not in city.get("attribution", ""):
             city["attribution"] = city.get("attribution", "") + " / " + note
     CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

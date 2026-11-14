@@ -91,7 +91,9 @@ def plane_to_local():
 
 
 # ---- 図郭の一覧 (G空間情報センターの索引ベクトルタイル) ----
-def mesh_list():
+def mesh_list(index_url=None):
+    """マップ範囲にかかる図郭の [(図郭名, zip の URL)]。index_url を変えると航空写真などほかの種類も引ける"""
+    index_url = index_url or INDEX_URL
     s, w, n, e = BBOX
     k = 2 ** INDEX_Z
 
@@ -103,7 +105,7 @@ def mesh_list():
     found = {}
     for x in range(x0, x1 + 1):
         for y in range(y0, y1 + 1):
-            with urllib.request.urlopen(urllib.request.Request(INDEX_URL.format(z=INDEX_Z, x=x, y=y), headers=UA), timeout=60) as r:
+            with urllib.request.urlopen(urllib.request.Request(index_url.format(z=INDEX_Z, x=x, y=y), headers=UA), timeout=60) as r:
                 data = r.read()
             if data[:2] == b"\x1f\x8b":
                 data = gzip.decompress(data)

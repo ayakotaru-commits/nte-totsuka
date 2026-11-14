@@ -149,6 +149,15 @@ const STYLE_FACADE = {
 };
 const ROOF_TILE = ['#5d636b', '#6e5446', '#4f5a6a', '#7a6b5c', '#454b55', '#8a8f96'];
 
+// 航空写真の色は白っぽく写る (かすみ・露出)。少し締めてから使う
+const TILE_GAIN = 1.25;
+function roofColor(hex) {
+  const c = new THREE.Color(hex), hsl = {};
+  c.getHSL(hsl, THREE.SRGBColorSpace);
+  c.setHSL(hsl.h, Math.min(1, hsl.s * 1.6), Math.max(0.08, Math.min(0.74, (hsl.l - 0.1) * 0.95)), THREE.SRGBColorSpace);
+  return [c.r, c.g, c.b];
+}
+
 function buildBuildings(buildings) {
   const office = new GB(), house = new GB(), roof = new GB(), pitched = new GB(), euro = new GB();
   for (const b of buildings) {
@@ -156,7 +165,9 @@ function buildBuildings(buildings) {
     const area = Math.abs(signedArea(b.outer));
     const style = b.style || ((HOUSE_KINDS.has(b.kind) || (!b.kind && b.h < 9.5 && area < 180)) ? 'house' : 'apartment');
     const isHouse = STYLE_FACADE[style] !== 'office';
-    const rc = col((isHouse ? HOUSE_ROOF : OFFICE_ROOF)[Math.floor(rnd() * 4)]);
+    let rc = col((isHouse ? HOUSE_ROOF : OFFICE_ROOF)[Math.floor(rnd() * 4)]);
+    const real = b.rc ? roofColor(b.rc) : null; // 航空写真から読んだ屋根の色
+    if (real) rc = real;
 
     // 車庫・駐輪場 (屋根だけ): 屋根板と柱
     if (style === 'carport') {
@@ -207,7 +218,8 @@ function buildBuildings(buildings) {
         per += len;
       }
     }
-    const tile = col(ROOF_TILE[Math.floor(rnd() * ROOF_TILE.length)]);
+    let tile = col(ROOF_TILE[Math.floor(rnd() * ROOF_TILE.length)]);
+    if (real) tile = real.map(v => Math.min(1, v * TILE_GAIN)); // 瓦のテクスチャで暗くなる分を戻す
     if (r && r.t === 'skel') addSkelRoof(pitched, b.outer, y1, r, tile);
     else if (r) addPitched(pitched, roof, r, y1, tile, wc);
     else if (b.roofs) { // 点群から作った段: 部分ごとの屋根 (下の平らな面は屋根に隠れる)

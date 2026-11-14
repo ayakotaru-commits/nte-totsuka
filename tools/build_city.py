@@ -944,7 +944,7 @@ def main():
         import lidar_shape
         ref = json.loads(TERRAIN.read_text(encoding="utf-8"))["ref"]
         buildings = lidar_shape.apply(buildings, ref)
-        lidar_note = "建物の形: 神奈川県 3次元点群データ (CC BY 4.0)"
+        lidar_note = "形と屋根の色: 神奈川県 点群・オルソ画像 (CC BY 4.0)"
 
     # 名前付き建物を POI に追加
     for b in buildings:
