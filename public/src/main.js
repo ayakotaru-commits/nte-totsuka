@@ -24,7 +24,7 @@ async function main() {
   status('地図データを読み込み中…');
   const city = await (await fetch('data/city.json')).json();
   // 地形 (無ければ平らな地面)
-  try { const r = await fetch(new URLSearchParams(location.search).get('terrain') === 'hi' ? 'data/terrain_hi.json' : 'data/terrain.json'); if (r.ok) setTerrain(await r.json()); } catch { /* 平らなまま */ }
+  try { const r = await fetch('data/terrain.json'); if (r.ok) setTerrain(await r.json()); } catch { /* 平らなまま */ }
   // 擁壁 (tools/lidar_walls.py --osm が作る。まだ見た目が不十分なので、URL に ?walls を付けたときだけ置く)
   if (new URLSearchParams(location.search).has('walls')) try { const r = await fetch('data/walls.json'); if (r.ok) city.walls = (await r.json()).walls; } catch { /* 無し */ }
   // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py が作る。無ければそれらを置かない)

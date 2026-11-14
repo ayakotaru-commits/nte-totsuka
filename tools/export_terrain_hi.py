@@ -1,5 +1,5 @@
 """lidar_terrain.py の結果 (data/raw/terrain_hi.npz) を、ゲームが読める public/data/terrain_hi.json にする。
-形式は terrain.json と同じ (step = 2 m, h = 標高 cm, z 行優先)。試用: URL に ?terrain=hi を付けると読み込む。"""
+形式は terrain.json と同じ (step = 2 m, h = 標高 cm, z 行優先)。terrain.json に置き換えるときは、先に tools/retarget_terrain.py で city.json の高さを合わせる。"""
 import json
 import pathlib
 
