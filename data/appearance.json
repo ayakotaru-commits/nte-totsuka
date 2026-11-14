@@ -97,5 +97,40 @@
    },
    "_layout_note": "門・エントランス棟・広場・塔の位置は、建物データの配置と公開写真の見え方から推定した手置き座標（ローカル座標 m）"
   }
+ ],
+ "_note_landmarks": "landmarks: 目印になる大きな建物。at の地点を含む建物と上の段すべてに look を適用 (tools/landmarks.py)。公開されている説明文 (階数・用途・テーマカラー) と航空写真・点群の観察から書き起こしたもの",
+ "landmarks": [
+  {
+   "name": "トツカーナ",
+   "key": "totsukana",
+   "at": [
+    -100,
+    40
+   ],
+   "rename": "トツカーナ",
+   "source": "公開情報: 地上7階・地下2階、店舗は地下1〜5階、5階〜屋上は駐車場 (約600台)、3階と地下1階で駅と直結、外壁は縦方向に分節した千鳥のデザインでテーマカラーは「こげ茶」と「白」。屋上が駐車場であること・吹き抜け 2 か所は航空写真で確認。窓や入口の細かい位置は推定",
+   "look": {
+    "facade": "mall",
+    "wall": "#ecebe6",
+    "accent": "#553a2a",
+    "floor_h": 4.37,
+    "floors": [
+     "shop",
+     "panel",
+     "panel",
+     "panel",
+     "parking",
+     "parking",
+     "parking"
+    ],
+    "glass_floors": 3,
+    "sign": {
+     "text": "TOTSUKANA",
+     "floor": 2.6,
+     "bg": "#553a2a",
+     "fg": "#ffffff"
+    }
+   }
+  }
  ]
 }

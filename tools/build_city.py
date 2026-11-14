@@ -946,6 +946,10 @@ def main():
         buildings = lidar_shape.apply(buildings, ref)
         lidar_note = "形と屋根の色: 神奈川県 点群・オルソ画像 (CC BY 4.0)"
 
+    # 目印になる大きな建物の外観 (data/appearance.json の landmarks)。上の段にも付けるので、形を直した後に行う
+    import landmarks
+    looks = landmarks.apply(buildings, roads)
+
     # 名前付き建物を POI に追加
     for b in buildings:
         if b.get("name"):
@@ -966,6 +970,7 @@ def main():
         "units": "meters; x=east, z=south",
         "bounds": BOUNDS,
         "sites": sites,
+        "looks": looks,
         "start": {**dict(zip(("x", "z"), proj(START["lat"], START["lon"]))), **({"face": list(proj(*START["face_toward"]))} if START.get("face_toward") else {})},
         "waypoints": [{"name": w["name"], "x": proj(w["lat"], w["lon"])[0], "z": proj(w["lat"], w["lon"])[1]} for w in WAYPOINTS],
         "attribution": "(c) OpenStreetMap contributors (ODbL)" + (" / " + plateau_note if plateau_note else "") + (" / " + lidar_note if lidar_note else ""),

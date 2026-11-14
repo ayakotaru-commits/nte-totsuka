@@ -859,9 +859,13 @@ def apply(buildings, ref, floors_for=default_floors, dsm=None, only=None):
 
 
 def main():
+    import landmarks  # ランドマークの外観は上の段にも付くので、いったん外して最後に付け直す
     city = json.loads(CITY.read_text(encoding="utf-8"))
+    landmarks.undo(city["buildings"], city.get("pois"))
     city["buildings"] = restore(city["buildings"])
-    if "--undo" not in sys.argv:
+    if "--undo" in sys.argv:
+        city["looks"] = landmarks.apply(city["buildings"], city.get("roads"), city.get("pois"))
+    else:
         if not DSM_BIN.exists():
             raise SystemExit("data/raw/lidar_dsm.bin がありません。先に python tools/fetch_lidar.py を実行してください")
         ref = json.loads(TERRAIN.read_text(encoding="utf-8"))["ref"] if TERRAIN.exists() else 0.0
@@ -871,6 +875,7 @@ def main():
             city["attribution"] = city.get("attribution", "").replace(old, "")  # 以前の版の表記
         if note not in city.get("attribution", ""):
             city["attribution"] = city.get("attribution", "") + " / " + note
+        city["looks"] = landmarks.apply(city["buildings"], city.get("roads"), city.get("pois"))
     CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"-> {CITY} ({CITY.stat().st_size // 1024} KB, buildings={len(city['buildings'])})")
     import build_props  # 建物の形が変わると小物の置ける場所も変わるので、props.json も作り直す
