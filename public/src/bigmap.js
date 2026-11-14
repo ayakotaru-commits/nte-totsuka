@@ -4,7 +4,9 @@ import { MAP_PX_PER_M } from './minimap.js';
 const MIN_SCALE = 0.25, MAX_SCALE = 8;
 
 export class BigMap {
-  constructor({ minimap, city, pois, canvas }) {
+  constructor({ minimap, city, pois, canvas, onWarp }) {
+    this.onWarp = onWarp;
+    this.target = null; // クリックで選んだワープ先 {x, z}
     this.map = minimap.map;
     this.B = city.bounds;
     this.start = city.start;
@@ -17,10 +19,19 @@ export class BigMap {
     this.player = { x: 0, z: 0, facing: 0 };
 
     let drag = null;
-    canvas.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, cx: this.cx, cz: this.cz }; });
-    addEventListener('mouseup', () => { drag = null; });
+    canvas.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, cx: this.cx, cz: this.cz, moved: false }; });
+    addEventListener('mouseup', (e) => {
+      // ほとんど動かさずに離したらクリック扱い: ワープ先のピンを立てる
+      if (drag && !drag.moved && this.open) this.target = this.toWorld(e.clientX, e.clientY);
+      drag = null;
+    });
+    canvas.addEventListener('dblclick', (e) => {
+      this.target = this.toWorld(e.clientX, e.clientY);
+      this.warp();
+    });
     addEventListener('mousemove', (e) => {
       if (!drag || !this.open) return;
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) drag.moved = true;
       this.cx = drag.cx - (e.clientX - drag.x) / this.scale;
       this.cz = drag.cz - (e.clientY - drag.y) / this.scale;
     });
@@ -47,7 +58,23 @@ export class BigMap {
     this.cx = px; this.cz = pz;
   }
 
-  hide() { this.open = false; this.canvas.hidden = true; }
+  hide() { this.open = false; this.canvas.hidden = true; this.target = null; }
+
+  // 画面上の座標 → ワールド座標 (街の範囲内に収める)
+  toWorld(clientX, clientY) {
+    const r = this.canvas.getBoundingClientRect(), B = this.B;
+    const x = this.cx + (clientX - r.left - r.width / 2) / this.scale;
+    const z = this.cz + (clientY - r.top - r.height / 2) / this.scale;
+    return { x: Math.max(B.minX, Math.min(B.maxX, x)), z: Math.max(B.minZ, Math.min(B.maxZ, z)) };
+  }
+
+  // 選んだ場所へワープ (ピンが無ければ何もしない)
+  warp() {
+    if (!this.open || !this.target || !this.onWarp) return;
+    const t = this.target;
+    this.target = null;
+    this.onWarp(t.x, t.z);
+  }
 
   centerOnPlayer() { this.cx = this.player.x; this.cz = this.player.z; }
 
@@ -102,6 +129,16 @@ export class BigMap {
       c.restore();
       c.font = 'bold 13px "Yu Gothic UI", sans-serif';
       halo(c, w.name, x, y + 22, '#7a4a00');
+    }
+
+    // ワープ先のピン
+    if (this.target) {
+      const x = this.sx(this.target.x), y = this.sy(this.target.z);
+      c.fillStyle = '#e0436b'; c.strokeStyle = '#fff'; c.lineWidth = 2;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x - 7, y - 14); c.arc(x, y - 18, 8, Math.PI * 0.8, Math.PI * 0.2); c.closePath(); c.fill(); c.stroke();
+      c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y - 18, 3, 0, Math.PI * 2); c.fill();
+      c.font = 'bold 13px "Yu Gothic UI", sans-serif';
+      halo(c, 'ダブルクリック / Enter でワープ', x, y - 36, '#8a1d3a');
     }
 
     // 現在地 (点滅する輪 + 向きの矢印)

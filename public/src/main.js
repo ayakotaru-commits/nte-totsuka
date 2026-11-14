@@ -80,7 +80,14 @@ async function main() {
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
   const minimap = new Minimap(city, $('minimap'));
   const labels = new Labels(city.pois, scene);
-  const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap') });
+  // マップで選んだ場所へワープ (建物の中なら一番近い屋外)。向きはそのまま
+  const warpTo = (x, z) => {
+    const p = findFree(world, x, z);
+    player.teleport(p.x, p.z);
+    cam.update(0, player.pos, true);
+    toggleMap();
+  };
+  const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z) });
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
@@ -137,6 +144,7 @@ async function main() {
   addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Escape' && bigmap.open) toggleMap();
+    if (e.code === 'Enter' && bigmap.open) bigmap.warp();
     if (e.code === 'KeyP') streetView(); // ポップアップ許可のためキー操作の中で開く
     if (e.code === 'KeyE' && !bigmap.open) { overlay.hidden = true; editor.toggle(); }
   });
