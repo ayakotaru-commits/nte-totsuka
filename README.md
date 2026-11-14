@@ -54,6 +54,8 @@ python tools/fetch_osm.py
 python tools/fetch_plateau.py
 python tools/fetch_gsi.py
 python tools/fetch_dem.py      # 地形 (標高)。build_city.py より先に実行
+python tools/fetch_lidar.py    # 点群 (建物の形)。build_city.py より先に実行
+python tools/fetch_ortho.py    # 航空写真 (屋根の色)。build_city.py より先に実行。Pillow が必要
 python tools/build_city.py
 ```
 
@@ -66,6 +68,26 @@ python tools/build_city.py
   `style`（house / apartment / commercial / industrial / lowrise / public / carport / parking / small）、`floors`（階数）、
   `roof`（戸建ての切妻/寄棟。実測高さ = 棟の高さとして壁を低くする）、`shops`（1階の店）を全建物に付ける
 
+### 建物の形（点群から自動で作り直す）
+神奈川県が公開している航空レーザ測量の点群（1㎡ あたり約 10 点、令和3年度測量、CC BY 4.0）から、建物 1 棟ごとの形を実測に合わせる。個別の指示は不要。
+```
+python tools/fetch_lidar.py     # 点群 8 図郭 (約 800MB) を取得 → data/raw/lidar_dsm.bin (0.5m の高さ格子)
+python tools/fetch_ortho.py     # 航空写真 8 図郭 (約 90MB) を取得 → data/raw/ortho_rgb.bin (0.5m の色の格子)。Pillow が必要 (pip install pillow)
+python tools/build_city.py      # 高さ格子があれば自動で適用
+python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json にその場で適用。--undo で元に戻す
+```
+`tools/lidar_shape.py` が輪郭の中の屋根の高さを読み、次を行う:
+- **段**: 高さがなだらかにつながる所を「部分」に分ける（2階建ての母屋と平屋の下屋、ビルの低層部と高層部、塔屋）。低い段から順に「その高さ以上の所」の輪郭を積み上げる。上の段は別の建物データ（`part` = 元の建物の id、`minH` = 下の段の高さ、小さいものは `plain` = 窓なしの壁）
+- **欠け**: 輪郭の中で地面の高さしかない所（中庭、輪郭が実際より大きい所）を建物から除く
+- **屋根**: 部分ごとに 平ら / 切妻 / 寄棟 / 片流れ を当てはめ、棟の向き・勾配・軒の高さ・棟のずれ（`off`）を実測から決める。L 字やコの字は長方形に分けてそれぞれに屋根を付ける（`roofs`）
+  - 当てはめの順: ① 長方形の屋根 → ② 長方形に分けて屋根（7 割以上を覆えたとき）→ ③ 輪郭に沿った寄棟（`t: "skel"`、高さ = 勾配 `k` × 輪郭までの距離。曲がった形や L 字にも掛かる）→ ④ 形は合いきらないが勾配はある場合の近似（平らより誤差が減るときだけ）→ どれも合わなければ平ら
+  - 地面の高さのマスは屋根とつなげない。輪郭の端のマスは屋根より低いことが多いので、合わないマスが 3 割までなら採用する（`MIN_INLIER`）
+  - 調査用: `lidar_shape.STATS = []` を入れてから実行すると、部分ごとの（面積, 高さのばらつき, 屋根の種類, …）がたまる
+- **高さ**: PLATEAU の値を点群の値で置き換える（元の値は `lidar.h0`）
+- 点群に写っていない建物（測量後の新築）、外観設定（`appearance.json`）の建物、修正モードで高さを変えた建物（`fixed`）、車庫は元のまま
+- **屋根の色**: 航空写真（同じ配布元のオルソ画像, 25cm）の、輪郭の中の画素から屋根の色を読んで `rc` に入れる（段ごと。上の段が載っている所は除く）。輪郭の線から 0.75m 以内と、影（暗い側 35%）・てかりや設備（明るい側 15%）を除いた中央値。家の屋根が緑のときは木がかぶさっているとみなして付けない。写真そのものはゲームに貼らない。ゲーム側（`city.js` の `roofColor`）で、白っぽく写る分を少し締めて使う
+- 標準ライブラリだけで動く（numpy があれば取得が速い）。航空写真の取得（`fetch_ortho.py`）だけは JPEG を読むため Pillow が必要
+
 ### 建物データの方針（旧: PLATEAU ベース）
 - 建物の形と高さは PLATEAU (LOD1, 実測高さ) を正とする。戸塚エリアは LOD2/テクスチャ未整備 (2020/2022/2024 年度版で確認)。
 - 名前・種別 (house 等)・色は位置の重なる OSM 建物から引き継ぐ。
@@ -77,12 +99,14 @@ python tools/build_city.py
 ### 街並みディテール（お試し中・スタート地点の半径250m）
 ゲーム内は V キーでまとめてオン/オフ。段階ごとの有効/無効は `public/src/detail/config.js`。
 1. 路上の小物: 電柱・電線・街灯・横断歩道・停止線と「止まれ」・ガードパイプ・自販機・カーブミラー（道路データから自動配置）
+   - 信号機・バス停（`public/src/detail/street.js`）: OSM の信号（`highway=traffic_signals`）の交差点に、横型3灯の車両用信号（左側・横断歩道の先・車道へ張り出す）と、横断歩道の両端に歩行者用信号を置く。青22秒→黄3秒→全赤2秒で縦横が交互に切り替わり、歩行者用は青の終わりに点滅。単路の押しボタン式（`crossing=traffic_signals`）は横断歩道も描く。バス停（`highway=bus_stop`）は最寄りの道路の縁に、丸い標識・停留所名の板・時刻表を置く
+   - 位置は `city.json` の `streetNodes`。無い（古いデータの）場合は `pois` の名前付きの信号・バス停だけを使う。名前の無い信号も出すには `fetch_osm.py` → `build_city.py` を実行し直す
 2. 素材テクスチャ: Poly Haven の CC0 素材（`python tools/fetch_detail_textures.py` で取得）を道路・歩道・外壁・屋根に重ねる
 3. 建物の作り分け: 戸建ての切妻/寄棟屋根、集合住宅の南向きベランダ、店舗・病院の看板と日よけ
 
 完全に戻す手順:
 - `public/src/detail/`、`public/assets/detail/`、`tools/fetch_detail_textures.py` を削除
-- `public/src/main.js` の `// detail (お試し)` と書かれた4行を削除
+- `public/src/main.js` の `// detail (お試し)` と書かれた5行を削除
 - `public/index.html` のヘルプから「V ディテール」を削除
 
 ### 道路（PLATEAU の道路面）
@@ -132,7 +156,13 @@ python tools/build_city.py
 `tools/config.py` の `WAYPOINTS` に名前と緯度経度を追加 → `build_city.py` を再実行。
 光の柱・ミニマップのマーカー・距離表示が出る。目的地が建物の中の場合は、その建物の外壁に着いた時点で「到着」になる。
 
+### 確認用の道具（tools/dev/）
+- `tools/dev/shot.js`: ゲームをヘッドレスブラウザで起動し、指定した視点のスクリーンショットを撮る（修正前後の見比べ用。使い方はファイル先頭のコメント、視点の例は `tools/dev/views.example.json`）
+- `tools/dev/evalroof.py`: 屋根の形の確かさを数字で測る（モデルの屋根の高さと点群の高さの誤差）
+- 作業の進め方とクラウド環境での注意点は `CLAUDE.md`
+
 ## 出典
 - 地図データ © OpenStreetMap contributors (ODbL)
 - 建物の輪郭: 国土地理院ベクトルタイル／標高: 国土地理院 標高タイル
 - 建物データ: 国土交通省 Project PLATEAU 3D都市モデル 横浜市 (2024年度)
+- 建物の形・屋根の色: 神奈川県 令和3年度 横浜南部、湘南、横須賀三浦 3次元点群データ（点群・オルソ画像）(CC BY 4.0, G空間情報センター)

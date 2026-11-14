@@ -165,6 +165,7 @@ async function main() {
       cam.update(dt, player.pos);
     }
     tod.update(dt);
+    detail.update(clock.elapsedTime); // detail (お試し)
 
     // 影は常にプレイヤー周辺
     sun.target.position.copy(player.pos);

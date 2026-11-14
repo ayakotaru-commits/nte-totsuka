@@ -1,6 +1,7 @@
 // 街並みディテール (お試し) の入口。V キーでまとめてオン/オフ。
 import { DETAIL } from './config.js';
 import { buildProps } from './props.js';
+import { buildStreet } from './street.js';
 import { applyTextures } from './textures.js';
 import { buildShapes } from './shapes.js';
 import { buildSites } from './site.js';
@@ -10,12 +11,17 @@ export async function loadDetail({ scene, city, world, built }) {
   const ctx = { city, world, built, cx: c.x, cz: c.z, R: DETAIL.radius };
   const parts = [];
   const emissive = [];
+  const updaters = []; // 毎フレーム呼ぶもの (信号の切り替え)
 
   if (DETAIL.props) {
     const p = buildProps(ctx);
     scene.add(p.group);
     emissive.push(...p.emissive);
     parts.push({ set: (v) => { p.group.visible = v; } });
+    const st = buildStreet(ctx); // 信号機・バス停
+    scene.add(st.group);
+    parts.push({ set: (v) => { st.group.visible = v; } });
+    updaters.push(st.update);
   }
 
   if (DETAIL.textures) {
@@ -43,5 +49,6 @@ export async function loadDetail({ scene, city, world, built }) {
     emissive, // 夜に光らせるマテリアル (TimeOfDay に渡す)
     get on() { return on; },
     set on(v) { on = v; parts.forEach(p => p.set(v)); },
+    update(t) { if (on) updaters.forEach(f => f(t)); }, // t = 経過秒
   };
 }

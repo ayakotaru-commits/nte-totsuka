@@ -149,14 +149,25 @@ const STYLE_FACADE = {
 };
 const ROOF_TILE = ['#5d636b', '#6e5446', '#4f5a6a', '#7a6b5c', '#454b55', '#8a8f96'];
 
+// 航空写真の色は白っぽく写る (かすみ・露出)。少し締めてから使う
+const TILE_GAIN = 1.25;
+function roofColor(hex) {
+  const c = new THREE.Color(hex), hsl = {};
+  c.getHSL(hsl, THREE.SRGBColorSpace);
+  c.setHSL(hsl.h, Math.min(1, hsl.s * 1.6), Math.max(0.08, Math.min(0.74, (hsl.l - 0.1) * 0.95)), THREE.SRGBColorSpace);
+  return [c.r, c.g, c.b];
+}
+
 function buildBuildings(buildings) {
   const office = new GB(), house = new GB(), roof = new GB(), pitched = new GB(), euro = new GB();
   for (const b of buildings) {
-    const rnd = hash(b.id + (b.name || ''));
+    const rnd = hash((b.part || b.id) + (b.name || '')); // 上の段 (part) は元の建物と同じ色にする
     const area = Math.abs(signedArea(b.outer));
     const style = b.style || ((HOUSE_KINDS.has(b.kind) || (!b.kind && b.h < 9.5 && area < 180)) ? 'house' : 'apartment');
     const isHouse = STYLE_FACADE[style] !== 'office';
-    const rc = col((isHouse ? HOUSE_ROOF : OFFICE_ROOF)[Math.floor(rnd() * 4)]);
+    let rc = col((isHouse ? HOUSE_ROOF : OFFICE_ROOF)[Math.floor(rnd() * 4)]);
+    const real = b.rc ? roofColor(b.rc) : null; // 航空写真から読んだ屋根の色
+    if (real) rc = real;
 
     // 車庫・駐輪場 (屋根だけ): 屋根板と柱
     if (style === 'carport') {
@@ -178,7 +189,7 @@ function buildBuildings(buildings) {
     const isEuro = b.facade === 'euro';
     const F = { ...FACADE[isEuro ? 'euro' : isHouse ? 'house' : 'office'] };
     if (style === 'industrial' || style === 'lowrise') F.bay = 6;
-    const wallGB = isEuro ? euro : isHouse ? house : office;
+    const wallGB = b.plain ? roof : isEuro ? euro : isHouse ? house : office; // plain = 窓のない壁 (塔屋など)
     let wc;
     if (b.color) { try { wc = col(b.color); } catch { /* ignore */ } }
     if (!wc) wc = col((isHouse ? HOUSE_WALL : OFFICE_WALL)[Math.floor(rnd() * (isHouse ? HOUSE_WALL.length : OFFICE_WALL.length))]);
@@ -207,7 +218,17 @@ function buildBuildings(buildings) {
         per += len;
       }
     }
-    if (r) addPitched(pitched, roof, r, y1, col(ROOF_TILE[Math.floor(rnd() * ROOF_TILE.length)]), wc);
+    let tile = col(ROOF_TILE[Math.floor(rnd() * ROOF_TILE.length)]);
+    if (real) tile = real.map(v => Math.min(1, v * TILE_GAIN)); // 瓦のテクスチャで暗くなる分を戻す
+    if (r && r.t === 'skel') addSkelRoof(pitched, b.outer, y1, r, tile);
+    else if (r) addPitched(pitched, roof, r, y1, tile, wc);
+    else if (b.roofs) { // 点群から作った段: 部分ごとの屋根 (下の平らな面は屋根に隠れる)
+      for (const r2 of b.roofs) {
+        if (r2.t === 'skel') addSkelRoof(pitched, b.outer, y1, r2, tile);
+        else addPitched(pitched, roof, r2, y1, tile, wc);
+      }
+      addFlat(roof, b.outer, b.holes, y1, rc, UP);
+    }
     else if (b.mansard) addMansard(roof, b.outer, y1, col(b.mansard), rc);
     else addFlat(roof, b.outer, b.holes, y1, rc, UP);
     if (y0 > 0.1) addFlat(roof, b.outer, b.holes, y0, rc.map(v => v * 0.6), DOWN);
@@ -215,16 +236,89 @@ function buildBuildings(buildings) {
   return { office: office.geometry(), house: house.geometry(), roof: roof.geometry(), pitched: pitched.geometry(), euro: euro.geometry() };
 }
 
+// 輪郭に沿った寄棟 (L 字などどんな形にも掛かる): 高さ = 勾配 k x 輪郭までの距離。
+// 輪郭を 1 m のマスで切り分け、各頂点を距離に応じて持ち上げる
+function addSkelRoof(gb, ring, y0, r, color) {
+  const n = ring.length;
+  const dist = (x, z) => {
+    let best = Infinity;
+    for (let i = 0, j = n - 1; i < n; j = i++) {
+      const ax = ring[j][0], az = ring[j][1], ex = ring[i][0] - ax, ez = ring[i][1] - az, l2 = ex * ex + ez * ez;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / l2)) : 0;
+      const d = Math.hypot(x - ax - ex * t, z - az - ez * t);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  let minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity;
+  for (const [x, z] of ring) { minx = Math.min(minx, x); maxx = Math.max(maxx, x); minz = Math.min(minz, z); maxz = Math.max(maxz, z); }
+  const C = 1.0;
+  // 多角形を 1 辺 (軸 ax の値 lim, keep = 残す側) で切る
+  const cut = (poly, ax, lim, ge) => {
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[(i + poly.length - 1) % poly.length], b = poly[i];
+      const ia = ge ? a[ax] >= lim : a[ax] <= lim, ib = ge ? b[ax] >= lim : b[ax] <= lim;
+      if (ia !== ib) { const t = (lim - a[ax]) / (b[ax] - a[ax]); const m = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; m[ax] = lim; out.push(m); }
+      if (ib) out.push(b);
+    }
+    return out;
+  };
+  for (let x0 = minx; x0 < maxx; x0 += C) {
+    const col = cut(cut(ring, 0, x0, true), 0, x0 + C, false);
+    if (col.length < 3) continue;
+    for (let z0 = minz; z0 < maxz; z0 += C) {
+      let cell = cut(cut(col, 1, z0, true), 1, z0 + C, false);
+      cell = cell.filter((p, i) => { const q = cell[(i + 1) % cell.length]; return Math.abs(p[0] - q[0]) > 1e-6 || Math.abs(p[1] - q[1]) > 1e-6; });
+      if (cell.length < 3) continue;
+      let faces;
+      try { faces = THREE.ShapeUtils.triangulateShape(cell.map(([x, z]) => new THREE.Vector2(x, z)), []); } catch { continue; }
+      const P = cell.map(([x, z]) => [x, y0 + r.k * dist(x, z), z]);
+      for (const [i, j, k] of faces) {
+        const a = P[i], b = P[j], c = P[k];
+        const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let nn = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+        const l = Math.hypot(...nn);
+        if (l < 1e-9) continue;
+        nn = nn.map(v => v / l * (nn[1] < 0 ? -1 : 1));
+        gb.tri(a, b, c, nn, [a[0], a[2]], [b[0], b[2]], [c[0], c[2]], color);
+      }
+    }
+  }
+}
+
 // 切妻 / 寄棟屋根。uv: u = 軒方向 (m), v = 斜面方向 (m)
 function addPitched(gb, gableGB, r, y0, color, wallColor) {
   const E = 0.45, L = r.len / 2 + E, W = r.wid / 2 + E, [ux, uz] = r.u, [cx, cz] = r.c;
+  if (r.t === 'shed') { // 片流れ: t = up * 幅/2 の側が高い
+    const up = r.up || 1, W0 = r.wid / 2, L0 = r.len / 2, k = r.rise / (2 * W0);
+    const Q = (s, t) => [cx + ux * s - uz * t, y0 + k * (t * up + W0), cz + uz * s + ux * t];
+    const B = (s, t) => [cx + ux * s - uz * t, y0, cz + uz * s + ux * t];
+    const n = norm([uz * up * k, 1, -ux * up * k]);
+    const sl = Math.hypot(2 * W, 2 * W * k);
+    const a = Q(-L, -W * up), b = Q(L, -W * up), c = Q(L, W * up), d = Q(-L, W * up);
+    gb.tri(a, b, c, n, [0, 0], [2 * L, 0], [2 * L, sl], color);
+    gb.tri(a, c, d, n, [0, 0], [2 * L, sl], [0, sl], color);
+    const dn = [-n[0], -n[1], -n[2]], under = wallColor.map(v => v * 0.8);
+    const lo = (p) => [p[0], p[1] - 0.06, p[2]];
+    gableGB.tri(lo(a), lo(b), lo(c), dn, Z2, Z2, Z2, under); // 軒裏
+    gableGB.tri(lo(a), lo(c), lo(d), dn, Z2, Z2, Z2, under);
+    for (const end of [-1, 1]) { // 両端の三角の壁
+      gableGB.tri(B(end * L0, -W0 * up), B(end * L0, W0 * up), Q(end * L0, W0 * up), [ux * end, 0, uz * end], Z2, Z2, Z2, wallColor);
+    }
+    const hn = [-uz * up, 0, ux * up]; // 高い側の壁
+    gableGB.tri(B(-L0, W0 * up), B(L0, W0 * up), Q(L0, W0 * up), hn, Z2, Z2, Z2, wallColor);
+    gableGB.tri(B(-L0, W0 * up), Q(L0, W0 * up), Q(-L0, W0 * up), hn, Z2, Z2, Z2, wallColor);
+    return;
+  }
   const hip = r.t === 'hip' ? Math.min(W, L * 0.6) : 0;
   const P = (s, t, y) => [cx + ux * s - uz * t, y, cz + uz * s + ux * t];
-  const top = y0 + r.rise, slope = Math.hypot(W, r.rise);
-  const r0 = P(-L + hip, 0, top), r1 = P(L - hip, 0, top);
+  const top = y0 + r.rise, off = r.off || 0; // off = 棟の中心からのずれ (m)
+  const r0 = P(-L + hip, off, top), r1 = P(L - hip, off, top);
   for (const side of [-1, 1]) {
     const e0 = P(-L, side * W, y0), e1 = P(L, side * W, y0);
-    const n = normalOf(e0, e1, r1, side, ux, uz, W, r.rise);
+    const run = W - side * off, slope = Math.hypot(run, r.rise);
+    const n = normalOf(e0, e1, r1, side, ux, uz, run, r.rise);
     gb.tri(e0, e1, r1, n, [0, 0], [2 * L, 0], [2 * L - hip, slope], color);
     gb.tri(e0, r1, r0, n, [0, 0], [2 * L - hip, slope], [hip, slope], color);
   }
@@ -345,7 +439,7 @@ const SIDEWALK = '#b3ab9e', MARK = '#e8e4d8';
 
 export const AREA_STYLE = {
   residential: ['#aaa79c', 0.01], commercial: ['#a8a39b', 0.01], railway: ['#8e867b', 0.012], farm: ['#a7ae7c', 0.012],
-  grass: ['#86a85f', 0.02], wood: ['#5b7a45', 0.02], park: ['#80a75c', 0.022], school: ['#c4b9a2', 0.02],
+  grass: ['#86a85f', 0.02], wood: ['#5b7a45', 0.021], park: ['#80a75c', 0.022], school: ['#c4b9a2', 0.02],
   parking: ['#76777a', 0.024], pitch: ['#6f9d52', 0.026], plaza: ['#cbc1ae', 0.05], water: ['#4f7d9c', 0.03], platform: ['#b9b4aa', 0.11],
 };
 
