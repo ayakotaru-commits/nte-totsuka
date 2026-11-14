@@ -1,0 +1,7 @@
+[
+  {"n": "station", "target": [0, 0], "offset": [110, 110, 120]},
+  {"n": "start", "target": [-290, 1440], "offset": [-70, 60, 60]},
+  {"n": "houses", "target": [-230, 250], "offset": [-60, 55, 70]},
+  {"n": "street", "target": [-215, 262], "offset": [-22, 7, 18]},
+  {"n": "kamikurata_signal", "eye": [232, -0.6, 133], "look": [239, 1.0, 127]}
+]

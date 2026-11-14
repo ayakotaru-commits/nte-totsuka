@@ -156,6 +156,11 @@ python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json 
 `tools/config.py` の `WAYPOINTS` に名前と緯度経度を追加 → `build_city.py` を再実行。
 光の柱・ミニマップのマーカー・距離表示が出る。目的地が建物の中の場合は、その建物の外壁に着いた時点で「到着」になる。
 
+### 確認用の道具（tools/dev/）
+- `tools/dev/shot.js`: ゲームをヘッドレスブラウザで起動し、指定した視点のスクリーンショットを撮る（修正前後の見比べ用。使い方はファイル先頭のコメント、視点の例は `tools/dev/views.example.json`）
+- `tools/dev/evalroof.py`: 屋根の形の確かさを数字で測る（モデルの屋根の高さと点群の高さの誤差）
+- 作業の進め方とクラウド環境での注意点は `CLAUDE.md`
+
 ## 出典
 - 地図データ © OpenStreetMap contributors (ODbL)
 - 建物の輪郭: 国土地理院ベクトルタイル／標高: 国土地理院 標高タイル
