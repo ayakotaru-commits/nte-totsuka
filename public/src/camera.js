@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 
+const FOLLOW_WAIT = 0.8;       // マウスで視点を動かした後、自動追従が効き始めるまでの秒数
+const FOLLOW_RAMP = 0.8;       // そこから効きが最大になるまでの秒数
+const FOLLOW_YAW = 1.0;        // 後ろへ回り込む速さ (真横へ進むときの rad/s)
+const FOLLOW_PITCH = 0.3;      // 落ち着く見下ろし角 (rad、約 17°)
+const FOLLOW_PITCH_RATE = 1.5; // 見下ろし角が戻る速さ
+
 export class ThirdPersonCamera {
   constructor(camera, world, dom) {
     this.camera = camera;
@@ -12,10 +18,14 @@ export class ThirdPersonCamera {
     this.locked = false;
     this.freeRotate = false; // 修正モード: マウス解放中に右ドラッグで回転
     this.maxDist = 30;
+    // 自動追従: 歩き出すと、キャラの後ろ・少し上へゆっくり回り込む。マウスで視点を動かした直後は手動を優先
+    this.autoFollow = !new URLSearchParams(location.search).has('nofollow');
+    this.idle = 9; // マウスで視点を動かしてからの秒数
 
     document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === dom; });
     addEventListener('mousemove', (e) => {
       if (!this.locked && !(this.freeRotate && (e.buttons & 2))) return;
+      if (e.movementX || e.movementY) this.idle = 0;
       this.yaw -= e.movementX * 0.0025;
       this.pitch = Math.max(-0.45, Math.min(1.35, this.pitch + e.movementY * 0.0025));
     });
@@ -24,7 +34,20 @@ export class ThirdPersonCamera {
     }, { passive: true });
   }
 
-  update(dt, playerPos, snap = false) {
+  // player を渡すと自動追従する (修正モード中は無効)
+  update(dt, playerPos, snap = false, player = null) {
+    this.idle += dt;
+    if (player && this.autoFollow && !this.freeRotate && dt > 0) {
+      const speed = player.vel.length();
+      // 効き具合: マウスを止めて FOLLOW_WAIT 秒後から徐々に、止まっているときは 0
+      const s = Math.min(1, Math.max(0, (this.idle - FOLLOW_WAIT) / FOLLOW_RAMP)) * Math.min(1, speed / 1.5);
+      if (s > 0) {
+        // 後ろ = 向き + 180°。sin を使うので、横へ進むと最も速く回り、カメラへ向かって来るとき (180°) は回らない
+        const d = player.facing + Math.PI - this.yaw;
+        this.yaw += Math.sin(d) * FOLLOW_YAW * s * dt;
+        this.pitch += (FOLLOW_PITCH - this.pitch) * (1 - Math.exp(-FOLLOW_PITCH_RATE * s * dt));
+      }
+    }
     const want = new THREE.Vector3(playerPos.x, playerPos.y + 1.45, playerPos.z);
     if (snap) this.target.copy(want);
     else this.target.lerp(want, 1 - Math.exp(-dt * 18));

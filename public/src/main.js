@@ -188,7 +188,7 @@ async function main() {
     // マップ表示中はキャラを止める
     if (!bigmap.open) {
       player.update(dt, input, cam);
-      cam.update(dt, player.pos);
+      cam.update(dt, player.pos, false, player);
     }
     tod.update(dt);
     detail.update(clock.elapsedTime); // detail (お試し)
