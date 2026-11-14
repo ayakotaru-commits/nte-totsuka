@@ -2,6 +2,8 @@
 import * as THREE from 'three';
 import { H, drape, buildTerrainMesh, hasTerrain } from './terrain.js';
 import { Bridges } from './bridges.js';
+import { buildStairs } from './stairs.js';
+import { buildWalls } from './walls.js';
 
 const FACADE = {
   office: { bay: 4.0, floor: 3.6 },
@@ -686,7 +688,7 @@ export function buildCity(city, world, props = null) {
   const water = new THREE.Mesh(gr.water, mats.water); water.name = 'water';
   ground.receiveShadow = water.receiveShadow = true;
   const roadsM = new THREE.Mesh(gr.roads, mats.ground); roadsM.name = 'road_areas'; roadsM.receiveShadow = true;
-  group.add(ground, water, roadsM, bridges.build());
+  group.add(ground, water, roadsM, bridges.build(), buildStairs(city), buildWalls(city.walls));
 
   const base = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#a4a296', roughness: 1 }));
   base.name = 'base_ground';
