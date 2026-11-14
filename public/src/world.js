@@ -5,6 +5,8 @@
 import { H } from './terrain.js';
 import { getBridges } from './bridges.js';
 export const STEP = 0.4;   // 乗り越えられる段差
+// 路面は地形メッシュより 0.12 m (drape の lift) + 0.07〜0.10 m (道路) 上に描かれる。敷地は約 0.13 m。その中間で、足が埋まらず浮いても見えない高さ
+export const GROUND_LIFT = 0.18;
 const BODY_H = 1.7;
 
 export class World {
@@ -160,9 +162,9 @@ export class World {
     pos.z = Math.max(B.minZ + m, Math.min(B.maxZ - m, pos.z));
   }
 
-  // 足元 y から見て乗れる最も高い面
+  // 足元 y から見て乗れる最も高い面 (地面は、描画されている路面・敷地の高さに合わせて H より GROUND_LIFT 高い)
   groundAt(x, z, footY) {
-    let g = H(x, z);
+    let g = H(x, z) + GROUND_LIFT;
     const br = getBridges();
     if (br) { // 橋・歩道橋・坂の路面 (足元より高すぎる所は、下をくぐっている)
       const d = br.deckAt(x, z, 0.3, (it) => !it.rail);
