@@ -130,7 +130,7 @@ export function makeCharacter() {
 
   const st = {
     t: 0, phase: 0, gw: 0, airW: 0, land: 0, lastVy: 0, wasAir: false, prevSpeed: 0, lastHipsY: IDLE_EXT + HIP_DROP,
-    lastYaw: 0, roll: 0, a1: 0.35, v1: 0, a2: 0.15, v2: 0,
+    lastYaw: 0, roll: 0, stair: 0, a1: 0.35, v1: 0, a2: 0.15, v2: 0,
   };
 
   // 片脚の角度 (p = 歩行周期の位相。0 で踵が着く直前、π で爪先が離れる)
@@ -139,7 +139,7 @@ export function makeCharacter() {
     const pm = ((p % (2 * PI)) + 2 * PI) % (2 * PI);
     const swing = Math.max(0, -Math.sin(p + 0.8)); // 遊脚期に膝を曲げる
     const load = pm < PI / 2 ? Math.sin(2 * pm) : 0; // 接地直後の膝のたわみ
-    const h = g.A * (Math.cos(p) + 0.1) * g.gw;
+    const h = g.A * (Math.cos(p) + 0.1) * g.gw + g.stLift * swing * g.gw; // 階段では遊脚を高く上げる
     const k = g.gw * (g.kSwing * swing + g.kLoad * load);
     let fp;
     if (pm < PI) fp = -0.2 * (1 - sstep(0, 0.3, pm)) + g.toeOff * sstep(0.55 * PI, PI, pm);
@@ -147,12 +147,12 @@ export function makeCharacter() {
     return { h, k, fp: fp * g.gw };
   }
 
-  function update(dt, speed, onGround, vy) {
-    updateInner(dt, speed, onGround, vy);
+  function update(dt, speed, onGround, vy, stair = 0) {
+    updateInner(dt, speed, onGround, vy, stair);
     if (vrmRig) applyVRM(dt);
   }
 
-  function updateInner(dt, speed, onGround, vy) {
+  function updateInner(dt, speed, onGround, vy, stair) {
     dt = Math.max(1e-4, Math.min(dt, 0.1));
     const sdt = Math.min(dt, 1 / 30); // ばね用 (大きすぎる dt で暴れないように)
     const sp = speed;
@@ -166,15 +166,18 @@ export function makeCharacter() {
     st.airW += ((onGround ? 0 : 1) - st.airW) * rate(onGround ? 14 : 18);
     st.gw += ((onGround ? sstep(0.08, 0.7, sp) : 0) - st.gw) * rate(12);
     const gw = st.gw;
+    // 階段: 上り (+1) は腿を高く上げて前傾、下り (-1) は膝を曲げて小股でやや後ろ重心
+    st.stair += (clamp(stair, -1, 1) - st.stair) * rate(8);
+    const upK = Math.max(0, st.stair), dnK = Math.max(0, -st.stair), stK = Math.abs(st.stair);
     const runK = sstep(2.8, 5.5, sp);
 
     // 歩幅から位相の進み方を決める (足が地面を滑らないように、速さに比例して進める)
-    const A = Math.min(1.15, 0.1 + 0.15 * sp);
-    const stride = Math.max(0.7, 3.6 * Math.sin(A)); // 1 周期 (左右 2 歩) で進む距離
+    const A = Math.min(1.15, 0.1 + 0.15 * sp) * (1 - 0.15 * stK);
+    const stride = Math.max(0.7, 3.6 * Math.sin(A)) * (1 - 0.3 * stK); // 階段は 1 段ごとに足を出す小股 // 1 周期 (左右 2 歩) で進む距離
     if (onGround && sp > 0.05) st.phase += dt * sp / stride * 2 * PI;
     const pL = st.phase, pR = st.phase + PI;
 
-    const g = { A, gw, kSwing: Math.min(1.75, 0.45 + 0.2 * sp), kLoad: Math.min(0.45, 0.2 + 0.04 * sp), toeOff: Math.min(0.8, 0.5 + 0.03 * sp) };
+    const g = { A, gw, stLift: 0.75 * upK + 0.3 * dnK, kSwing: Math.min(1.75, 0.45 + 0.2 * sp + 0.5 * upK + 0.25 * dnK), kLoad: Math.min(0.45, 0.2 + 0.04 * sp), toeOff: Math.min(0.8, 0.5 + 0.03 * sp) };
     const legL = legAngles(pL, g), legR = legAngles(pR, g);
 
     // --- 地上の姿勢 ---
@@ -199,7 +202,7 @@ export function makeCharacter() {
     G.hips[2] = 0.04 * gw * Math.sin(pL); // 骨盤の左右の傾き
     G.chest[2] = -0.03 * gw * Math.sin(pL);
     // 前傾 (速いほど深く) と着地のかがみ
-    const lean = gw * (0.03 + 0.4 * sstep(1.5, 10, sp)) + st.land * 0.18;
+    const lean = gw * (0.03 + 0.4 * sstep(1.5, 10, sp)) + st.land * 0.18 + gw * (0.2 * upK - 0.08 * dnK);
     G.spine[0] = lean * 0.4; G.chest[0] = lean * 0.6;
     const breathe = Math.sin(st.t * 1.6) * 0.012 * (1 - gw);
     G.chest[0] += breathe;
