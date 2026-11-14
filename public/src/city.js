@@ -443,6 +443,77 @@ export const AREA_STYLE = {
   parking: ['#76777a', 0.024], pitch: ['#6f9d52', 0.026], plaza: ['#cbc1ae', 0.05], water: ['#4f7d9c', 0.03], platform: ['#b9b4aa', 0.11],
 };
 
+// 外側線: PLATEAU の道路面の縁から少し内側に白線を引く。
+// 隣の面との境界・橋の上・推定した歩道がある幹線 (縁石線が別にある)・車道でない道 (歩道・階段など) の縁は引かない。
+// 最も近い OSM の道路の種類で対象を決める: EDGE_KINDS (幹線) と、幅 EDGE_MIN_W 以上の細い道。
+const EDGE_KINDS = new Set(['trunk', 'primary', 'secondary', 'tertiary']);
+const EDGE_NARROW = new Set(['residential', 'unclassified']), EDGE_MIN_W = 5.5; // 住宅街の道は 5.5 m 以上だけ (これより狭い道は実際も線が無いことが多い)
+const EDGE_OFFSET = 0.35, EDGE_WIDTH = 0.15, EDGE_CELL = 25;
+function addEdgeLines(gb, city, bridges) {
+  const areas = (city.roadAreas || []).map((a) => {
+    const p = a.outer; let s = 0, x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (let i = 0; i < p.length; i++) {
+      const q = p[(i + 1) % p.length]; s += p[i][0] * q[1] - q[0] * p[i][1];
+      x0 = Math.min(x0, p[i][0]); x1 = Math.max(x1, p[i][0]); z0 = Math.min(z0, p[i][1]); z1 = Math.max(z1, p[i][1]);
+    }
+    return { p, ccw: s > 0, x0, x1, z0, z1 };
+  });
+  const cellOf = (v) => Math.floor(v / EDGE_CELL), key = (i, j) => i * 100003 + j;
+  const addGrid = (grid, x0, x1, z0, z1, item) => {
+    for (let i = cellOf(x0); i <= cellOf(x1); i++) for (let j = cellOf(z0); j <= cellOf(z1); j++) {
+      const k = key(i, j); (grid.get(k) || grid.set(k, []).get(k)).push(item);
+    }
+  };
+  const areaGrid = new Map();
+  areas.forEach((a) => addGrid(areaGrid, a.x0, a.x1, a.z0, a.z1, a));
+  const inside = (p, x, z) => {
+    let c = false;
+    for (let i = 0, j = p.length - 1; i < p.length; j = i++) {
+      if ((p[i][1] > z) !== (p[j][1] > z) && x < (p[j][0] - p[i][0]) * (z - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c;
+    }
+    return c;
+  };
+  const insideOther = (self, x, z) => (areaGrid.get(key(cellOf(x), cellOf(z))) || []).some((a) => a !== self && x >= a.x0 && x <= a.x1 && z >= a.z0 && z <= a.z1 && inside(a.p, x, z));
+
+  // 車道の線分を格子に入れ、縁の中点から最も近い道路を引く
+  const segGrid = new Map();
+  for (const r of city.roads) {
+    if (!ROAD_STYLE[r.kind] || r.ys || r.kind === 'service') continue; // 私道・駐車場内の道は、重なっていても本線の判定を邪魔させない
+    const reach = r.w / 2 + 4;
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1];
+      addGrid(segGrid, Math.min(ax, bx) - reach, Math.max(ax, bx) + reach, Math.min(az, bz) - reach, Math.max(az, bz) + reach, { r, ax, az, bx, bz });
+    }
+  }
+  const nearestRoad = (x, z) => {
+    let best = null, bd = 1e9;
+    for (const s of segGrid.get(key(cellOf(x), cellOf(z))) || []) {
+      const ex = s.bx - s.ax, ez = s.bz - s.az, l2 = ex * ex + ez * ez || 1;
+      const t = Math.min(1, Math.max(0, ((x - s.ax) * ex + (z - s.az) * ez) / l2));
+      const d = Math.hypot(x - s.ax - ex * t, z - s.az - ez * t) - s.r.w / 2; // 道路面の縁までの距離
+      if (d < bd) { bd = d; best = s.r; }
+    }
+    return bd < 4 ? best : null;
+  };
+
+  const MARKC = col(MARK);
+  for (const a of areas) {
+    const p = a.p;
+    for (let i = 0; i < p.length; i++) {
+      const u = p[i], v = p[(i + 1) % p.length];
+      const dx = v[0] - u[0], dz = v[1] - u[1], len = Math.hypot(dx, dz);
+      if (len < 0.8) continue;
+      const nx = (a.ccw ? -dz : dz) / len, nz = (a.ccw ? dx : -dx) / len; // 内向きの法線
+      const mx = (u[0] + v[0]) / 2, mz = (u[1] + v[1]) / 2;
+      if (insideOther(a, mx - nx * 0.4, mz - nz * 0.4)) continue; // 外側にも道路面がある = 面どうしの境界
+      if (bridges.onVehicleBridge(mx, mz)) continue;
+      const r = nearestRoad(mx, mz);
+      if (!r || r.sw || !(EDGE_KINDS.has(r.kind) || (EDGE_NARROW.has(r.kind) && r.w >= EDGE_MIN_W))) continue;
+      addRibbon(gb, [[u[0] + nx * EDGE_OFFSET, u[1] + nz * EDGE_OFFSET], [v[0] + nx * EDGE_OFFSET, v[1] + nz * EDGE_OFFSET]], EDGE_WIDTH, 0.115, MARKC, true);
+    }
+  }
+}
+
 function buildGround(city, bridges) {
   const gb = new GB(), water = new GB();
   for (const a of city.areas) {
@@ -492,12 +563,63 @@ function buildGround(city, bridges) {
       }
     }
   }
+  // 車線の線。OSM は上り・下りや右折レーンを別の道路として持つ。
+  //  - 並走する別の車道が無い幅 16 m 以下の道: 中央線 (実線)
+  //  - 幅 16 m 超の道、または並走する車道がある道: 車線数 (幅 ÷ 3.25 m) で等分した車線の区切り (破線)
+  //  - 路面が重なる並走道路 (中心線の間隔が狭い方の幅の 0.7 倍未満) は、先に出てくる 1 本だけに引く (二重に引かない)
+  // 交差点の中は引かない
+  const carriage = city.roads.filter((o) => ROAD_STYLE[o.kind] && !ROAD_STYLE[o.kind][3] && !/^(pedestrian|footway|path|cycleway|steps|corridor|track|service)$/.test(o.kind));
+  const order = new Map(city.roads.map((o, i) => [o, i]));
+  // mode 'near': 隣に平行な車道があるか / 'overlap': 路面が重なる、先の番号の車道があるか
+  const parallelNear = (r, a, b, mode = 'near') => {
+    const mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
+    const dx = b[0] - a[0], dz = b[1] - a[1], dl = Math.hypot(dx, dz) || 1;
+    for (const o of carriage) {
+      if (o === r || (mode === 'overlap' && order.get(o) > order.get(r))) continue;
+      for (let j = 0; j < o.pts.length - 1; j++) {
+        const [px, pz] = o.pts[j], [qx, qz] = o.pts[j + 1];
+        const ex = qx - px, ez = qz - pz, el = Math.hypot(ex, ez) || 1;
+        if (Math.abs((dx * ex + dz * ez) / (dl * el)) < 0.8) continue;
+        const t = ((mx - px) * ex + (mz - pz) * ez) / (el * el);
+        if (t < -0.1 || t > 1.1) continue;
+        const cx = px + ex * Math.min(1, Math.max(0, t)), cz = pz + ez * Math.min(1, Math.max(0, t));
+        const lim = mode === 'near' ? Math.max(14, (r.w + o.w) / 2 + 2) : Math.min(r.w, o.w) * 0.7;
+        if (Math.hypot(mx - cx, mz - cz) < lim) return true;
+      }
+    }
+    return false;
+  };
   for (const r of city.roads) {
     const st = ROAD_STYLE[r.kind];
     if (!st || !st[2] || r.ys) continue;
+    const e0 = (r.half ? r.half[0] : r.w / 2) - (r.sw || 0.5), e1 = (r.half ? r.half[1] : r.w / 2) - (r.sw || 0.5);
+    const W = e0 + e1, n = Math.round(W / 3.25);
     const c0 = r.half ? (r.half[0] - r.half[1]) / 2 : 0; // 車道の中心 (中心線とのずれ)
-    addRibbon(gb, c0 ? offsetLine(r.pts, c0) : r.pts, 0.18, 0.115, col(MARK), false);
+    const centre = c0 ? offsetLine(r.pts, c0) : r.pts;
+    const lanes = []; // 車線の区切りの線 (中心線からの距離ごと)
+    for (let k = 1; k < n; k++) lanes.push(offsetLine(r.pts, -e1 + k * W / n));
+    for (let i = 0; i < r.pts.length - 1; i++) {
+      const near = parallelNear(r, r.pts[i], r.pts[i + 1]);
+      const L = Math.hypot(r.pts[i + 1][0] - r.pts[i][0], r.pts[i + 1][1] - r.pts[i][1]);
+      if (r.w <= 16 && !near) { // 中央線
+        const t0 = trimAt(r.pts[i]) / L, t1 = 1 - trimAt(r.pts[i + 1]) / L;
+        if (t1 - t0 < 0.02) continue;
+        const a = centre[i], b = centre[i + 1];
+        addRibbon(gb, [[a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0], [a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1]], 0.18, 0.115, col(MARK), false);
+        continue;
+      }
+      if (near && parallelNear(r, r.pts[i], r.pts[i + 1], 'overlap')) continue;
+      const s0 = trimAt(r.pts[i]) + 1.5, s1 = L - trimAt(r.pts[i + 1]) - 1.5; // 交差点の手前で止める
+      for (const line of lanes) {
+        const a = line[i], b = line[i + 1];
+        for (let s = s0; s + 3 <= s1; s += 8) { // 線 3 m・間 5 m
+          const u = s / L, v = (s + 3) / L;
+          addRibbon(gb, [[a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u], [a[0] + (b[0] - a[0]) * v, a[1] + (b[1] - a[1]) * v]], 0.15, 0.115, col(MARK), false);
+        }
+      }
+    }
   }
+  addEdgeLines(gb, city, bridges);
   // 線路: バラスト + 2本のレール
   const ballast = col('#7a7068'), rail = col('#b0b5ba');
   for (const r of city.rails) {
