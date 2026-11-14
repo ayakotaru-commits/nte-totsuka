@@ -25,6 +25,8 @@ async function main() {
   const city = await (await fetch('data/city.json')).json();
   // 地形 (無ければ平らな地面)
   try { const r = await fetch('data/terrain.json'); if (r.ok) setTerrain(await r.json()); } catch { /* 平らなまま */ }
+  // 擁壁 (tools/lidar_walls.py --osm が作る。まだ見た目が不十分なので、URL に ?walls を付けたときだけ置く)
+  if (new URLSearchParams(location.search).has('walls')) try { const r = await fetch('data/walls.json'); if (r.ok) city.walls = (await r.json()).walls; } catch { /* 無し */ }
   // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py が作る。無ければそれらを置かない)
   let props = null;
   try { const r = await fetch('data/props.json'); if (r.ok) props = await r.json(); } catch { /* 無し */ }
@@ -32,10 +34,12 @@ async function main() {
   $('credit').textContent = '地図データ ' + city.attribution;
 
   // ---- renderer / scene ----
-  const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // 重さの切り分け用 (URL): ?pr=1 解像度の倍率, ?log 対数深度バッファを使う (標準は使わない。重いので), ?noaa アンチエイリアス無し, ?noshadow 影なし
+  const Q = new URLSearchParams(location.search);
+  const renderer = new THREE.WebGLRenderer({ antialias: !Q.has('noaa'), logarithmicDepthBuffer: Q.has('log') });
+  renderer.setPixelRatio(Q.has('pr') ? +Q.get('pr') : Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = !Q.has('noshadow');
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   $('app').appendChild(renderer.domElement);
@@ -47,7 +51,7 @@ async function main() {
 
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog('#c9d6e3', 250, 1300);
-  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 4000);
+  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, +(Q.get('near') || 0.3), 3000);
 
   const sky = new Sky();
   sky.scale.setScalar(10000);
@@ -70,8 +74,14 @@ async function main() {
   status('街を生成中…');
   await new Promise(r => setTimeout(r, 0));
   const world = new World(city.buildings, city.bounds);
+  const t0 = performance.now();
   const built = buildCity(city, world, props);
   scene.add(built.group);
+  if (new URLSearchParams(location.search).has('perf')) { // 計測用: 街の生成時間と三角形の数
+    let tris = 0; const per = {};
+    built.group.traverse((o) => { if (o.geometry) { const n = (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; tris += n; per[o.name || o.type] = (per[o.name || o.type] || 0) + n; } });
+    console.info('[perf] buildCity ms=' + Math.round(performance.now() - t0) + ' tris=' + Math.round(tris) + ' ' + JSON.stringify(per));
+  }
   if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
   const detail = await loadDetail({ scene, city, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
 
@@ -159,7 +169,10 @@ async function main() {
 
   let placeTimer = 0;
   const clock = new THREE.Clock();
+  const perfOn = new URLSearchParams(location.search).has('perf'); // 計測用: タブの題名にフレームレートを出す
+  let fpsN = 0, fpsT = performance.now();
   renderer.setAnimationLoop(() => {
+    if (perfOn && ++fpsN >= 60) { const t = performance.now(); document.title = Math.round(fpsN * 1000 / (t - fpsT)) + ' fps / ' + renderer.info.render.triangles + ' tris'; fpsN = 0; fpsT = t; }
     const dt = Math.min(clock.getDelta(), 1 / 30);
 
     if (input.pressed('KeyV')) detail.on = !detail.on; // detail (お試し)

@@ -156,6 +156,11 @@ python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json 
 - 道路・川・公園などの平面は `drape()` で細かく割って地形に沿わせる
 - 建物は `build_city.py` が基礎の高さ `y`（輪郭で一番低い地面）を付け、高さ `h` は基礎からの値のまま
 - `terrain.json` を消すと平らな地面に戻る
+- 現在の `terrain.json` は **2m 間隔**。点群（`data/raw/lidar/`）の各マスの最低点で作り（`tools/lidar_terrain.py` → `export_terrain_hi.py`）、点の無い所は DEM との差を補って埋めている。この点群は分類（地面など）が当てにならないので、分類は使わない。DEM 版（4m）に戻すなら `python tools/fetch_dem.py` を実行する（その後 `retarget_terrain.py` で建物の高さを合わせ直す）
+- 地形を差し替えたあとは `tools/retarget_terrain.py <古い> <新しい>` で `city.json` の建物の基礎・地面にある橋の頂点を動かし、`build_props.py` を実行する（`build_city.py` を通しで実行できない環境用）
+- 傾斜で地形を色分けする（法面は緑、擁壁・崖は灰色）。擁壁の壁は `fetch_osm_walls.py` → `lidar_walls.py --osm` → `walls.json`（URL に `?walls` で表示。見た目が不十分で試作）
+- 階段（OSM の steps）は `stairs.js` が段を作り、`stairAt()` で階段の上かを判定してキャラの動きを変える
+- 描画: 対数深度バッファは使わない（内蔵 GPU で約 2 倍遅い）。切り分け用に URL で `?perf`（タブにフレームレート）・`?log`・`?near=`・`?pr=`・`?noaa`・`?noshadow`
 
 ### キャラクター（public/src/character.js）
 - 標準では、関節のある人型（腰・背骨・胸・首・頭・肩・肘・股関節・膝・足首）を組み立てて動かす。歩き・走りは、足が地面に着いている間は滑らず浮かないように角度から腰の高さを計算している。

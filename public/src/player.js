@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { makeCharacter } from './character.js';
 import { STEP } from './world.js';
 import { H } from './terrain.js';
+import { stairAt } from './stairs.js';
+
+const STAIR_SPEED = 3.4; // 階段を上り下りする速さの上限 (m/s)。走りから落とすのは少しだけ (歩き 2.2・走り 5.5)
 
 const R = 0.35;
 const SPEED = { walk: 2.2, run: 5.5, dash: 10 };
@@ -44,6 +47,11 @@ export class Player {
       dx /= len; dz /= len;
       target = input.held('ShiftLeft') || input.held('ShiftRight') ? SPEED.dash : this.walkMode ? SPEED.walk : SPEED.run;
     }
+    // 階段: 速さを抑え、上り(+1)・下り(-1) をキャラに伝える
+    const stair = this.onGround ? stairAt(this.pos.x, this.pos.z) : null;
+    if (stair && target > STAIR_SPEED) target = STAIR_SPEED;
+    const sl = this.vel.length();
+    this.stair = stair && sl > 0.1 ? Math.max(-1, Math.min(1, (this.vel.x * stair.ux + this.vel.y * stair.uz) / sl * Math.min(1, stair.grade * 1.6))) : 0;
     const accel = this.onGround ? 12 : 3;
     const k = 1 - Math.exp(-accel * dt);
     this.vel.x += (dx * target - this.vel.x) * k;
@@ -86,6 +94,6 @@ export class Player {
 
     this.model.root.position.copy(this.pos);
     this.model.root.rotation.y = this.facing;
-    this.model.update(dt, sp, this.onGround, this.vy);
+    this.model.update(dt, sp, this.onGround, this.vy, this.stair || 0);
   }
 }

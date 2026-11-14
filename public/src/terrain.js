@@ -33,11 +33,25 @@ export function buildTerrainMesh(color = '#a4a296') {
     const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
     idx.push(a, d, b, a, c, d); // 対角線 a-d (H() と同じ分割)
   }
+  // 傾斜で色を変える: 急な所 (法面) は草の緑、さらに急な所 (擁壁・崖) はコンクリートの灰色にする。
+  // 4m 格子では垂直な壁は表せないので、色で「ここは法面・擁壁」と分かるようにする
+  const base = new THREE.Color(color), grass = new THREE.Color('#78895c'), wall = new THREE.Color('#aaa8a1'), c = new THREE.Color();
+  const sm = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const hh = (i, j) => T.h[Math.max(0, Math.min(nz - 1, j)) * nx + Math.max(0, Math.min(nx - 1, i))] / 100;
+  const col = new Float32Array(nx * nz * 3);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const gx = (hh(i + 1, j) - hh(i - 1, j)) / (2 * step), gz = (hh(i, j + 1) - hh(i, j - 1)) / (2 * step);
+    const slope = Math.hypot(gx, gz);
+    c.copy(base).lerp(grass, sm(0.3, 0.6, slope) * 0.85).lerp(wall, sm(0.75, 1.05, slope));
+    const k = (j * nx + i) * 3;
+    col[k] = c.r; col[k + 1] = c.g; col[k + 2] = c.b;
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setIndex(idx);
   g.computeVertexNormals();
-  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color, roughness: 1 }));
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
   m.name = 'terrain';
   m.receiveShadow = true;
   return m;
