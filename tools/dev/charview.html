@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- キャラだけを素早く確認するページ (街を読み込まないので、ヘッドレス Chrome でも数十秒で撮れる)。
+  リポジトリの直下を配信して開く:  python -m http.server 8772 --bind 127.0.0.1
+  http://127.0.0.1:8772/tools/dev/charview.html?pose=5.5&t=1.3
+    pose = 速さ m/s (0 立ち / 2.2 歩き / 5.5 走り / 10 ダッシュ)、t = 何秒ぶん動かしてから止めるか (歩行の位相を選ぶ)、air=1 で空中
+  画面は 4 分割: 正面 / 真後ろ / 斜め後ろ / 左手のアップ。?live を付けると止めずに動かし続ける。?face で手の代わりに顔のアップ。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>charview</title>
+<style>html, body { margin: 0; overflow: hidden; background: #8fa3b8; }</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.3/lib/three-vrm.module.min.js"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { makeCharacter } from '../../public/src/character.js';
+
+const qs = new URLSearchParams(location.search);
+const speed = +(qs.get('pose') || 0), T = +(qs.get('t') || 1), air = qs.has('air');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#8fa3b8');
+scene.add(new THREE.HemisphereLight('#e3edff', '#a39a88', 1));
+const sun = new THREE.DirectionalLight('#ffffff', 3);
+sun.position.set(2, 5, 3);
+scene.add(sun);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshLambertMaterial({ color: '#5a5d63' }));
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+const ch = makeCharacter();
+ch.root.position.y = air ? 1 : 0;
+scene.add(ch.root);
+
+const cam = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
+// [水平の角度 (0 = 正面), 距離, 注視点の高さ] または 'hand'
+const views = [[0, 3.4, 0.85], [Math.PI, 3.4, 0.85], [Math.PI * 0.78, 3.4, 0.85], 'hand'];
+const tmp = new THREE.Vector3();
+function draw() {
+  const w = innerWidth / 2, h = innerHeight / 2;
+  renderer.setScissorTest(true);
+  views.forEach((v, i) => {
+    const x = (i % 2) * w, y = (1 - Math.floor(i / 2)) * h;
+    renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h);
+    cam.aspect = w / h; cam.updateProjectionMatrix();
+    if (v === 'hand' && qs.has('face')) { // ?face で、手の代わりに顔のアップ
+      let head = null;
+      ch.root.traverse((o) => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
+      (head || ch.bones.head).getWorldPosition(tmp);
+      cam.position.set(tmp.x + 0.12, tmp.y + 0.08, tmp.z + 0.75); cam.lookAt(tmp.x, tmp.y + 0.06, tmp.z);
+    } else if (v === 'hand') {
+      let hand = null;
+      ch.root.traverse((o) => { if (!hand && /hand/i.test(o.name) && /(^|_|\b)l(eft)?(_|\b)|left/i.test(o.name) && o.isBone) hand = o; });
+      (hand || ch.bones.haL).getWorldPosition(tmp);
+      cam.position.set(tmp.x + 0.35, tmp.y + 0.1, tmp.z + 0.4); cam.lookAt(tmp.x, tmp.y - 0.05, tmp.z);
+    } else {
+      cam.position.set(Math.sin(v[0]) * v[1], v[2] + 0.5 + (air ? 1 : 0), Math.cos(v[0]) * v[1]); cam.lookAt(0, v[2] + (air ? 1 : 0), 0);
+    }
+    renderer.render(scene, cam);
+  });
+}
+const step = (dt) => ch.update(dt, speed, !air, air ? 2 : 0, 0);
+function start() {
+  if (qs.has('live')) { let last = performance.now(); const loop = (now) => { step((now - last) / 1000); last = now; draw(); requestAnimationFrame(loop); }; requestAnimationFrame(loop); return; }
+  const fps = +(qs.get('fps') || 60);
+  for (let i = 0; i < Math.round(T * fps); i++) step(1 / fps);
+  scene.updateMatrixWorld(true);
+  draw();
+  document.title = 'done';
+}
+// ヘッドレス Chrome の --virtual-time-budget は、読み込み (画像の展開など) を待たずに時間を進めてしまう。
+// 読み込みが済むまで、タイマーの中で実時間を少しずつ使って待たせる
+const hold = setInterval(() => { let x = 0; for (let i = 0; i < 4e6; i++) x += Math.sqrt(i); return x; }, 100); // 時計も仮想なので、回数で待つ
+ch.ready.then(() => { clearInterval(hold); start(); });
+</script>
+</body>
+</html>

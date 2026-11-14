@@ -4,10 +4,10 @@ import { STEP } from './world.js';
 import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 
-const STAIR_SPEED = 3.4; // 階段を上り下りする速さの上限 (m/s)。走りから落とすのは少しだけ (歩き 2.2・走り 5.5)
+const STAIR_SPEED = 3.4; // 階段を上り下りする速さの上限 (m/s)。走りから落とすのは少しだけ (歩き 1.6・走り 5.5)
 
 const R = 0.35;
-const SPEED = { walk: 2.2, run: 5.5, dash: 10 };
+const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
 const GRAVITY = 24, JUMP_V = 8.2, JUMP2_V = 7.6;
 
 export class Player {
@@ -94,6 +94,6 @@ export class Player {
 
     this.model.root.position.copy(this.pos);
     this.model.root.rotation.y = this.facing;
-    this.model.update(dt, sp, this.onGround, this.vy, this.stair || 0);
+    this.model.update(dt, this.poseSpeed ?? sp, this.onGround, this.vy, this.stair || 0); // poseSpeed: 撮影用 (?shot&pose=5.5 でその場で歩き・走りの姿勢)
   }
 }

@@ -123,8 +123,8 @@ export function makeCharacter() {
 
   // ---- 動き ----
   // 角度の目標をいったん書き出し、地上・空中の 2 つを混ぜてから骨に反映する
-  const NAMES = ['hips', 'spine', 'chest', 'neck', 'head', 'shL', 'elL', 'shR', 'elR', 'thL', 'knL', 'ftL', 'thR', 'knR', 'ftR'];
-  const BONE = { hips, spine, chest, neck, head, shL: arms[0].sh, elL: arms[0].el, shR: arms[1].sh, elR: arms[1].el,
+  const NAMES = ['hips', 'spine', 'chest', 'neck', 'head', 'shL', 'elL', 'haL', 'shR', 'elR', 'haR', 'thL', 'knL', 'ftL', 'thR', 'knR', 'ftR'];
+  const BONE = { hips, spine, chest, neck, head, shL: arms[0].sh, elL: arms[0].el, haL: arms[0].hand, shR: arms[1].sh, elR: arms[1].el, haR: arms[1].hand,
     thL: legs[0].th, knL: legs[0].kn, ftL: legs[0].ft, thR: legs[1].th, knR: legs[1].kn, ftR: legs[1].ft };
   const pose = () => { const p = {}; for (const n of NAMES) p[n] = [0, 0, 0]; return p; };
 
@@ -144,7 +144,7 @@ export function makeCharacter() {
     let fp;
     if (pm < PI) fp = -0.2 * (1 - sstep(0, 0.3, pm)) + g.toeOff * sstep(0.55 * PI, PI, pm);
     else { const u = (pm - PI) / PI; fp = g.toeOff * (1 - sstep(0, 0.4, u)) - 0.2 * sstep(0.6, 1, u); }
-    return { h, k, fp: fp * g.gw };
+    return { h, k, fp: fp * g.gw, swing };
   }
 
   function update(dt, speed, onGround, vy, stair = 0) {
@@ -177,21 +177,21 @@ export function makeCharacter() {
     if (onGround && sp > 0.05) st.phase += dt * sp / stride * 2 * PI;
     const pL = st.phase, pR = st.phase + PI;
 
-    const g = { A, gw, stLift: 0.75 * upK + 0.3 * dnK, kSwing: Math.min(1.75, 0.45 + 0.2 * sp + 0.5 * upK + 0.25 * dnK), kLoad: Math.min(0.45, 0.2 + 0.04 * sp), toeOff: Math.min(0.8, 0.5 + 0.03 * sp) };
+    const g = { A, gw, stLift: 0.75 * upK + 0.3 * dnK, kSwing: Math.min(2.0, 0.45 + 0.2 * sp + 0.5 * upK + 0.25 * dnK + 0.3 * runK), kLoad: Math.min(0.45, 0.2 + 0.04 * sp), toeOff: Math.min(0.8, 0.5 + 0.03 * sp) };
     const legL = legAngles(pL, g), legR = legAngles(pR, g);
 
     // --- 地上の姿勢 ---
     const G = pose();
     const idleK = (1 - gw) * 0.03;
     const landH = st.land * 0.5, landK = st.land * 0.9;
-    const setLeg = (L, th, kn, ft) => {
-      G[th] = [-(L.h + landH), 0, 0];
+    // 内股: 太ももを内へひねる。走りでは、後ろへ蹴り上げたすねが外へ流れる (ひねり + 膝の曲げ)。足は体の中心寄りに着く
+    const setLeg = (L, th, kn, ft, side) => {
+      G[th] = [-(L.h + landH), -side * (0.07 + 0.1 * L.swing * runK * gw), side * (0.02 - 0.04 * gw * (1 - 0.6 * runK))];
       G[kn] = [L.k + idleK + landK, 0, 0];
       G[ft] = [L.fp + (L.h + landH) - (L.k + idleK + landK), 0, 0];
     };
-    setLeg(legL, 'thL', 'knL', 'ftL');
-    setLeg(legR, 'thR', 'knR', 'ftR');
-    G.thL[2] = 0.02; G.thR[2] = -0.02;
+    setLeg(legL, 'thL', 'knL', 'ftL', 1);
+    setLeg(legR, 'thR', 'knR', 'ftR', -1);
 
     const cL = Math.cos(pL), cR = Math.cos(pR);
     // 骨盤のひねりと、それを打ち消す胸のひねり
@@ -199,25 +199,35 @@ export function makeCharacter() {
     G.hips[1] = -yawA * 0.6 * cL;
     G.spine[1] = yawA * 0.5 * cL;
     G.chest[1] = yawA * 0.7 * cL;
-    G.hips[2] = 0.04 * gw * Math.sin(pL); // 骨盤の左右の傾き
-    G.chest[2] = -0.03 * gw * Math.sin(pL);
+    const sway = Math.sin(st.t * 0.9) * 0.025 * (1 - gw); // 立っているときの、ゆっくりした体重移動
+    G.hips[2] = 0.07 * gw * Math.sin(pL) + sway; // 骨盤の左右の傾き (腰を振る)
+    G.chest[2] = -0.05 * gw * Math.sin(pL) - sway * 0.6;
     // 前傾 (速いほど深く) と着地のかがみ
-    const lean = gw * (0.03 + 0.4 * sstep(1.5, 10, sp)) + st.land * 0.18 + gw * (0.2 * upK - 0.08 * dnK);
+    const lean = gw * (0.03 + 0.3 * sstep(1.5, 10, sp) + 0.08 * runK) + st.land * 0.18 + gw * (0.2 * upK - 0.08 * dnK);
     G.spine[0] = lean * 0.4; G.chest[0] = lean * 0.6;
     const breathe = Math.sin(st.t * 1.6) * 0.012 * (1 - gw);
     G.chest[0] += breathe;
     G.neck[0] = -lean * 0.35; G.head[0] = -lean * 0.45;
     G.head[1] = Math.sin(st.t * 0.5) * 0.06 * (1 - gw);
-    // 腕: 反対側の脚と逆に振る。走ると肘が深く曲がる
-    const armA = Math.min(1.1, 0.15 + 0.1 * sp) * gw;
-    const armPose = (sh, el, c, side) => {
-      const fwd = Math.max(0, -c); // 腕が前にあるほど 1
-      G[sh] = [armA * c + st.land * 0.3, 0, side * (0.09 - 0.03 * runK * gw) + (1 - gw) * side * 0.0];
-      const flex = 0.12 * (1 - gw) + gw * (0.25 + runK * (1.0 + 0.3 * fwd) + 0.25 * fwd);
+    G.head[2] = 0.04 * (1 - gw) - sway * 0.8 - 0.05 * gw * Math.sin(pL); // 首を少しかしげる。歩くと左右に小さく揺れる
+    // 腕: 反対側の脚と逆に振る。
+    // 歩き: 少し開いて振り、後ろへ引いたときに外へ流す。走り: 脇をしめて肘を曲げ、前腕を外へ開いて左右に振る (女の子走り)。
+    // 手首は外へ反らす (後ろからも手の動きが見える)
+    const armA = Math.min(1.1, 0.3 + 0.1 * sp) * gw;
+    const rk = runK * gw;
+    const armPose = (sh, el, ha, c, side) => {
+      const fwd = Math.max(0, -c), back = Math.max(0, c); // 腕が前 / 後ろにあるほど 1
+      G[sh] = [
+        armA * c * mix(1, 0.6, runK) + 0.25 * rk + st.land * 0.3, // 走りは上腕を少し後ろへ引いたまま、前後にも振る
+        side * (0.15 * gw * (1 - runK) + rk * (0.75 + 0.35 * c)), // 上腕のひねり = 前腕が外へ開く
+        side * (mix(0.17, 0.1, rk) + (0.05 + 0.2 * back) * gw * (1 - runK)), // 歩きは腕を体から離し、後ろへ引くほど外へ流す
+      ];
+      const flex = 0.18 * (1 - gw) + gw * mix(0.2 + 0.2 * fwd, 1.5 + 0.15 * fwd, runK); // 歩きは腕を伸ばしぎみ、走りは肘を深く曲げてこぶしを胸の高さへ
       G[el] = [-flex, 0, 0];
+      G[ha] = [0, 0, side * (0.45 + 0.15 * c * gw + 0.04 * Math.sin(st.t * 1.6) * (1 - gw))];
     };
-    armPose('shL', 'elL', cL, 1);
-    armPose('shR', 'elR', cR, -1);
+    armPose('shL', 'elL', 'haL', cL, 1);
+    armPose('shR', 'elR', 'haR', cR, -1);
 
     // --- 空中の姿勢 (上昇: 片脚を前に出して跳ぶ / 下降: 着地に備えて足を前へ) ---
     const Aa = pose();
@@ -230,6 +240,7 @@ export function makeCharacter() {
     const armUp = rising ? 0.55 : 0.8;
     Aa.shL = [-0.35, 0, armUp]; Aa.shR = [0.2, 0, -armUp];
     Aa.elL = [-0.5, 0, 0]; Aa.elR = [-0.5, 0, 0];
+    Aa.haL = [0, 0, 0.5]; Aa.haR = [0, 0, -0.5];
 
     // --- 反映 ---
     const k = rate(onGround ? 28 : 14);
@@ -248,7 +259,7 @@ export function makeCharacter() {
         + (fp > 0 ? 0.15 * Math.sin(fp) : 0.05 * Math.sin(-fp));
     };
     const planted = Math.max(ext(legs[0]), ext(legs[1])) + HIP_DROP;
-    const runFloat = runK * gw * 0.045 * Math.abs(Math.sin(st.phase)); // 走りの浮き
+    const runFloat = runK * gw * 0.08 * Math.abs(Math.sin(st.phase)); // 走りの浮き
     const airY = IDLE_EXT + HIP_DROP;
     hips.position.y = mix(planted + runFloat + Math.sin(st.t * 1.6) * 0.003 * (1 - gw), airY, st.airW);
 
@@ -275,12 +286,14 @@ export function makeCharacter() {
 
   // ---- VRM への差し替え ----
   let vrmRig = null;
-  const Q = THREE.Quaternion, ZAX = new THREE.Vector3(0, 0, 1);
+  const Q = THREE.Quaternion, ZAX = new THREE.Vector3(0, 0, 1), YAX = new THREE.Vector3(0, 1, 0);
   // VRM は T ポーズ (腕が真横)。腕を下ろした姿勢を基準にするための回転
   const HL = new Q().setFromAxisAngle(ZAX, -PI / 2), HR = new Q().setFromAxisAngle(ZAX, PI / 2);
   const DIRECT = { hips: 'hips', spine: 'spine', chest: 'chest', neck: 'neck', head: 'head',
     thL: 'leftUpperLeg', knL: 'leftLowerLeg', ftL: 'leftFoot', thR: 'rightUpperLeg', knR: 'rightLowerLeg', ftR: 'rightFoot' };
   const tmpV = new THREE.Vector3();
+  const SMILE = +(new URLSearchParams(location.search).get('smile') ?? 0.35); // 笑顔の強さ (0〜1)。URL の ?smile= で試せる
+  const HIP_SMOOTH = 9; // 腰の高さをなまらせる強さ (1/秒)。小さいほど髪は落ち着くが、足が地面からわずかにずれる
 
   function applyVRM(dt) {
     const { vrm, scale, nodes } = vrmRig;
@@ -290,18 +303,35 @@ export function makeCharacter() {
     nodes.shR.quaternion.copy(BONE.shR.quaternion).multiply(HR);
     nodes.elL.quaternion.copy(HL).invert().multiply(BONE.elL.quaternion).multiply(HL);
     nodes.elR.quaternion.copy(HR).invert().multiply(BONE.elR.quaternion).multiply(HR);
+    if (nodes.haL) nodes.haL.quaternion.copy(HL).invert().multiply(BONE.haL.quaternion).multiply(HL);
+    if (nodes.haR) nodes.haR.quaternion.copy(HR).invert().multiply(BONE.haR.quaternion).multiply(HR);
+    // 指: 軽く握る (走ると少し強く)。T ポーズの手で、4 本の指は前後の軸まわり、親指は上下の軸まわりに曲げる
+    const curl = 0.6 + 0.25 * sstep(2.8, 5.5, st.prevSpeed) * st.gw;
+    for (const f of vrmRig.fingers) {
+      if (f.thumb) f.node.quaternion.setFromAxisAngle(YAX, f.side * curl * 0.5);
+      else f.node.quaternion.setFromAxisAngle(ZAX, -f.side * curl * f.k);
+      if (vrmRig.flip) { f.node.quaternion.x *= -1; f.node.quaternion.z *= -1; }
+    }
+    // VRM 0.x は骨の座標系が前後逆 (モデルごと 180° 回して前向きにしている) なので、前後・左右の軸まわりの回転を逆にする
+    if (vrmRig.flip) for (const n in nodes) { const q = nodes[n].quaternion; q.x = -q.x; q.z = -q.z; }
     nodes.hips.position.y = hips.position.y / scale + vrmRig.minY;
     // この VRM の足の実際の位置から、いちばん低い足裏が地面 (y=0) に来るよう腰の高さを直す (空中では直さない)
     const gnd = 1 - st.airW;
     if (gnd > 0.01) {
       vrm.scene.updateMatrixWorld(true);
+      const baseY = root.matrixWorld.elements[13]; // キャラの足元 (地形) の高さ。足の位置はここからの差で見る
       let low = Infinity;
-      for (const f of vrmRig.soles) low = Math.min(low, f.node.getWorldPosition(tmpV).y - f.off * scale);
+      for (const f of vrmRig.soles) low = Math.min(low, f.node.getWorldPosition(tmpV).y - baseY - f.off * scale);
       nodes.hips.position.y -= low / scale * gnd;
     }
+    // 腰の高さは足の入れ替わりで急に向きを変える。そのままだと髪の揺れ (ばね) が跳ね上がるので、少しなまらせる
+    const hy = nodes.hips.position.y;
+    vrmRig.hy = vrmRig.hy === undefined ? hy : vrmRig.hy + (hy - vrmRig.hy) * (1 - Math.exp(-Math.min(dt, 0.1) * HIP_SMOOTH));
+    nodes.hips.position.y = vrmRig.hy;
     // まばたき (約 4 秒おきに 0.15 秒)
     const bt = st.t % 4;
     vrm.expressionManager?.setValue('blink', bt < 0.15 ? Math.sin(bt / 0.15 * PI) : 0);
+    vrm.expressionManager?.setValue('happy', SMILE); // 少しだけ笑顔
     vrm.update(Math.min(dt, 1 / 30));
   }
 
@@ -326,6 +356,21 @@ export function makeCharacter() {
       for (const n in DIRECT) nodes[n] = vrm.humanoid.getNormalizedBoneNode(DIRECT[n]);
       nodes.shL = vrm.humanoid.getNormalizedBoneNode('leftUpperArm'); nodes.shR = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
       nodes.elL = vrm.humanoid.getNormalizedBoneNode('leftLowerArm'); nodes.elR = vrm.humanoid.getNormalizedBoneNode('rightLowerArm');
+      nodes.haL = vrm.humanoid.getNormalizedBoneNode('leftHand'); nodes.haR = vrm.humanoid.getNormalizedBoneNode('rightHand');
+      for (const n of ['haL', 'haR']) if (!nodes[n]) delete nodes[n];
+      const fingers = [];
+      for (const [lr, side] of [['left', 1], ['right', -1]]) {
+        [['Index', 0.9], ['Middle', 1], ['Ring', 1.1], ['Little', 1.2]].forEach(([name, k]) => {
+          for (const seg of ['Proximal', 'Intermediate', 'Distal']) {
+            const node = vrm.humanoid.getNormalizedBoneNode(lr + name + seg);
+            if (node) fingers.push({ node, side, k });
+          }
+        });
+        for (const seg of ['Metacarpal', 'Proximal', 'Distal']) {
+          const node = vrm.humanoid.getNormalizedBoneNode(lr + 'Thumb' + seg);
+          if (node) fingers.push({ node, side, thumb: true });
+        }
+      }
       const restHips = nodes.hips.getWorldPosition(new THREE.Vector3()).y;
       const minY = new THREE.Box3().setFromObject(vrm.scene).min.y;
       // 足首・つま先の骨が、足裏からどれだけ上にあるか (大きさを変える前の値)
@@ -333,7 +378,7 @@ export function makeCharacter() {
         .filter(Boolean).map((node) => ({ node, off: node.getWorldPosition(new THREE.Vector3()).y - minY }));
       const scale = (IDLE_EXT + HIP_DROP) / (restHips - minY);
       vrm.scene.scale.setScalar(scale);
-      vrmRig = { vrm, scale, nodes, minY, soles }; // 腰の高さは、以後 applyVRM が毎フレーム決める
+      vrmRig = { vrm, scale, nodes, minY, soles, fingers, flip: vrm.meta?.metaVersion === '0' }; // 腰の高さは、以後 applyVRM が毎フレーム決める
       body.visible = false;
       root.add(vrm.scene);
       console.info('VRM を読み込みました: ' + url);
@@ -341,7 +386,7 @@ export function makeCharacter() {
       console.warn('VRM を読み込めなかったので、組み立て式のキャラのままにします:', e);
     }
   }
-  loadVRM(new URL('../models/player.vrm', import.meta.url).href);
+  const ready = loadVRM(new URL('../models/player.vrm', import.meta.url).href); // VRM の読み込み (有無にかかわらず) が済むと解決する
 
-  return { root, update, bones: BONE };
+  return { root, update, ready, bones: BONE };
 }

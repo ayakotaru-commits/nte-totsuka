@@ -132,6 +132,7 @@ async function main() {
     for (let i = 0; i < +(qs.get('t') || 0); i++) $('hud-time').textContent = tod.next();
     tod.snap();
     if (qs.has('face')) player.facing = +qs.get('face');
+    if (qs.has('pose')) player.poseSpeed = +qs.get('pose'); // その場で歩き (2.2)・走り (5.5) の姿勢にする
     if (qs.has('nodetail')) detail.on = false; // detail (お試し)
     if (qs.has('edit')) { editor.show(); cam.dist = +(qs.get('dist') || cam.dist); }
     if (qs.has('map')) { bigmap.show(player.pos.x, player.pos.z); if (qs.has('zoom')) bigmap.scale = +qs.get('zoom'); }
