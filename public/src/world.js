@@ -162,6 +162,70 @@ export class World {
     pos.z = Math.max(B.minZ + m, Math.min(B.maxZ - m, pos.z));
   }
 
+  // 体 (足元 y) がその点に立てないか: 足元より STEP 以上高く、頭より低い所から始まるものの中
+  bodyBlocked(x, z, y) {
+    for (const b of this.querySolid(x, z, x, z)) {
+      if (b.topY > y + STEP && b.minY <= y + BODY_H && this.contains(b, x, z)) return true;
+    }
+    return false;
+  }
+
+  // 進む向き (ux, uz) の先 reach m 以内にある、乗り越え・よじ登りの対象を調べる (player.js のパルクール用)。
+  // 返り値: { t: 壁までの距離, top: 上端の高さ, nx, nz: 壁の外向きの法線, ex, ez: 壁に当たる点,
+  //           thick: 奥行き (m。薄い柵・塀だけ。厚いもの・奥がふさがっているものは null),
+  //           stand: 上に立てるか, far: 向こう側に降りられる奥行き方向の距離 (降りられなければ null) }
+  probeLedge(pos, ux, uz, r, reach) {
+    const x0 = pos.x, z0 = pos.z, x1 = x0 + ux * reach, z1 = z0 + uz * reach;
+    let best = null;
+    for (const b of this.querySolid(Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1))) {
+      if (b.topY <= pos.y + STEP || b.minY > pos.y + BODY_H) continue; // 乗れる・くぐれるものは壁ではない
+      for (const ring of b.rings) {
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const ax = ring[j][0], az = ring[j][1], ex = ring[i][0] - ax, ez = ring[i][1] - az;
+          const den = ux * ez - uz * ex;
+          if (Math.abs(den) < 1e-9) continue;
+          const t = ((ax - x0) * ez - (az - z0) * ex) / den, s = ((ax - x0) * uz - (az - z0) * ux) / den;
+          if (t < 0 || t > reach || s < 0 || s > 1) continue;
+          if (!best || t < best.t) {
+            const L = Math.hypot(ex, ez) || 1;
+            let nx = ez / L, nz = -ex / L;
+            if (nx * ux + nz * uz > 0) { nx = -nx; nz = -nz; } // こちら向きの法線
+            best = { t, top: b.topY, nx, nz };
+          }
+        }
+      }
+    }
+    if (!best) return null;
+    const ex = x0 + ux * best.t, ez = z0 + uz * best.t;
+    let top = best.top;
+    // 奥へ 0.1 m ずつ進み、上端より低くなる所 (= 薄い) か、さらに高いものにふさがれる所を探す
+    let thick = null;
+    for (let s = 0.05; s <= 1.25; s += 0.1) {
+      const x = ex + ux * s, z = ez + uz * s;
+      let hi = -Infinity, wall = false;
+      for (const b of this.querySolid(x, z, x, z)) {
+        if (!this.contains(b, x, z)) continue;
+        if (b.topY > top + STEP && b.minY <= top + BODY_H) { wall = true; break; }
+        if (b.minY <= top + 0.1) hi = Math.max(hi, b.topY);
+      }
+      if (wall) break;
+      if (s < 0.2 && hi > top) top = hi; // 重なった少し高いもの (笠木など) は上端に含める
+      if (hi < top - 0.35) { thick = s; break; }
+    }
+    const out = { t: best.t, top, nx: best.nx, nz: best.nz, ex, ez, thick: thick !== null && thick <= 1.0 ? thick : null, stand: false, far: null };
+    if (thick === null || thick >= 0.5) { // 厚いもの (自販機くらいの奥行きから): 縁から体ひとつ入った所に立てるか (奥がふさがっていれば bodyBlocked が弾く)
+      const sd = Math.min(r + 0.05, (thick ?? 9) / 2), sx = ex + ux * sd, sz = ez + uz * sd;
+      out.stand = !this.bodyBlocked(sx, sz, top) && Math.abs(this.groundAt(sx, sz, top) - top) <= STEP;
+    }
+    if (out.thick !== null) { // 薄いもの: 向こう側に体が入るか
+      const d = out.thick + r + 0.2, fx = ex + ux * d, fz = ez + uz * d;
+      const mx = ex + ux * (out.thick + r * 0.5), mz = ez + uz * (out.thick + r * 0.5);
+      const gy = this.groundAt(fx, fz, top);
+      if (!this.bodyBlocked(fx, fz, Math.min(gy, top)) && !this.bodyBlocked(mx, mz, top - 0.35) && !this.bodyBlocked(fx, fz, top - 0.35)) out.far = d;
+    }
+    return out;
+  }
+
   // 足元 y から見て乗れる最も高い面 (地面は、描画されている路面・敷地の高さに合わせて H より GROUND_LIFT 高い)
   groundAt(x, z, footY) {
     let g = H(x, z) + GROUND_LIFT;
