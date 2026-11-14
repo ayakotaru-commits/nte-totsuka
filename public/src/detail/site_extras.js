@@ -1,21 +1,20 @@
 // 敷地の追加要素 (data/appearance.json): 門のアーチ・噴水のある円形広場・エントランス棟の正面・屋上の塔・1階の青い日よけ・庭の花壇/オベリスク/天窓
+// 配置は tools/build_props.py が計算した data/props.json の sites[]。
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
-import { H as TH, drape } from '../terrain.js';
+import { drape } from '../terrain.js';
 
 const stoneMat = () => new THREE.MeshStandardMaterial({ color: '#f1ece2', roughness: 0.7 });
 
-export function buildSiteExtras({ site, group, world, city, gardenInfo }) {
+export function buildSiteExtras({ site, group }) {
   const stone = stoneMat();
   const shadow = (m) => { m.castShadow = m.receiveShadow = true; return m; };
 
   // ---------- 門: 通路の両面にアーチ (開口の形をくり抜いた壁 + 白い縁取り + 要石) ----------
   const gt = site.gate;
-  if (gt && gt.center) {
-    const [ux, uz] = gt.axis, w = gt.passage, ch = gt.clear_h, r = w / 2;
-    const wallColor = gt.color || '#dcc6a0';
-    const gpart = city.buildings.find(b => site.buildings.includes(b.id) && b.style === 'gate');
-    const gbase = gpart ? gpart.y || 0 : TH(gt.center[0], gt.center[1]);
+  if (gt) {
+    const w = gt.width, ch = gt.clear_h, r = w / 2;
+    const wallColor = gt.color;
     const tex = canvasTexture(256, 280, (g, W, H) => {
       g.fillStyle = wallColor; g.fillRect(0, 0, W, H);
       // 透明にする開口 (下は長方形・上は半円)
@@ -28,11 +27,10 @@ export function buildSiteExtras({ site, group, world, city, gardenInfo }) {
       void sx;
     });
     const spandrel = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85 });
-    for (const side of [-1, 1]) {
-      const fx = gt.center[0] + ux * side * (gt.length / 2 + 0.03), fz = gt.center[1] + uz * side * (gt.length / 2 + 0.03);
+    for (const fc of gt.faces) {
       const face = new THREE.Group();
-      face.position.set(fx, gbase, fz);
-      face.rotation.y = Math.atan2(ux, uz);
+      face.position.set(fc.x, fc.y, fc.z);
+      face.rotation.y = fc.yaw;
       const sp = new THREE.Mesh(new THREE.PlaneGeometry(w, ch).translate(0, ch / 2, 0), spandrel);
       const arch = new THREE.Mesh(new THREE.TorusGeometry(r, 0.22, 8, 32, Math.PI), stone);
       arch.position.y = ch - r;
@@ -57,10 +55,10 @@ export function buildSiteExtras({ site, group, world, city, gardenInfo }) {
       for (let k = 1; k < 9; k++) { g.beginPath(); g.arc(W / 2, W / 2, k * W / 18, 0, Math.PI * 2); g.stroke(); }
       for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; g.beginPath(); g.moveTo(W / 2 + Math.cos(a) * W / 18, W / 2 + Math.sin(a) * W / 18); g.lineTo(W / 2 + Math.cos(a) * W / 2, W / 2 + Math.sin(a) * W / 2); g.stroke(); }
     });
-    const disc = new THREE.Mesh(drape(new THREE.CircleGeometry(pz.r, 48).rotateX(-Math.PI / 2).translate(pz.at[0], 0.1, pz.at[1]), 1.0), new THREE.MeshStandardMaterial({ map: tile, roughness: 0.6 }));
+    const disc = new THREE.Mesh(drape(new THREE.CircleGeometry(pz.r, 48).rotateX(-Math.PI / 2).translate(pz.x, 0.1, pz.z), 1.0), new THREE.MeshStandardMaterial({ map: tile, roughness: 0.6 }));
     disc.receiveShadow = true;
     const f = new THREE.Group();
-    f.position.set(pz.at[0], TH(pz.at[0], pz.at[1]), pz.at[1]);
+    f.position.set(pz.x, pz.y, pz.z);
     const basin = new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.35, 0.45, 32), stone); basin.position.y = 0.3;
     const water = new THREE.Mesh(new THREE.CircleGeometry(1.1, 32).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#7fb3cf', roughness: 0.1, metalness: 0.3 })); water.position.y = 0.5;
     const col = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 0.9, 12), stone); col.position.y = 0.9;
@@ -71,23 +69,10 @@ export function buildSiteExtras({ site, group, world, city, gardenInfo }) {
 
   // ---------- エントランス棟の正面 (アーチ窓・赤い扉・上のバルコニー手すり) ----------
   const hl = site.hall;
-  const hallB = hl && city.buildings.find(b => b.style === 'hall' && site.buildings.includes(b.id));
-  if (hallB) {
-    const ring = hallB.outer, n = ring.length;
-    let s = 0;
-    for (let i = 0; i < n; i++) { const a = ring[i], c = ring[(i + 1) % n]; s += a[0] * c[1] - c[0] * a[1]; }
-    const sg = s > 0 ? 1 : -1;
-    let best = null;
-    for (let i = 0; i < n; i++) {
-      const a = ring[i], c = ring[(i + 1) % n], L = Math.hypot(c[0] - a[0], c[1] - a[1]);
-      const nx = (c[1] - a[1]) / L * sg, nz = -(c[0] - a[0]) / L * sg;
-      const d = nx * hl.front[0] + nz * hl.front[1];
-      if (!best || d > best.d) best = { a, c, L, nx, nz, d };
-    }
-    const { a, c, L, nx, nz } = best;
-    const H = hallB.h;
+  if (hl) {
+    const L = hl.width, H = hl.height, nx = Math.sin(hl.yaw), nz = Math.cos(hl.yaw);
     const draw = (lit) => canvasTexture(512, Math.round(512 * H / L), (g, W, Hh) => {
-      g.fillStyle = lit ? '#000' : (hallB.color || '#e3d2b0'); g.fillRect(0, 0, W, Hh);
+      g.fillStyle = lit ? '#000' : hl.color; g.fillRect(0, 0, W, Hh);
       const px = W / L, floorY = Hh * (1 - 4.2 / H);
       if (!lit) {
         g.fillStyle = '#f4efe6'; g.fillRect(0, floorY - 10, W, 12);          // 2階の床の帯
@@ -114,27 +99,22 @@ export function buildSiteExtras({ site, group, world, city, gardenInfo }) {
     const tex = draw(false), lit = draw(true);
     const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: lit, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.8 });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(L, H), m);
-    plane.position.set((a[0] + c[0]) / 2 + nx * 0.04, (hallB.y || 0) + H / 2, (a[1] + c[1]) / 2 + nz * 0.04);
-    plane.rotation.y = Math.atan2(nx, nz);
+    plane.position.set(hl.x + nx * 0.04, hl.y + H / 2, hl.z + nz * 0.04);
+    plane.rotation.y = hl.yaw;
     plane.receiveShadow = true;
     group.add(plane);
     group.userData.emissive = (group.userData.emissive || []).concat(m);
     // 庇 (入口の上の小さな屋根)
     const canopy = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.18, 1.6), stone);
-    canopy.position.set((a[0] + c[0]) / 2 + nx * 0.8, (hallB.y || 0) + 3.9, (a[1] + c[1]) / 2 + nz * 0.8);
-    canopy.rotation.y = Math.atan2(nx, nz);
+    canopy.position.set(hl.x + nx * 0.8, hl.y + 3.9, hl.z + nz * 0.8);
+    canopy.rotation.y = hl.yaw;
     group.add(shadow(canopy));
   }
 
   // ---------- 屋上の塔 (八角形の胴 + グレーのドーム + 尖塔) ----------
   for (const t of site.turrets || []) {
-    const [x, z] = t.at;
-    const host = world.query(x, z, x, z).find(b => world.contains(b, x, z));
-    if (!host) continue;
-    const bd = city.buildings.find(b => b.id === host.id);
-    const base = host.topY + (bd && bd.mansard ? 1.5 : 0);
     const tw = new THREE.Group();
-    tw.position.set(x, base, z);
+    tw.position.set(t.x, t.y, t.z);
     const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 2.4, 8).translate(0, 1.2, 0), new THREE.MeshStandardMaterial({ color: '#dcc6a0', roughness: 0.85 }));
     const winTex = canvasTexture(256, 64, (g, W, Hh) => {
       g.fillStyle = '#dcc6a0'; g.fillRect(0, 0, W, Hh);
@@ -150,66 +130,45 @@ export function buildSiteExtras({ site, group, world, city, gardenInfo }) {
   }
 
   // ---------- 1階の青い日よけ (中庭に面した壁) ----------
-  if (site.awnings && gardenInfo) {
-    const { cx, cz, main } = gardenInfo;
-    const every = site.awnings.every || 7.2;
+  if (site.awnings) {
     const tex = canvasTexture(128, 64, (g, W, Hh) => { g.fillStyle = site.awnings.color; g.fillRect(0, 0, W, Hh); g.fillStyle = '#f4f1ea'; g.fillRect(0, Hh - 8, W, 4); });
     const mat = new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.7 });
-    const ring = main.outer, n = ring.length;
-    let s = 0;
-    for (let i = 0; i < n; i++) { const a = ring[i], c = ring[(i + 1) % n]; s += a[0] * c[1] - c[0] * a[1]; }
-    const sg = s > 0 ? 1 : -1;
-    for (let i = 0; i < n; i++) {
-      const a = ring[i], c = ring[(i + 1) % n], L = Math.hypot(c[0] - a[0], c[1] - a[1]);
-      if (L < 20) continue;
-      const ux = (c[0] - a[0]) / L, uz = (c[1] - a[1]) / L, nx = uz * sg, nz = -ux * sg;
-      const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
-      const tc = Math.hypot(cx - mx, cz - mz);
-      if ((cx - mx) * nx + (cz - mz) * nz < 0.6 * tc) continue; // 中庭側を向いた壁だけ
-      for (let t = every / 2 + 1.8; t < L - 2; t += every) {
-        const aw = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.0), mat);
-        aw.position.set(a[0] + ux * t + nx * 0.45, (main.y || 0) + 2.55, a[1] + uz * t + nz * 0.45);
-        aw.rotation.order = 'YXZ';
-        aw.rotation.y = Math.atan2(nx, nz);
-        aw.rotation.x = -1.0;
-        aw.castShadow = true;
-        group.add(aw);
-      }
+    for (const it of site.awnings.items) {
+      const aw = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.0), mat);
+      aw.position.set(it.x, it.y, it.z);
+      aw.rotation.order = 'YXZ';
+      aw.rotation.y = it.yaw;
+      aw.rotation.x = -1.0;
+      aw.castShadow = true;
+      group.add(aw);
     }
   }
 
   // ---------- 庭: 白い縁の花壇・オベリスク・丸い天窓 ----------
-  if (gardenInfo) {
-    const { lo, hi, P, clearOf } = gardenInfo;
+  if (site.beds) {
     const border = stone, shrub = new THREE.MeshStandardMaterial({ color: '#4f7a3f', roughness: 0.95 });
-    for (let t = lo + 6; t < hi - 6; t += 12) {
-      if (Math.abs(t) < 10) continue;
-      for (const side of [-1, 1]) {
-        const [x, z] = P(t, side * 6.5);
-        if (!clearOf(x, z, 2.6)) continue;
-        const bed = new THREE.Group();
-        bed.position.set(x, TH(x, z), z);
-        bed.rotation.y = Math.atan2(gardenInfo.ux, gardenInfo.uz);
-        const frame = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.4, 4.2).translate(0, 0.2, 0), border);
-        const fill = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.75, 3.8).translate(0, 0.38, 0), shrub);
-        bed.add(shadow(frame), shadow(fill));
-        group.add(bed);
-      }
+    for (const it of site.beds) {
+      const bed = new THREE.Group();
+      bed.position.set(it.x, it.y, it.z);
+      bed.rotation.y = it.yaw;
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.4, 4.2).translate(0, 0.2, 0), border);
+      const fill = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.75, 3.8).translate(0, 0.38, 0), shrub);
+      bed.add(shadow(frame), shadow(fill));
+      group.add(bed);
     }
-    // オベリスク (エントランス側の端) と丸い天窓 (反対側の端)
-    const hallC = hallB ? hallB.outer.reduce((q, p) => [q[0] + p[0] / hallB.outer.length, q[1] + p[1] / hallB.outer.length], [0, 0]) : null;
-    const ends = [P(lo + 7, 0), P(hi - 7, 0)];
-    const near = hallC ? (Math.hypot(ends[0][0] - hallC[0], ends[0][1] - hallC[1]) < Math.hypot(ends[1][0] - hallC[0], ends[1][1] - hallC[1]) ? 0 : 1) : 0;
-    const [ox, oz] = ends[near];
+  }
+  if (site.obelisk) {
+    const { x: ox, y: oy, z: oz } = site.obelisk;
     const ob = new THREE.Group();
-    ob.position.set(ox, TH(ox, oz), oz);
+    ob.position.set(ox, oy, oz);
     ob.add(shadow(new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 1.4).translate(0, 0.4, 0), stone)));
     ob.add(shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.42, 4.2, 4).rotateY(Math.PI / 4).translate(0, 2.9, 0), stone)));
     ob.add(new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.6, 4).rotateY(Math.PI / 4).translate(0, 5.3, 0), stone));
     group.add(ob);
-    const [sx, sz] = ends[1 - near];
+  }
+  if (site.skylight) {
     const sky = new THREE.Group();
-    sky.position.set(sx, TH(sx, sz), sz);
+    sky.position.set(site.skylight.x, site.skylight.y, site.skylight.z);
     sky.add(shadow(new THREE.Mesh(new THREE.CylinderGeometry(3.6, 3.8, 0.9, 40).translate(0, 0.45, 0), stone)));
     sky.add(shadow(new THREE.Mesh(new THREE.SphereGeometry(1.4, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.9, 0),
       new THREE.MeshStandardMaterial({ color: '#cfe0ea', roughness: 0.1, metalness: 0.4, transparent: true, opacity: 0.85 }))));

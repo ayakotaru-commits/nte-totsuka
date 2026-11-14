@@ -509,43 +509,19 @@ function buildGround(city, bridges) {
   return { ground: drape(gb.geometry()), water: drape(water.geometry(), 3.5, 0.45), roads: drape(roadGB.geometry(), 3.5, 0.12, (x, z) => bridges.onVehicleBridge(x, z)) };
 }
 
-// ---- 木 (公園・森に散布) ----
-function pointInRing(ring, x, z) {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0], zi = ring[i][1], xj = ring[j][0], zj = ring[j][1];
-    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-function buildTrees(city, world) {
-  const spots = [];
-  const density = { wood: 1 / 60, park: 1 / 220, grass: 1 / 400 };
-  for (const a of city.areas) {
-    const d = density[a.kind];
-    if (!d) continue;
-    let minx = Infinity, minz = Infinity, maxx = -Infinity, maxz = -Infinity;
-    for (const [x, z] of a.outer) { minx = Math.min(minx, x); maxx = Math.max(maxx, x); minz = Math.min(minz, z); maxz = Math.max(maxz, z); }
-    const rnd = hash('tree' + a.outer[0].join(','));
-    const n = Math.min(800, Math.floor(Math.abs(signedArea(a.outer)) * d));
-    for (let i = 0; i < n * 2 && spots.length < 5000; i++) {
-      const x = minx + rnd() * (maxx - minx), z = minz + rnd() * (maxz - minz);
-      const B = city.bounds;
-      if (x < B.minX || x > B.maxX || z < B.minZ || z > B.maxZ) continue;
-      if (!pointInRing(a.outer, x, z) || (a.holes || []).some(h => pointInRing(h, x, z))) continue;
-      if (world.insideAny(x, z)) continue;
-      spots.push([x, z, 0.7 + rnd() * 0.7, rnd()]);
-    }
-  }
+// ---- 木 (公園・森・草地) ----
+// 位置は tools/build_props.py が計算した data/props.json の trees: [x, z, y, 大きさの倍率, 0〜1 の乱数]
+function buildTrees(props) {
+  const spots = (props && props.trees) || [];
+  if (!props) console.warn('data/props.json が無いので木を置きません (python tools/build_props.py で作る)');
   const trunkGeo = new THREE.CylinderGeometry(0.12, 0.18, 2.2, 6).translate(0, 1.1, 0);
   const crownGeo = new THREE.IcosahedronGeometry(1.7, 0).translate(0, 3.2, 0);
   const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: '#6b5440', roughness: 1 }), spots.length);
   const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, flatShading: true }), spots.length);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
-  spots.forEach(([x, z, sc, r], i) => {
+  spots.forEach(([x, z, y, sc, r], i) => {
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r * 6.28);
-    m.compose(p.set(x, H(x, z), z), q, s.set(sc, sc, sc));
+    m.compose(p.set(x, y, z), q, s.set(sc, sc, sc));
     trunks.setMatrixAt(i, m); crowns.setMatrixAt(i, m);
     crowns.setColorAt(i, c.setHSL(0.24 + r * 0.08, 0.45, 0.28 + r * 0.12));
   });
@@ -555,7 +531,7 @@ function buildTrees(city, world) {
   return [trunks, crowns];
 }
 
-export function buildCity(city, world) {
+export function buildCity(city, world, props = null) {
   const group = new THREE.Group();
   group.name = 'totsuka_city';
 
@@ -599,7 +575,7 @@ export function buildCity(city, world) {
   }
   group.add(base);
 
-  group.add(...buildTrees(city, world));
+  group.add(...buildTrees(props));
 
   return { group, windowMats: [mats.office, mats.house, mats.euro], waterMat: mats.water, mats };
 }

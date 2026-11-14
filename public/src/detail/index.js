@@ -1,4 +1,5 @@
 // 街並みディテール (お試し) の入口。V キーでまとめてオン/オフ。
+// 小物・敷地の外構・ベランダ・看板の配置は data/props.json (tools/build_props.py が city.json から作る。main.js が読んで渡す)。
 import { DETAIL } from './config.js';
 import { buildProps } from './props.js';
 import { buildStreet } from './street.js';
@@ -6,19 +7,20 @@ import { applyTextures } from './textures.js';
 import { buildShapes } from './shapes.js';
 import { buildSites } from './site.js';
 
-export async function loadDetail({ scene, city, world, built }) {
+export async function loadDetail({ scene, city, world, built, props }) {
   const c = city.start || { x: 0, z: 0 };
   const ctx = { city, world, built, cx: c.x, cz: c.z, R: DETAIL.radius };
   const parts = [];
   const emissive = [];
   const updaters = []; // 毎フレーム呼ぶもの (信号の切り替え)
+  if (!props) console.warn('[detail] data/props.json がありません。python tools/build_props.py で作ってください (小物・外構・ベランダ・看板なし)');
 
-  if (DETAIL.props) {
-    const p = buildProps(ctx);
+  if (DETAIL.props && props) {
+    const p = buildProps(props);
     scene.add(p.group);
     emissive.push(...p.emissive);
     parts.push({ set: (v) => { p.group.visible = v; } });
-    const st = buildStreet(ctx); // 信号機・バス停
+    const st = buildStreet(props); // 信号機・バス停
     scene.add(st.group);
     parts.push({ set: (v) => { st.group.visible = v; } });
     updaters.push(st.update);
@@ -30,25 +32,28 @@ export async function loadDetail({ scene, city, world, built }) {
     } catch (e) { console.warn('[detail] textures skipped:', e); }
   }
 
-  if (DETAIL.shapes) {
-    const s = buildShapes(ctx);
+  if (DETAIL.shapes && props) {
+    const s = buildShapes(props);
     scene.add(s.group);
     emissive.push(...s.emissive);
     parts.push({ set: (v) => { s.group.visible = v; } });
   }
 
-  if (DETAIL.shapes) {
-    const st = buildSites(ctx);
+  if (DETAIL.shapes && props) {
+    const st = buildSites(props);
     scene.add(st.group);
     emissive.push(...(st.group.userData.emissive || []));
     parts.push({ set: (v) => { st.group.visible = v; } });
   }
 
+  // 当たり判定 (V キーで見た目を消すと一緒に外す)
+  if (props) world.addColliders(props.colliders);
+
   let on = true;
   return {
     emissive, // 夜に光らせるマテリアル (TimeOfDay に渡す)
     get on() { return on; },
-    set on(v) { on = v; parts.forEach(p => p.set(v)); },
+    set on(v) { on = v; parts.forEach(p => p.set(v)); world.propsOn = v; },
     update(t) { if (on) updaters.forEach(f => f(t)); }, // t = 経過秒
   };
 }

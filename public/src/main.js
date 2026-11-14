@@ -25,6 +25,9 @@ async function main() {
   const city = await (await fetch('data/city.json')).json();
   // 地形 (無ければ平らな地面)
   try { const r = await fetch('data/terrain.json'); if (r.ok) setTerrain(await r.json()); } catch { /* 平らなまま */ }
+  // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py が作る。無ければそれらを置かない)
+  let props = null;
+  try { const r = await fetch('data/props.json'); if (r.ok) props = await r.json(); } catch { /* 無し */ }
 
   $('credit').textContent = '地図データ ' + city.attribution;
 
@@ -67,9 +70,10 @@ async function main() {
   status('街を生成中…');
   await new Promise(r => setTimeout(r, 0));
   const world = new World(city.buildings, city.bounds);
-  const built = buildCity(city, world);
+  const built = buildCity(city, world, props);
   scene.add(built.group);
-  const detail = await loadDetail({ scene, city, world, built }); built.windowMats.push(...detail.emissive); // detail (お試し)
+  if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
+  const detail = await loadDetail({ scene, city, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
 
   const input = new Input();
   const player = new Player(world, scene);

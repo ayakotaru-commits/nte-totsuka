@@ -1,0 +1,1080 @@
+"""public/data/city.json -> public/data/props.json (路上の小物・敷地の外構・建物の飾り・木の配置 + 当たり判定)
+
+以前はブラウザ (public/src/detail/*.js と city.js の木) が起動のたびに計算していた配置を、ここで計算してデータにする。
+ブラウザ版も Unity 版も props.json を読んで置くだけにするため。
+
+使い方: python tools/build_props.py
+  build_city.py と lidar_shape.py は city.json を書いた後にこれを呼ぶ。
+
+座標: city.json と同じ (1単位=1m, x=東, y=上, z=南)。
+  y   = その場所の地面の高さ (terrain.json と同じ補間)。敷地の小物は基準の高さ。
+  yaw = Y 軸まわりの回転 (ラジアン)。回転後の局所 +Z が (sin yaw, cos yaw) を向く (three.js の rotation.y と同じ)。
+形式の詳細は README の「小物の配置 (props.json)」。
+"""
+import json
+import math
+import pathlib
+import re
+from decimal import Decimal, ROUND_HALF_UP
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+CITY = ROOT / "public" / "data" / "city.json"
+TERRAIN = ROOT / "public" / "data" / "terrain.json"
+DST = ROOT / "public" / "data" / "props.json"
+
+RADIUS = 3000  # スタート地点からの半径 (m)。3000 = マップ全体 (旧 detail/config.js の radius)
+STEP = 0.4     # world.js の STEP (乗り越えられる段差)
+
+POLE_ROADS = {"residential", "unclassified", "tertiary", "living_street", "secondary", "service"}
+DRIVABLE = {"trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link", "tertiary", "tertiary_link",
+            "unclassified", "residential", "living_street", "service", "busway"}
+MAJOR = {"trunk", "primary", "secondary", "tertiary"}
+RANK = {"trunk": 5, "primary": 4, "secondary": 3, "tertiary": 2, "trunk_link": 2, "primary_link": 2, "secondary_link": 2,
+        "tertiary_link": 2, "unclassified": 1, "residential": 1, "living_street": 1, "busway": 1, "service": 0}
+# 信号の 1 周期 (秒)。灯火の切り替えは描画側 (street.js) の仕事。ここでは各信号のずれ (offset) だけ決める
+CYCLE = (22 + 3 + 2) * 2
+
+
+def rank(k):
+    return RANK.get(k, 0)
+
+
+# ---------- JS と同じ結果にするための小道具 ----------
+M32 = 0xFFFFFFFF
+
+
+def imul(a, b):
+    return (a * b) & M32
+
+
+def hash_rng(s):
+    """detail/util.js の hash() と同じ乱数列 (FNV-1a + 攪拌)"""
+    h = 2166136261
+    for ch in s:  # 使う文字列は ASCII だけ (JS の charCodeAt と同じ値)
+        h ^= ord(ch)
+        h = imul(h, 16777619)
+
+    def rnd():
+        nonlocal h
+        h = imul(h ^ (h >> 15), 2246822507)
+        h = imul(h ^ (h >> 13), 3266489909)
+        h ^= h >> 16
+        return h / 4294967296
+    return rnd
+
+
+def js_num(v):
+    """JS の数値 → 文字列 (Array.join と同じ)"""
+    if isinstance(v, float) and v.is_integer() and abs(v) < 1e21:
+        return str(int(v))
+    return repr(v) if isinstance(v, float) else str(v)
+
+
+def js_join(arr):
+    return ",".join(js_num(v) for v in arr)
+
+
+def to_fixed(v, n):
+    """JS の Number.prototype.toFixed (ちょうど半分は 0 から遠い方へ)"""
+    q = Decimal(1).scaleb(-n)
+    s = str(Decimal(v).quantize(q, rounding=ROUND_HALF_UP))
+    return s
+
+
+def r2(v):
+    return round(v, 2)
+
+
+def r3(v):
+    return round(v, 3)
+
+
+# ---------- 地形 (terrain.js の H と同じ補間) ----------
+def load_terrain():
+    if not TERRAIN.exists():
+        return lambda x, z: 0.0
+    T = json.loads(TERRAIN.read_text(encoding="utf-8"))
+    nx, nz, step, minX, minZ, h = T["nx"], T["nz"], T["step"], T["minX"], T["minZ"], T["h"]
+
+    def H(x, z):
+        fx = max(0, min(nx - 1.0001, (x - minX) / step))
+        fz = max(0, min(nz - 1.0001, (z - minZ) / step))
+        i, j = math.floor(fx), math.floor(fz)
+        u, v = fx - i, fz - j
+        g = lambda ii, jj: h[jj * nx + ii] / 100
+        h00, h10, h01, h11 = g(i, j), g(i + 1, j), g(i, j + 1), g(i + 1, j + 1)
+        return h00 + u * (h10 - h00) + v * (h11 - h10) if u >= v else h00 + v * (h01 - h00) + u * (h11 - h01)
+    return H
+
+
+# ---------- 建物の索引 (world.js の World と同じ判定) ----------
+class World:
+    def __init__(self, buildings, cell=16):
+        self.cell = cell
+        self.grid = {}
+        self.list = []
+        for b in buildings:
+            rings = [b["outer"], *(b.get("holes") or [])]
+            xs = [p[0] for p in b["outer"]]
+            zs = [p[1] for p in b["outer"]]
+            base = b.get("y") or 0
+            minH = b.get("minH") or 0
+            rec = {"id": b["id"], "rings": rings, "h": b["h"], "minH": minH, "base": base, "topY": base + b["h"],
+                   "minY": base + minH, "minx": min(xs), "maxx": max(xs), "minz": min(zs), "maxz": max(zs), "idx": len(self.list)}
+            self.list.append(rec)
+            for i in range(math.floor(rec["minx"] / cell), math.floor(rec["maxx"] / cell) + 1):
+                for j in range(math.floor(rec["minz"] / cell), math.floor(rec["maxz"] / cell) + 1):
+                    self.grid.setdefault((i, j), []).append(rec)
+
+    def query(self, minx, minz, maxx, maxz):
+        seen, out, c = set(), [], self.cell
+        for i in range(math.floor(minx / c), math.floor(maxx / c) + 1):
+            for j in range(math.floor(minz / c), math.floor(maxz / c) + 1):
+                for r in self.grid.get((i, j), ()):
+                    if r["idx"] in seen:
+                        continue
+                    seen.add(r["idx"])
+                    if r["maxx"] < minx or r["minx"] > maxx or r["maxz"] < minz or r["minz"] > maxz:
+                        continue
+                    out.append(r)
+        out.sort(key=lambda r: r["idx"])  # JS はセルの順だが、結果を使う側は順序に依らない (find/some/最小値)
+        return out
+
+    @staticmethod
+    def contains(b, x, z):
+        if x < b["minx"] or x > b["maxx"] or z < b["minz"] or z > b["maxz"]:
+            return False
+        inside = False
+        for ring in b["rings"]:
+            j = len(ring) - 1
+            for i in range(len(ring)):
+                xi, zi = ring[i]
+                xj, zj = ring[j]
+                if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+                    inside = not inside
+                j = i
+        return inside
+
+    @staticmethod
+    def closest_d(b, x, z):
+        best = math.inf
+        for ring in b["rings"]:
+            j = len(ring) - 1
+            for i in range(len(ring)):
+                ax, az = ring[j]
+                ex, ez = ring[i][0] - ax, ring[i][1] - az
+                l2 = ex * ex + ez * ez
+                t = ((x - ax) * ex + (z - az) * ez) / l2 if l2 > 0 else 0
+                t = 0 if t < 0 else 1 if t > 1 else t
+                d2 = (x - ax - ex * t) ** 2 + (z - az - ez * t) ** 2
+                if d2 < best:
+                    best = d2
+                j = i
+        return math.sqrt(best)
+
+
+class PointGrid:
+    """「この点から d 以内に既にあるか」を速く調べる"""
+    def __init__(self, cell=10):
+        self.cell, self.g = cell, {}
+
+    def add(self, x, z):
+        self.g.setdefault((math.floor(x / self.cell), math.floor(z / self.cell)), []).append((x, z))
+
+    def near(self, x, z, d):
+        c = self.cell
+        for i in range(math.floor((x - d) / c), math.floor((x + d) / c) + 1):
+            for j in range(math.floor((z - d) / c), math.floor((z + d) / c) + 1):
+                for px, pz in self.g.get((i, j), ()):
+                    if (px - x) ** 2 + (pz - z) ** 2 < d * d:
+                        return True
+        return False
+
+
+# ---------- 道路 (detail/util.js と同じ) ----------
+def intersections(roads):
+    m = {}
+    key = lambda p: to_fixed(p[0], 1) + "," + to_fixed(p[1], 1)
+    for r in roads:
+        if r["kind"] not in DRIVABLE or r.get("ys"):
+            continue
+        pts = r["pts"]
+        for i, p in enumerate(pts):
+            k = key(p)
+            n = m.get(k)
+            if n is None:
+                n = m[k] = {"x": p[0], "z": p[1], "arms": []}
+            for j in (i - 1, i + 1):
+                if j < 0 or j >= len(pts):
+                    continue
+                q = pts[j]
+                dx, dz = q[0] - p[0], q[1] - p[1]
+                L = math.hypot(dx, dz)
+                if L > 0.5:
+                    n["arms"].append({"road": r, "dir": (dx / L, dz / L), "len": L, "fwd": j == i + 1})
+    return [n for n in m.values() if len(n["arms"]) >= 3]
+
+
+def edge(r, side):
+    """中心線から side (+1=左, -1=右) 側の道路面の縁まで"""
+    return r["half"][0 if side > 0 else 1] if r.get("half") else r["w"] / 2
+
+
+def carriage(r):
+    sw = r.get("sw") or 0
+    if r.get("half"):
+        return r["half"][0] + r["half"][1] - 2 * sw, (r["half"][0] - r["half"][1]) / 2
+    return r["w"] - 2 * sw, 0
+
+
+def walk(pts, start, step, cb):
+    """折れ線に沿って一定間隔の点を返す"""
+    s, nxt = 0, start
+    for i in range(len(pts) - 1):
+        ax, az = pts[i]
+        bx, bz = pts[i + 1]
+        dx, dz = bx - ax, bz - az
+        L = math.hypot(dx, dz)
+        if L < 0.01:
+            continue
+        while nxt <= s + L:
+            t = (nxt - s) / L
+            cb(ax + dx * t, az + dz * t, dx / L, dz / L)
+            nxt += step
+        s += L
+
+
+# ---------- 当たり判定の形 ----------
+class Colliders:
+    """circle: [x, z, r, y0, y1]
+    box:    [x, z, yaw, hx, hz, y0, y1]  (hx = 局所 X の半幅, hz = 局所 Z の半幅)
+    line:   [hw, h, x0, z0, y0, x1, z1, y1, ...]  折れ線に沿った厚さ 2*hw の壁。各区間の下端は両端の y の小さい方、高さ h
+    tree:   circle と同じ形。木の幹 (木は小物の表示を切っても残るので、別にしてある)
+    y0, y1 は絶対高さ (下端・上端)"""
+    def __init__(self):
+        self.circle, self.box, self.line, self.tree = [], [], [], []
+
+    def add_line(self, pts, hw, h):
+        self.line.append([hw, h] + [v for p in pts for v in p])
+
+    def add_circle(self, x, z, r, y0, h):
+        self.circle.append([r2(x), r2(z), r3(r), r2(y0), r2(y0 + h)])
+
+    def add_box(self, x, z, yaw, hx, hz, y0, h):
+        self.box.append([r2(x), r2(z), r3(yaw), r3(hx), r3(hz), r2(y0), r2(y0 + h)])
+
+
+# =====================================================================
+# 1. 路上の小物: 電柱・電線・街灯・路面標示・ガードパイプ・自販機・カーブミラー (旧 detail/props.js)
+# =====================================================================
+def build_street_props(city, world, H, cx, cz, R, col):
+    inR = lambda x, z, m=0: (x - cx) ** 2 + (z - cz) ** 2 <= (R + m) ** 2
+    roads = [r for r in city["roads"] if any(inR(p[0], p[1], 40) for p in r["pts"])]
+    nodes = [n for n in intersections(roads) if inR(n["x"], n["z"])]
+    node_grid = PointGrid(20)
+    for n in nodes:
+        node_grid.add(n["x"], n["z"])
+
+    def clear(x, z, r):
+        for b in world.query(x - r, z - r, x + r, z + r):
+            if world.contains(b, x, z) or world.closest_d(b, x, z) < r:
+                return False
+        return True
+
+    def near_building(x, z, r):
+        return any(world.closest_d(b, x, z) < r for b in world.query(x - r, z - r, x + r, z + r))
+
+    gates = [s["gate"] for s in city.get("sites") or [] if s.get("gate") and s["gate"].get("center")]
+
+    def at_gate(x, z):
+        for g in gates:
+            dx, dz = x - g["center"][0], z - g["center"][1]
+            if abs(-dx * g["axis"][1] + dz * g["axis"][0]) < g["passage"] / 2 + 1.0 and abs(dx * g["axis"][0] + dz * g["axis"][1]) < g["length"] / 2 + 15:
+                return True
+        return False
+
+    # ---------- 電柱・電線・街灯 ----------
+    poles, chains = [], []
+    pole_grid = PointGrid(10)
+    for r in roads:
+        if r["kind"] not in POLE_ROADS or r["w"] < 4 or r.get("ys"):
+            continue
+        rnd = hash_rng("pole" + js_join(r["pts"][0]))
+        side = 1 if rnd() < 0.5 else -1
+        chain = []
+
+        def cb(x, z, dx, dz, r=r, side=side, chain=chain):
+            nx, nz = -dz * side, dx * side
+            off = edge(r, side) - r["sw"] + 0.6 if r.get("sw") else edge(r, side) + 0.5
+            px, pz = x + nx * off, z + nz * off
+            if not inR(px, pz) or not clear(px, pz, 0.5) or pole_grid.near(px, pz, 9):
+                if chain:
+                    chains.append(chain[:])
+                    chain.clear()
+                return
+            p = {"x": px, "z": pz, "tx": -nx, "tz": -nz, "i": len(poles)}
+            poles.append(p)
+            pole_grid.add(px, pz)
+            chain.append(p)
+        walk(r["pts"], 8 + rnd() * 10, 30, cb)
+        if chain:
+            chains.append(chain)
+
+    out_poles = []
+    for p in poles:
+        y = H(p["x"], p["z"])
+        p["y"] = y
+        out_poles.append({"x": r2(p["x"]), "z": r2(p["z"]), "y": r2(y), "yaw": r3(math.atan2(p["tx"], p["tz"])),
+                          "transformer": p["i"] % 3 == 1, "lamp": p["i"] % 2 == 0})
+        col.add_circle(p["x"], p["z"], 0.2, y, 10.5)
+
+    # 電線: 隣り合う電柱の間。腕金の 3 本 (高さ 9.68) + 通信線 2 本。たるみ sag (m) は中央での下がり
+    wires = []
+    for ch in chains:
+        for i in range(len(ch) - 1):
+            a, b = ch[i], ch[i + 1]
+            if math.hypot(a["x"] - b["x"], a["z"] - b["z"]) > 45:
+                continue
+            for o in (-0.75, 0, 0.75):
+                wires.append([r2(a["x"] + a["tz"] * o), r2(a["y"] + 9.68), r2(a["z"] - a["tx"] * o),
+                              r2(b["x"] + b["tz"] * o), r2(b["y"] + 9.68), r2(b["z"] - b["tx"] * o), 0.35])
+            wires.append([r2(a["x"]), r2(a["y"] + 7.2), r2(a["z"]), r2(b["x"]), r2(b["y"] + 7.2), r2(b["z"]), 0.5])
+            wires.append([r2(a["x"]), r2(a["y"] + 6.9), r2(a["z"]), r2(b["x"]), r2(b["y"] + 6.9), r2(b["z"]), 0.55])
+
+    # ---------- 路面標示 (横断歩道の縞・停止線・止まれ) ----------
+    # 長方形 [中心x, 中心z, 長さ方向dx, dz, 長さ, 幅]。路面に沿わせる (drape) のは描画側
+    paint, tomare = [], []
+
+    def rect(lst, x, z, d, L, w):
+        lst.append([r2(x), r2(z), r3(d[0]), r3(d[1]), r3(L), r3(w)])
+
+    for n in nodes:
+        max_rank = max(rank(a["road"]["kind"]) for a in n["arms"])
+        has_major = any(a["road"]["kind"] in MAJOR for a in n["arms"])
+        for a in n["arms"]:
+            others = [o for o in n["arms"] if o is not a]
+            half = max(o["road"]["w"] / 2 for o in others)
+            dx, dz = a["dir"]
+            nx, nz = -dz, dx
+            w, cc = carriage(a["road"])
+            c0 = cc if a["fwd"] else -cc
+            if has_major and w >= 5 and a["len"] > half + 6:
+                d = half + 2.2
+                cnt = math.floor((w - 1) / 0.9)
+                for i in range(cnt):
+                    t = (i - (cnt - 1) / 2) * 0.9
+                    rect(paint, n["x"] + dx * d + nx * (t + c0), n["z"] + dz * d + nz * (t + c0), (dx, dz), 3.0, 0.45)
+            if rank(a["road"]["kind"]) < max_rank and a["road"]["kind"] in DRIVABLE and a["len"] > half + 9:
+                d = half + (4.2 if has_major else 1.2)
+                rect(paint, n["x"] + dx * d + nx * c0, n["z"] + dz * d + nz * c0, (nx, nz), w * 0.9, 0.35)
+                if w >= 4:
+                    # 文字の上が交差点側。左側通行なので、交差点へ向かう進行方向 (-dir) の左車線
+                    dt, lane = d + 3.4, w / 4
+                    left = (-dz, dx)
+                    ox, oz = n["x"] + dx * dt + left[0] * (c0 + lane), n["z"] + dz * dt + left[1] * (c0 + lane)
+                    rect(tomare, ox, oz, (-dx, -dz), 4.0, min(2.4, w * 0.45))
+
+    # ---------- ガードパイプ (幹線の歩道側) ----------
+    # ひと続きの柵ごとに支柱の点の列 [[x, z, y], ...]。支柱は約 2m おき、隣どうしをパイプ 2 段 (高さ 0.45, 0.8) でつなぐ
+    guards = []
+    for r in roads:
+        if r["kind"] not in MAJOR or r.get("ys"):
+            continue
+        for side in (1, -1):
+            run = [None]
+
+            def cb(x, z, dx, dz, r=r, side=side, run=run):
+                go = edge(r, side) - r["sw"] + 0.2 if r.get("sw") else edge(r, side) + 0.2
+                px, pz = x - dz * side * go, z + dx * side * go
+                ok = inR(px, pz) and not node_grid.near(x, z, r["w"] / 2 + 9) and clear(px, pz, 0.3) and not at_gate(px, pz)
+                if not ok:
+                    run[0] = None
+                    return
+                cur = run[0]
+                if cur and math.hypot(cur[-1][0] - px, cur[-1][1] - pz) < 2.6:
+                    cur.append((px, pz))
+                else:
+                    run[0] = [(px, pz)]
+                    guards.append(run[0])
+            walk(r["pts"], 1, 2, cb)
+    out_guards = []
+    for g in guards:
+        pts = [[r2(x), r2(z), r2(H(x, z))] for x, z in g]
+        out_guards.append(pts)
+        if len(pts) >= 2:
+            col.add_line(pts, 0.06, 0.85)
+    n_posts = sum(len(g) for g in guards)
+
+    # ---------- 自販機 ----------
+    vending = []
+    for r in roads:
+        if r["kind"] not in ("residential", "unclassified", "tertiary", "living_street") or len(vending) >= 60 or r.get("ys"):
+            continue
+        rnd = hash_rng("vend" + js_join(r["pts"][0]))
+
+        def cb(x, z, dx, dz, r=r, rnd=rnd):
+            if len(vending) >= 60:
+                return
+            side = 1 if rnd() < 0.5 else -1
+            nx, nz = -dz * side, dx * side
+            for off in (edge(r, side) + 0.6, edge(r, side) + 1.2):
+                px, pz = x + nx * off, z + nz * off
+                if not inR(px, pz) or not clear(px, pz, 0.6) or not near_building(px, pz, 2.5) or pole_grid.near(px, pz, 2):
+                    continue
+                color = math.floor(rnd() * 3)
+                y, yaw = H(px, pz), math.atan2(-nx, -nz)  # 正面 (+Z) を道路側へ
+                vending.append({"x": r2(px), "z": r2(pz), "y": r2(y), "yaw": r3(yaw), "color": color})
+                col.add_box(px, pz, yaw, 0.5, 0.375, y, 1.83)
+                break
+        walk(r["pts"], 15 + rnd() * 30, 80, cb)
+
+    # ---------- カーブミラー (生活道路どうしの交差点) ----------
+    mirrors = []
+    for n in nodes:
+        if len(mirrors) >= 150 or any(rank(a["road"]["kind"]) > 1 for a in n["arms"]):
+            continue
+        a, b = n["arms"][0], n["arms"][1]
+        bx, bz = a["dir"][0] + b["dir"][0], a["dir"][1] + b["dir"][1]
+        L = math.hypot(bx, bz)
+        if L < 0.3:
+            continue
+        bx, bz = bx / L, bz / L
+        half = max(o["road"]["w"] / 2 for o in n["arms"])
+        px, pz = n["x"] + bx * (half + 1.3), n["z"] + bz * (half + 1.3)
+        if not clear(px, pz, 0.3):
+            continue
+        y = H(px, pz)
+        mirrors.append({"x": r2(px), "z": r2(pz), "y": r2(y), "yaw": r3(math.atan2(-bx, -bz))})
+        col.add_circle(px, pz, 0.08, y, 3.3)
+
+    print(f"poles={len(poles)} wires={len(wires)} paint={len(paint)} tomare={len(tomare)} guard runs={len(guards)} posts={n_posts} vending={len(vending)} mirrors={len(mirrors)}")
+    return {"poles": out_poles, "wires": wires, "paint": paint, "tomare": tomare,
+            "guardRails": out_guards, "vending": vending, "mirrors": mirrors}
+
+
+# =====================================================================
+# 2. 信号機・歩行者用信号・単路の横断歩道・バス停 (旧 detail/street.js)
+# =====================================================================
+def build_signals(city, world, H, cx, cz, R, col, paint):
+    inR = lambda x, z, m=0: (x - cx) ** 2 + (z - cz) ** 2 <= (R + m) ** 2
+    roads = [r for r in city["roads"] if not r.get("ys") and r["kind"] in DRIVABLE and any(inR(p[0], p[1], 60) for p in r["pts"])]
+    nodes = intersections(roads)
+
+    def clear(x, z, r):  # 地上の建物の中・壁際は不可。高架の建物の下は可
+        for b in world.query(x - r, z - r, x + r, z + r):
+            if b["minH"] > 2.5:
+                continue
+            if world.contains(b, x, z) or world.closest_d(b, x, z) < r:
+                return False
+        return True
+
+    pts = city.get("streetNodes")
+    if not pts:
+        pts = []
+        for p in city.get("pois") or []:
+            if p["cat"] == "highway:traffic_signals":
+                pts.append({"kind": "signal", "x": p["x"], "z": p["z"], "name": p.get("name")})
+            elif p["cat"] == "highway:bus_stop":
+                pts.append({"kind": "bus_stop", "x": p["x"], "z": p["z"], "name": p.get("name")})
+    pts = [p for p in pts if inR(p["x"], p["z"])]
+
+    def nearest_road(x, z, maxD):
+        best = None
+        for r in roads:
+            P = r["pts"]
+            for i in range(len(P) - 1):
+                ax, az = P[i]
+                bx, bz = P[i + 1]
+                ex, ez = bx - ax, bz - az
+                l2 = ex * ex + ez * ez
+                if l2 < 0.01:
+                    continue
+                t = max(0, min(1, ((x - ax) * ex + (z - az) * ez) / l2))
+                px, pz = ax + ex * t, az + ez * t
+                d = math.hypot(x - px, z - pz)
+                if d < maxD and (best is None or d < best["d"]):
+                    L = math.sqrt(l2)
+                    best = {"r": r, "x": px, "z": pz, "d": d, "dx": ex / L, "dz": ez / L}
+        return best
+
+    def mid_site(s):
+        return {"x": s["x"], "z": s["z"], "mid": True, "arms": [
+            {"road": s["r"], "dir": (s["dx"], s["dz"]), "len": 99, "fwd": True},
+            {"road": s["r"], "dir": (-s["dx"], -s["dz"]), "len": 99, "fwd": False}]}
+
+    sites, used = [], set()
+    for p in [p for p in pts if p["kind"] == "signal"]:
+        n, nd = None, 20
+        for q in nodes:
+            d = math.hypot(q["x"] - p["x"], q["z"] - p["z"])
+            if d < nd:
+                nd, n = d, q
+        if n:
+            if id(n) in used:
+                continue
+            used.add(id(n))
+            sites.append({"x": n["x"], "z": n["z"], "arms": n["arms"], "mid": False})
+        else:
+            s = nearest_road(p["x"], p["z"], 15)
+            if s:
+                sites.append(mid_site(s))
+    for p in [p for p in pts if p["kind"] == "crossing_signal"]:  # 単路の押しボタン式など
+        if any(math.hypot(s["x"] - p["x"], s["z"] - p["z"]) < 30 for s in sites):
+            continue
+        s = nearest_road(p["x"], p["z"], 10)
+        if s:
+            sites.append(mid_site(s))
+
+    vehicle, peds = [], []
+    for site in sites:
+        rnd = hash_rng("sig" + to_fixed(site["x"], 1) + to_fixed(site["z"], 1))
+        offset = rnd() * CYCLE
+        arms = [a for a in site["arms"] if not (a["road"]["kind"] == "service" and a["road"]["w"] < 5)]
+        if len(arms) < 2:
+            continue
+        key = lambda a: rank(a["road"]["kind"]) * 100 + a["road"]["w"]
+        m = arms[0]
+        for a in arms[1:]:
+            if key(a) > key(m):
+                m = a
+        ref = m["dir"]
+        axis_of = lambda a: 0 if abs(a["dir"][0] * ref[0] + a["dir"][1] * ref[1]) > 0.7 else 1
+        for a in arms:
+            cross_half = 0 if site["mid"] else max([0] + [o["road"]["w"] / 2 for o in site["arms"] if o is not a])
+            dx, dz = a["dir"]
+            nx, nz = -dz, dx
+            w, cc = carriage(a["road"])
+            c0 = cc if a["fwd"] else -cc
+            if w < 3:
+                continue
+            cwD = 0 if site["mid"] else cross_half + 2.2  # 横断歩道の中心 (路面標示と同じ位置)
+            if site["mid"] and a["fwd"]:  # 単路の横断歩道の縞 (片方の腕だけ)
+                cnt = math.floor((w - 1) / 0.9)
+                for i in range(cnt):
+                    t = (i - (cnt - 1) / 2) * 0.9
+                    paint.append([r2(site["x"] + nx * (t + c0)), r2(site["z"] + nz * (t + c0)), r3(dx), r3(dz), 3.0, 0.45])
+            # 車両用: この腕から出ていく車線の左側、横断歩道の先。灯器は交差点側 (-dir) を向き、車道の上に張り出す
+            side = -1 if a["fwd"] else 1
+            d = cwD + (4 if site["mid"] else 2.5)
+            if a["len"] > d * 0.7 or site["mid"]:
+                half_l = edge(a["road"], side)
+                sw = a["road"].get("sw") or 0
+                for off in ([half_l - sw + 0.5, half_l - sw + 1.0] if sw else [half_l + 0.4, half_l + 0.9, half_l]):
+                    px, pz = site["x"] + dx * d - nx * off, site["z"] + dz * d - nz * off
+                    if not clear(px, pz, 0.35):
+                        continue
+                    curbL = c0 - w / 2
+                    reach = min(5.5, max(1.6, off + curbL + min(w / 2, 3.5) * 0.6))
+                    y = H(px, pz)
+                    vehicle.append({"x": r2(px), "z": r2(pz), "y": r2(y), "yaw": r3(math.atan2(-dx, -dz)), "reach": r3(reach),
+                                    "axis": axis_of(a), "offset": r3(offset)})
+                    col.add_circle(px, pz, 0.16, y, 6.2)
+                    break
+            # 歩行者用: 横断歩道の両端。向かい側の端を向く
+            if not site["mid"] or a["fwd"]:
+                if not site["mid"] and not (any(o["road"]["kind"] in MAJOR for o in arms) and w >= 5 and a["len"] > cross_half + 6):
+                    continue
+                ends = [c0 - w / 2 - 0.6, c0 + w / 2 + 0.6]
+                pos = [(site["x"] + dx * cwD + nx * o, site["z"] + dz * cwD + nz * o) for o in ends]
+                for k in range(2):
+                    px, pz = pos[k]
+                    qx, qz = pos[1 - k]
+                    if not clear(px, pz, 0.3):
+                        continue
+                    L = math.hypot(qx - px, qz - pz) or 1
+                    sx, sz = px + dx * 1.9, pz + dz * 1.9  # 柱は横断歩道の脇
+                    y = H(sx, sz)
+                    peds.append({"x": r2(sx), "z": r2(sz), "y": r2(y), "yaw": r3(math.atan2((qx - px) / L, (qz - pz) / L)),
+                                 "axis": axis_of(a), "offset": r3(offset)})
+                    col.add_circle(sx, sz, 0.1, y, 3.2)
+
+    stops = []
+    for p in [p for p in pts if p["kind"] == "bus_stop"]:
+        s = nearest_road(p["x"], p["z"], 25)
+        if not s or any(math.hypot(o["px"] - p["x"], o["pz"] - p["z"]) < 3 for o in stops):
+            continue
+        nx, nz = -s["dz"], s["dx"]
+        side = 1 if (p["x"] - s["x"]) * nx + (p["z"] - s["z"]) * nz >= 0 else -1
+        e, sw = edge(s["r"], side), s["r"].get("sw") or 0
+        for off in ([e - sw + 0.6, e - sw + 1.2] if sw else [e + 0.5, e + 1.0, e, e - 0.4]):
+            x, z = s["x"] + nx * side * off, s["z"] + nz * side * off
+            if not clear(x, z, 0.35):
+                continue
+            y = H(x, z)
+            # 正面 (+Z) を歩道側 (道路の外向き) に
+            stops.append({"x": r2(x), "z": r2(z), "y": r2(y), "yaw": r3(math.atan2(nx * side, nz * side)),
+                          "name": p.get("name") or "バス停", "px": p["x"], "pz": p["z"]})
+            col.add_circle(x, z, 0.38, y, 0.28)
+            col.add_circle(x, z, 0.06, y, 2.5)
+            break
+    for s in stops:
+        del s["px"], s["pz"]
+
+    print(f"signal sites={len(sites)} vehicle signals={len(vehicle)} ped signals={len(peds)} bus stops={len(stops)}")
+    return {"signals": vehicle, "pedSignals": peds, "busStops": stops}
+
+
+# =====================================================================
+# 3. 敷地の外構 (data/appearance.json の sites) (旧 detail/site.js, site_extras.js)
+# =====================================================================
+def hull(pts):
+    p = sorted(pts, key=lambda q: (q[0], q[1]))
+    cross = lambda o, a, b: (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lo, up = [], []
+    for q in p:
+        while len(lo) >= 2 and cross(lo[-2], lo[-1], q) <= 0:
+            lo.pop()
+        lo.append(q)
+    for q in reversed(p):
+        while len(up) >= 2 and cross(up[-2], up[-1], q) <= 0:
+            up.pop()
+        up.append(q)
+    return lo[:-1] + up[:-1]
+
+
+def pip(x, z, r):
+    ins = False
+    j = len(r) - 1
+    for i in range(len(r)):
+        xi, zi = r[i]
+        xj, zj = r[j]
+        if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+            ins = not ins
+        j = i
+    return ins
+
+
+def signed_area(r):
+    return sum(r[i][0] * r[(i + 1) % len(r)][1] - r[(i + 1) % len(r)][0] * r[i][1] for i in range(len(r))) / 2
+
+
+def build_sites(city, world, H, col):
+    by_id = {b["id"]: b for b in city["buildings"]}
+
+    def clear_of(x, z, r):
+        for b in world.query(x - r, z - r, x + r, z + r):
+            if b["minH"] > 2:
+                continue
+            if world.contains(b, x, z) or world.closest_d(b, x, z) < r:
+                return False
+        return True
+
+    out = []
+    for site in city.get("sites") or []:
+        o = {"name": site.get("name")}
+        gi = None
+        # ---------- 中庭の庭園 ----------
+        g = site.get("garden")
+        if g:
+            blds = [by_id[i] for i in site["buildings"] if i in by_id and by_id[i].get("style") == "apartment"]
+            blds.sort(key=lambda b: -abs(signed_area(b["outer"])))
+            main = blds[0] if blds else None
+            if main:
+                HULL = hull(main["outer"])
+                C = 1.5
+                minx, maxx = min(p[0] for p in HULL), max(p[0] for p in HULL)
+                minz, maxz = min(p[1] for p in HULL), max(p[1] for p in HULL)
+                cells = []
+                x = minx + C / 2
+                while x < maxx:
+                    z = minz + C / 2
+                    while z < maxz:
+                        if pip(x, z, HULL) and clear_of(x, z, 1.2):
+                            cells.append((x, z))
+                        z += C
+                    x += C
+                if len(cells) > 20:
+                    cx = sum(c[0] for c in cells) / len(cells)
+                    cz = sum(c[1] for c in cells) / len(cells)
+                    sxx = szz = sxz = 0
+                    for x, z in cells:
+                        sxx += (x - cx) ** 2
+                        szz += (z - cz) ** 2
+                        sxz += (x - cx) * (z - cz)
+                    ang = 0.5 * math.atan2(2 * sxz, sxx - szz)
+                    ux, uz = math.cos(ang), math.sin(ang)
+                    along = lambda x, z: (x - cx) * ux + (z - cz) * uz
+                    across = lambda x, z: -(x - cx) * uz + (z - cz) * ux
+                    ext = [along(x, z) for x, z in cells]
+                    extA = [across(x, z) for x, z in cells]
+                    lo, hi, loA, hiA = min(ext), max(ext), min(extA), max(extA)
+                    P = lambda t, a: (cx + ux * t - uz * a, cz + uz * t + ux * a)
+                    # 通路: [中心x, 中心z, 向きdx, dz, 長さ, 幅, 模様のずれ]
+                    paths = []
+
+                    def strip(t0, t1, w, dir_along):
+                        n = max(1, round((t1 - t0) / 1.0))
+                        for i in range(n):
+                            ta, tb = t0 + (t1 - t0) * i / n, t0 + (t1 - t0) * (i + 1) / n
+                            tm = (ta + tb) / 2
+                            mx, mz = P(tm, 0) if dir_along else P(0, tm)
+                            if not clear_of(mx, mz, 0.8):
+                                continue
+                            d = (ux, uz) if dir_along else (-uz, ux)
+                            paths.append([r2(mx), r2(mz), r3(d[0]), r3(d[1]), r3(tb - ta + 0.02), w, r3(tm / 2)])
+                    strip(lo, hi, 3.0, True)
+                    strip(loA, hiA, 2.4, False)
+                    gy = H(cx, cz)
+                    garden = {"lawn": g.get("lawn") or "#86a85e", "cell": C, "cells": [[r2(x), r2(z)] for x, z in cells],
+                              "paths": paths, "ring": {"x": r2(cx), "z": r2(cz), "r0": 0, "r1": 6.5}}
+                    if g.get("fountain"):
+                        garden["fountain"] = {"x": r2(cx), "z": r2(cz), "y": r2(gy)}
+                        col.add_circle(cx, cz, 2.8, gy, 0.5)
+                        col.add_circle(cx, cz, 0.35, gy, 2.0)
+                    if g.get("cypress"):
+                        trees = []
+                        t = lo + 4
+                        while t < hi - 3:
+                            if abs(t) >= 9:
+                                for side in (-1, 1):
+                                    x, z = cx + ux * t - uz * side * 3.2, cz + uz * t + ux * side * 3.2
+                                    if clear_of(x, z, 1.5):
+                                        y = H(x, z)
+                                        trees.append([r2(x), r2(z), r2(y)])
+                                        col.add_circle(x, z, 0.6, y, 5.5)
+                            t += 6
+                        garden["cypress"] = trees
+                    o["garden"] = garden
+                    gi = {"cx": cx, "cz": cz, "ux": ux, "uz": uz, "lo": lo, "hi": hi, "P": P, "main": main}
+
+        build_site_extras(site, city, world, H, col, gi, clear_of, o)
+
+        # ---------- フェンス (敷地境界。建物に接する所と門の前は省く) ----------
+        if site.get("fence"):
+            gt = site.get("gate")
+
+            def in_gateway(x, z):
+                if not gt or not gt.get("center"):
+                    return False
+                dx, dz = x - gt["center"][0], z - gt["center"][1]
+                al, ac = dx * gt["axis"][0] + dz * gt["axis"][1], -dx * gt["axis"][1] + dz * gt["axis"][0]
+                return abs(ac) < gt["passage"] / 2 + 0.8 and abs(al) < gt["length"] / 2 + 12
+            ring, posts = site["outer"], []
+            for i in range(len(ring)):
+                a, c = ring[i], ring[(i + 1) % len(ring)]
+                L = math.hypot(c[0] - a[0], c[1] - a[1])
+                t = 0
+                while t <= L:
+                    x, z = a[0] + (c[0] - a[0]) * t / L, a[1] + (c[1] - a[1]) * t / L
+                    if not in_gateway(x, z) and clear_of(x, z, 1.0):
+                        posts.append({"x": x, "z": z, "dx": (c[0] - a[0]) / L, "dz": (c[1] - a[1]) / L, "seg": i, "t": t})
+                    t += 2.4
+            panels = []
+            for i in range(len(posts) - 1):
+                p, q = posts[i], posts[i + 1]
+                if p["seg"] == q["seg"] and abs(q["t"] - p["t"] - 2.4) < 0.01:
+                    x, z, yaw = (p["x"] + q["x"]) / 2, (p["z"] + q["z"]) / 2, math.atan2(p["dx"], p["dz"])
+                    y = H(x, z)
+                    panels.append({"x": r2(x), "z": r2(z), "y": r2(y), "yaw": r3(yaw)})
+                    col.add_box(x, z, yaw, 0.05, 1.25, y, 1.6)
+            o["fence"] = {"color": site["fence"], "posts": [[r2(p["x"]), r2(p["z"]), r2(H(p["x"], p["z"]))] for p in posts], "panels": panels}
+        out.append(o)
+    return out
+
+
+def build_site_extras(site, city, world, H, col, gi, clear_of, o):
+    # ---------- 門: 通路の両面にアーチ ----------
+    gt = site.get("gate")
+    if gt and gt.get("center"):
+        ux, uz = gt["axis"]
+        gpart = next((b for b in city["buildings"] if b["id"] in site["buildings"] and b.get("style") == "gate"), None)
+        gbase = (gpart.get("y") or 0) if gpart else H(*gt["center"])
+        faces = []
+        for side in (-1, 1):
+            fx = gt["center"][0] + ux * side * (gt["length"] / 2 + 0.03)
+            fz = gt["center"][1] + uz * side * (gt["length"] / 2 + 0.03)
+            faces.append({"x": r2(fx), "z": r2(fz), "y": r2(gbase), "yaw": r3(math.atan2(ux, uz))})
+        o["gate"] = {"width": gt["passage"], "clear_h": gt["clear_h"], "color": gt.get("color") or "#dcc6a0", "faces": faces}
+
+    # ---------- 噴水のある円形広場 ----------
+    pz = site.get("plaza")
+    if pz:
+        y = H(*pz["at"])
+        o["plaza"] = {"x": pz["at"][0], "z": pz["at"][1], "y": r2(y), "r": pz["r"]}
+        col.add_circle(pz["at"][0], pz["at"][1], 1.35, y, 0.52)
+
+    # ---------- エントランス棟の正面 (いちばん front を向いた壁) ----------
+    hl = site.get("hall")
+    hallB = next((b for b in city["buildings"] if b.get("style") == "hall" and b["id"] in site["buildings"]), None) if hl else None
+    if hallB:
+        ring, n = hallB["outer"], len(hallB["outer"])
+        sg = 1 if sum(ring[i][0] * ring[(i + 1) % n][1] - ring[(i + 1) % n][0] * ring[i][1] for i in range(n)) > 0 else -1
+        best = None
+        for i in range(n):
+            a, c = ring[i], ring[(i + 1) % n]
+            L = math.hypot(c[0] - a[0], c[1] - a[1])
+            nx, nz = (c[1] - a[1]) / L * sg, -(c[0] - a[0]) / L * sg
+            d = nx * hl["front"][0] + nz * hl["front"][1]
+            if best is None or d > best[0]:
+                best = (d, a, c, L, nx, nz)
+        _, a, c, L, nx, nz = best
+        o["hall"] = {"x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(hallB.get("y") or 0), "yaw": r3(math.atan2(nx, nz)),
+                     "width": r3(L), "height": hallB["h"], "color": hallB.get("color") or "#e3d2b0"}
+
+    # ---------- 屋上の塔 ----------
+    turrets = []
+    for t in site.get("turrets") or []:
+        x, z = t["at"]
+        host = next((b for b in world.query(x, z, x, z) if world.contains(b, x, z)), None)
+        if not host:
+            continue
+        bd = next((b for b in city["buildings"] if b["id"] == host["id"]), None)
+        base = host["topY"] + (1.5 if bd and bd.get("mansard") else 0)
+        turrets.append({"x": x, "z": z, "y": r2(base)})
+        col.add_circle(x, z, 1.45, base, 4.4)
+    if turrets:
+        o["turrets"] = turrets
+
+    # ---------- 1階の青い日よけ (中庭に面した長い壁) ----------
+    if site.get("awnings") and gi:
+        every = site["awnings"].get("every") or 7.2
+        main, cx, cz = gi["main"], gi["cx"], gi["cz"]
+        ring, n = main["outer"], len(main["outer"])
+        sg = 1 if sum(ring[i][0] * ring[(i + 1) % n][1] - ring[(i + 1) % n][0] * ring[i][1] for i in range(n)) > 0 else -1
+        aw = []
+        for i in range(n):
+            a, c = ring[i], ring[(i + 1) % n]
+            L = math.hypot(c[0] - a[0], c[1] - a[1])
+            if L < 20:
+                continue
+            ux, uz = (c[0] - a[0]) / L, (c[1] - a[1]) / L
+            nx, nz = uz * sg, -ux * sg
+            mx, mz = (a[0] + c[0]) / 2, (a[1] + c[1]) / 2
+            tc = math.hypot(cx - mx, cz - mz)
+            if (cx - mx) * nx + (cz - mz) * nz < 0.6 * tc:
+                continue
+            t = every / 2 + 1.8
+            while t < L - 2:
+                aw.append({"x": r2(a[0] + ux * t + nx * 0.45), "z": r2(a[1] + uz * t + nz * 0.45), "y": r2((main.get("y") or 0) + 2.55),
+                           "yaw": r3(math.atan2(nx, nz))})
+                t += every
+        o["awnings"] = {"color": site["awnings"]["color"], "items": aw}
+
+    # ---------- 庭: 花壇・オベリスク・丸い天窓 ----------
+    if gi:
+        lo, hi, P = gi["lo"], gi["hi"], gi["P"]
+        yaw = math.atan2(gi["ux"], gi["uz"])
+        beds = []
+        t = lo + 6
+        while t < hi - 6:
+            if abs(t) >= 10:
+                for side in (-1, 1):
+                    x, z = P(t, side * 6.5)
+                    if clear_of(x, z, 2.6):
+                        y = H(x, z)
+                        beds.append({"x": r2(x), "z": r2(z), "y": r2(y), "yaw": r3(yaw)})
+                        col.add_box(x, z, yaw, 1.7, 2.1, y, 0.75)
+            t += 12
+        o["beds"] = beds
+        hallC = None
+        if hallB:
+            hn = len(hallB["outer"])
+            hallC = (sum(p[0] for p in hallB["outer"]) / hn, sum(p[1] for p in hallB["outer"]) / hn)
+        ends = [P(lo + 7, 0), P(hi - 7, 0)]
+        near = 0
+        if hallC:
+            near = 0 if math.hypot(ends[0][0] - hallC[0], ends[0][1] - hallC[1]) < math.hypot(ends[1][0] - hallC[0], ends[1][1] - hallC[1]) else 1
+        ox, oz = ends[near]
+        oy = H(ox, oz)
+        o["obelisk"] = {"x": r2(ox), "z": r2(oz), "y": r2(oy)}
+        col.add_box(ox, oz, 0, 0.7, 0.7, oy, 0.8)
+        col.add_circle(ox, oz, 0.42, oy, 5.6)
+        sx, sz = ends[1 - near]
+        sy = H(sx, sz)
+        o["skylight"] = {"x": r2(sx), "z": r2(sz), "y": r2(sy)}
+        col.add_circle(sx, sz, 3.8, sy, 0.9)
+        col.add_circle(sx, sz, 1.4, sy, 2.3)
+
+
+# =====================================================================
+# 4. 建物の飾り: 集合住宅のベランダ・店の看板と日よけ (旧 detail/shapes.js)
+# =====================================================================
+HOUSE_KINDS = {"house", "detached", "residential", "semidetached_house", "terrace"}
+NOT_APT = {"commercial", "retail", "industrial", "school", "hospital", "office", "public", "train_station", "warehouse", "garage",
+           "garages", "shed", "roof", "university", "kindergarten", "temple", "shrine", "church"}
+SHOP = re.compile(r"^(shop:|amenity:(restaurant|cafe|fast_food|bar|pub|pharmacy|bank|clinic|dentist|ice_cream|hospital|public_building))")
+
+
+def sign_colors(cat):
+    """看板の [地の色, 文字の色, 帯と日よけの色]"""
+    if "convenience" in cat:
+        return ["#ffffff", "#1d6f3c", "#e8423a"]
+    if re.search(r"restaurant|fast_food|pub|bar", cat):
+        return ["#b3261e", "#ffffff", "#f2c14e"]
+    if re.search(r"cafe|ice_cream", cat):
+        return ["#2f4a3a", "#f4ead5", "#c9a66b"]
+    if "bank" in cat:
+        return ["#1e3a6e", "#ffffff", "#9fb7e0"]
+    if "hospital" in cat:
+        return ["#ffffff", "#1f64b5", "#2aa36b"]
+    if "public_building" in cat:
+        return ["#2b4a3a", "#ffffff", "#c8b27a"]
+    if re.search(r"pharmacy|clinic|dentist", cat):
+        return ["#ffffff", "#1f64b5", "#3fa34d"]
+    return ["#3b3f46", "#ffffff", "#e0a43a"]
+
+
+def js_signed_area(r):
+    """city.js / shapes.js の signedArea (向きの符号がこちらの signed_area と逆)"""
+    a, j = 0, len(r) - 1
+    for i in range(len(r)):
+        a += r[j][0] * r[i][1] - r[i][0] * r[j][1]
+        j = i
+    return a / 2
+
+
+def build_shapes(city, world, cx, cz, R):
+    inR = lambda x, z: (x - cx) ** 2 + (z - cz) ** 2 <= R * R
+
+    # ---------- 集合住宅のベランダ (南寄りの長い壁。balcony=all なら全ての長い壁) ----------
+    # 1 つの壁ごと: 壁の始点 (x, z)、壁の向き (dx, dz)、外向き (nx, nz)、壁の長さ len。
+    # 2 階から最上階まで、床の高さ y + k * floorH (k = 1 から floors-1) に、奥行き 1.1m・手すり壁 1.1m のベランダ (両端 0.4m は空ける)
+    balconies, apts = [], 0
+    for b in city["buildings"]:
+        if b.get("minH"):
+            continue
+        o = b["outer"]
+        bx, bz = sum(p[0] for p in o) / len(o), sum(p[1] for p in o) / len(o)
+        if not inR(bx, bz):
+            continue
+        sa = js_signed_area(o)
+        area = abs(sa)
+        kind = b.get("kind")
+        is_house = kind in HOUSE_KINDS or (not kind and b["h"] < 9.5 and area < 180)
+        if b.get("style"):
+            is_apt = b["style"] == "apartment"
+        else:
+            is_apt = not is_house and not b.get("name") and kind not in NOT_APT and 7 <= b["h"] <= 45 and area < 1500
+        if not is_apt:
+            continue
+        s = 1 if sa > 0 else -1
+        floors = b.get("floors") or math.floor(b["h"] / 3.0)
+        if floors < 2:
+            continue
+        fh = b["h"] / floors
+        made = False
+        for i in range(len(o)):
+            a, c = o[i], o[(i + 1) % len(o)]
+            dx, dz = c[0] - a[0], c[1] - a[1]
+            L = math.hypot(dx, dz)
+            if L < 7:
+                continue
+            nx, nz = dz / L * s, -dx / L * s
+            if b.get("balcony") != "all" and nz < 0.55:
+                continue
+            balconies.append({"b": b["id"], "x": a[0], "z": a[1], "dx": round(dx / L, 4), "dz": round(dz / L, 4), "nx": round(nx, 4), "nz": round(nz, 4),
+                              "len": r3(L), "y": b.get("y") or 0, "floorH": round(fh, 4), "floors": floors, **({"dark": True} if b.get("railing") else {})})
+            made = True
+        if made:
+            apts += 1
+
+    # ---------- 店の看板と日よけ (店の点にいちばん近い建物の、いちばん近い壁) ----------
+    signs = []
+    for p in city.get("pois") or []:
+        if not SHOP.match(p["cat"]) or not inR(p["x"], p["z"]) or len(signs) >= 200:
+            continue
+        best = None
+        for b in world.query(p["x"] - 20, p["z"] - 20, p["x"] + 20, p["z"] + 20):
+            if b["minH"] > 0:
+                continue
+            d = world.closest_d(b, p["x"], p["z"])
+            if d < 20 and (best is None or d < best[0]):
+                best = (d, b)
+        if not best:
+            continue
+        b = best[1]
+        ring = b["rings"][0]
+        s = 1 if js_signed_area(ring) > 0 else -1
+        e = None
+        for i in range(len(ring)):
+            a, c = ring[i], ring[(i + 1) % len(ring)]
+            L = math.hypot(c[0] - a[0], c[1] - a[1])
+            if L < 3:
+                continue
+            mx, mz = (a[0] + c[0]) / 2, (a[1] + c[1]) / 2
+            d = math.hypot(mx - p["x"], mz - p["z"])
+            if e is None or d < e[0]:
+                e = (d, a, c, L)
+        if not e:
+            continue
+        _, a, c, L = e
+        ux, uz = (c[0] - a[0]) / L, (c[1] - a[1]) / L
+        nx, nz = uz * s, -ux * s
+        # (x, z) = 壁の中点、y = 建物の基準の高さ、正面 (yaw) = 壁の外向き。看板は y + 3.35、日よけは y + 2.6
+        signs.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(b["base"]), "yaw": round(math.atan2(nx, nz), 4),
+                      "w": r3(min(L - 0.6, 7)), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"])})
+    print(f"balcony walls={len(balconies)} (apartments={apts}) shop signs={len(signs)}")
+    return {"balconies": balconies, "signs": signs}
+
+
+# =====================================================================
+# 5. 木 (公園・森・草地に散布) (旧 city.js の buildTrees)
+# =====================================================================
+def build_trees(city, world, H, col):
+    density = {"wood": 1 / 60, "park": 1 / 220, "grass": 1 / 400}
+    B = city["bounds"]
+    trees = []
+    for a in city["areas"]:
+        d = density.get(a["kind"])
+        if not d:
+            continue
+        o = a["outer"]
+        minx, maxx = min(p[0] for p in o), max(p[0] for p in o)
+        minz, maxz = min(p[1] for p in o), max(p[1] for p in o)
+        rnd = hash_rng("tree" + js_join(o[0]))
+        n = min(800, math.floor(abs(js_signed_area(o)) * d))
+        i = 0
+        while i < n * 2 and len(trees) < 5000:
+            i += 1
+            x = minx + rnd() * (maxx - minx)
+            z = minz + rnd() * (maxz - minz)
+            if x < B["minX"] or x > B["maxX"] or z < B["minZ"] or z > B["maxZ"]:
+                continue
+            if not pip(x, z, o) or any(pip(x, z, h) for h in a.get("holes") or []):
+                continue
+            if any(world.contains(b, x, z) for b in world.query(x, z, x, z)):
+                continue
+            sc = 0.7 + rnd() * 0.7
+            r = rnd()
+            y = H(x, z)
+            # [x, z, y, 大きさの倍率, 0〜1 の乱数 (向き = r * 6.28、葉の色の濃さ)]。基準の木: 幹の高さ 2.2m、葉は高さ 3.2m を中心に半径 1.7m
+            trees.append([r2(x), r2(z), r2(y), r3(sc), r3(r)])
+            col.tree.append([r2(x), r2(z), r3(0.25 * sc), r2(y), r2(y + 4.9 * sc)])
+    print(f"trees={len(trees)}")
+    return trees
+
+
+# =====================================================================
+def build(city):
+    H = load_terrain()
+    world = World(city["buildings"])
+    st = city.get("start") or {"x": 0, "z": 0}
+    cx, cz = st["x"], st["z"]
+    col = Colliders()
+    street = build_street_props(city, world, H, cx, cz, RADIUS, col)
+    sig = build_signals(city, world, H, cx, cz, RADIUS, col, street["paint"])
+    sites = build_sites(city, world, H, col)
+    shapes = build_shapes(city, world, cx, cz, RADIUS)
+    trees = build_trees(city, world, H, col)
+    print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
+    return {
+        "version": 1,
+        "units": "meters; x=east, y=up, z=south; yaw: local +Z faces (sin yaw, cos yaw)",
+        "generator": "tools/build_props.py",
+        **street, **sig,
+        "sites": sites,
+        **shapes,
+        "trees": trees,
+        "colliders": {"circle": col.circle, "box": col.box, "line": col.line, "tree": col.tree},
+    }
+
+
+def main():
+    city = json.loads(CITY.read_text(encoding="utf-8"))
+    out = build(city)
+    DST.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"-> {DST} ({DST.stat().st_size // 1024} KB)")
+
+
+if __name__ == "__main__":
+    main()

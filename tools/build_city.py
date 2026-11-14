@@ -983,6 +983,10 @@ def main():
     print(f"buildings={len(buildings)} roads={len(roads)} rails={len(rails)} water={len(waterways)} areas={len(areas)} pois={len(pois)} street_nodes={len(street_nodes)}")
     print(f"-> {DST} ({DST.stat().st_size // 1024} KB)")
 
+    # 路上の小物・敷地の外構の配置と当たり判定 (public/data/props.json)
+    import build_props
+    build_props.main()
+
 
 if __name__ == "__main__":
     main()

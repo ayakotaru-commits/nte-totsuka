@@ -30,45 +30,7 @@ export class Builder {
   }
 }
 
-export function hash(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
-}
-
-export const DRIVABLE = new Set(['trunk', 'trunk_link', 'primary', 'primary_link', 'secondary', 'secondary_link', 'tertiary', 'tertiary_link', 'unclassified', 'residential', 'living_street', 'service', 'busway']);
-export const MAJOR = new Set(['trunk', 'primary', 'secondary', 'tertiary']);
-const RANK = { trunk: 5, primary: 4, secondary: 3, tertiary: 2, trunk_link: 2, primary_link: 2, secondary_link: 2, tertiary_link: 2, unclassified: 1, residential: 1, living_street: 1, busway: 1, service: 0 };
-export const rank = (k) => RANK[k] ?? 0;
-
-// 交差点の抽出: 道路の頂点を共有している箇所
-export function intersections(roads) {
-  const map = new Map();
-  const key = (p) => p[0].toFixed(1) + ',' + p[1].toFixed(1);
-  for (const r of roads) {
-    if (!DRIVABLE.has(r.kind) || r.ys) continue;
-    r.pts.forEach((p, i) => {
-      const k = key(p);
-      let n = map.get(k);
-      if (!n) map.set(k, n = { x: p[0], z: p[1], arms: [] });
-      for (const j of [i - 1, i + 1]) {
-        if (j < 0 || j >= r.pts.length) continue;
-        const q = r.pts[j], dx = q[0] - p[0], dz = q[1] - p[1], l = Math.hypot(dx, dz);
-        if (l > 0.5) n.arms.push({ road: r, dir: [dx / l, dz / l], len: l, fwd: j === i + 1 });
-      }
-    });
-  }
-  return [...map.values()].filter(n => n.arms.length >= 3);
-}
-
-// 実測の道幅 (build_city.py: half = 中心線から左/右の縁, sw = 歩道幅)
-// edge(r, side): 中心線から side (+1=左, -1=右) 側の道路面の縁まで
-export const edge = (r, side) => r.half ? r.half[side > 0 ? 0 : 1] : r.w / 2;
-// 車道の幅と、車道の中心の中心線からのずれ (左が正)
-export const carriage = (r) => {
-  const sw = r.sw || 0;
-  return r.half ? { w: r.half[0] + r.half[1] - 2 * sw, c: (r.half[0] - r.half[1]) / 2 } : { w: r.w - 2 * sw, c: 0 };
-};
+// 道路まわりの計算 (交差点・道幅など) は tools/build_props.py に移した
 
 export function canvasTexture(w, h, draw) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;

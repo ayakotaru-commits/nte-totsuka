@@ -32,10 +32,12 @@ tools/                 データ変換ツール (Python, 標準ライブラリ�
   fetch_plateau.py     PLATEAU 横浜市 2024 の CityGML (2GB の ZIP) から該当メッシュだけ部分取得 → data/raw/plateau_bldg.json
   remotezip.py         HTTP Range で巨大 ZIP の一部だけ読むヘルパー
   build_city.py        OSM + PLATEAU → public/data/city.json (ローカル座標)
+  build_props.py       city.json → public/data/props.json (路上の小物・敷地の外構・ベランダ・看板・木の配置と当たり判定)
 public/                ゲーム本体 (Three.js r170, CDN 読み込み・ビルド不要)
   data/city.json       街データ (建物・道路・線路・水域・エリア・POI)
-  src/city.js          メッシュ生成 (建物押し出し・窓テクスチャ・道路・木)
-  src/world.js         当たり判定 (建物フットプリント)
+  data/props.json      小物・建物の飾り・木の配置と当たり判定 (build_props.py が作る。手で編集しない)
+  src/city.js          メッシュ生成 (建物押し出し・窓テクスチャ・道路・木。木の位置は props.json)
+  src/world.js         当たり判定 (建物フットプリント + props.json の小物)
   src/player.js        移動・ジャンプ
   src/character.js     仮キャラクター (VRM 差し替え予定)
   src/camera.js        三人称カメラ (壁めり込み回避)
@@ -56,8 +58,10 @@ python tools/fetch_gsi.py
 python tools/fetch_dem.py      # 地形 (標高)。build_city.py より先に実行
 python tools/fetch_lidar.py    # 点群 (建物の形)。build_city.py より先に実行
 python tools/fetch_ortho.py    # 航空写真 (屋根の色)。build_city.py より先に実行。Pillow が必要
-python tools/build_city.py
+python tools/build_city.py     # 最後に build_props.py も実行する
 ```
+`python tools/lidar_shape.py`（`--undo` も）で `city.json` を書き換えたときも、続けて `build_props.py` が実行される。
+小物だけを作り直すときは `python tools/build_props.py`（数秒）。
 
 ### 建物データの方針（国土地理院ベース）
 - 建物の形・有無: 国土地理院ベクトルタイル（optimal_bvmap-v1 の BldA）。`tools/fetch_gsi.py`、デコーダは `tools/mvt.py`
@@ -98,16 +102,38 @@ python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json 
 
 ### 街並みディテール（お試し中・スタート地点の半径250m）
 ゲーム内は V キーでまとめてオン/オフ。段階ごとの有効/無効は `public/src/detail/config.js`。
+配置の計算はすべて `tools/build_props.py`（`props.json`）。`public/src/detail/` は形を作って置くだけ。
 1. 路上の小物: 電柱・電線・街灯・横断歩道・停止線と「止まれ」・ガードパイプ・自販機・カーブミラー（道路データから自動配置）
    - 信号機・バス停（`public/src/detail/street.js`）: OSM の信号（`highway=traffic_signals`）の交差点に、横型3灯の車両用信号（左側・横断歩道の先・車道へ張り出す）と、横断歩道の両端に歩行者用信号を置く。青22秒→黄3秒→全赤2秒で縦横が交互に切り替わり、歩行者用は青の終わりに点滅。単路の押しボタン式（`crossing=traffic_signals`）は横断歩道も描く。バス停（`highway=bus_stop`）は最寄りの道路の縁に、丸い標識・停留所名の板・時刻表を置く
    - 位置は `city.json` の `streetNodes`。無い（古いデータの）場合は `pois` の名前付きの信号・バス停だけを使う。名前の無い信号も出すには `fetch_osm.py` → `build_city.py` を実行し直す
+   - 配置の計算は `tools/build_props.py`（以前はブラウザで毎回計算していた）。ブラウザは `props.json` を読んで置くだけ。Unity でも同じデータを読む
 2. 素材テクスチャ: Poly Haven の CC0 素材（`python tools/fetch_detail_textures.py` で取得）を道路・歩道・外壁・屋根に重ねる
 3. 建物の作り分け: 戸建ての切妻/寄棟屋根、集合住宅の南向きベランダ、店舗・病院の看板と日よけ
 
 完全に戻す手順:
 - `public/src/detail/`、`public/assets/detail/`、`tools/fetch_detail_textures.py` を削除
+- 木（`city.js`）も `props.json` の `trees` を読むので、`tools/build_props.py` と `public/data/props.json` は残す（ディテールだけ戻すなら `props.json` の小物の項目は使われなくなるだけ）
 - `public/src/main.js` の `// detail (お試し)` と書かれた5行を削除
 - `public/index.html` のヘルプから「V ディテール」を削除
+
+### 小物の配置 (props.json)
+`tools/build_props.py` が `city.json`・`terrain.json` から作る。座標は `city.json` と同じ（x = 東、y = 上、z = 南、1 = 1m）。
+- `y` はその場所の地面の高さ（`terrain.json` と同じ補間）。`yaw` は Y 軸まわりの回転（ラジアン）で、物の正面（局所 +Z）が (sin yaw, cos yaw) を向く（three.js の `rotation.y` と同じ）
+- `poles` 電柱（`transformer` 変圧器あり、`lamp` 街灯あり。正面が道路側）／`wires` 電線 `[ax, ay, az, bx, by, bz, たるみ]`（中央で たるみ m 下がる放物線）
+- `paint` 横断歩道の縞・停止線、`tomare`「止まれ」の文字: 長方形 `[中心x, 中心z, 長さの向きdx, dz, 長さ, 幅]`。路面に沿わせて描く
+- `guardRails` ガードパイプ: ひと続きの柵ごとの支柱の列 `[[x, z, y], ...]`。隣どうしを高さ 0.45m と 0.8m のパイプでつなぐ
+- `vending` 自販機（`color` 0=赤 1=青 2=白、正面が道路側）／`mirrors` カーブミラー
+- `signals` 車両用信号（`reach` 腕の長さ、`axis` 0=主方向 1=交差方向、`offset` 周期のずれ 秒。周期は 青22→黄3→全赤2 秒 × 2 方向）／`pedSignals` 歩行者用信号（正面が向かい側）／`busStops` バス停（`name`）
+- `balconies` 集合住宅のベランダ（壁ごと）: 壁の始点 `x, z`、壁の向き `dx, dz`、外向き `nx, nz`、壁の長さ `len`、建物の基準の高さ `y`、1 階分の高さ `floorH`、階数 `floors`、`dark`（濃い色の手すり）、建物の id `b`。2 階から最上階まで、床の高さ `y + k × floorH`（k = 1 〜 floors−1）に、奥行き 1.1m・手すり壁 1.1m のベランダを付ける（壁の両端 0.4m は空ける）
+- `signs` 店の看板と日よけ: 壁の中点 `x, z`、建物の基準の高さ `y`、正面 = 壁の外向き、幅 `w`、`name`、`cat`、`colors`（地・文字・帯と日よけの色）、建物の id `b`。看板は `y + 3.35`、日よけは `y + 2.6`
+- `trees` 木（公園・森・草地）: `[x, z, y, 大きさの倍率, 0〜1 の乱数]`。乱数は向き（× 6.28 ラジアン）と葉の色の濃さに使う。基準の木は幹の高さ 2.2m、葉は高さ 3.2m を中心に半径 1.7m
+- `sites` 敷地の外構（`data/appearance.json` の `sites` から）: 庭（芝生のマス・通路・噴水・円すいの木）、門のアーチ、円形広場、エントランス棟の正面、屋上の塔、日よけ、花壇、オベリスク、天窓、フェンス
+- `colliders` 当たり判定。y0, y1 は下端・上端の絶対高さ
+  - `circle` `[x, z, 半径, y0, y1]`（電柱・信号の柱・ミラー・噴水・木など）
+  - `box` `[x, z, yaw, 局所Xの半幅, 局所Zの半幅, y0, y1]`（自販機・フェンス・花壇など）
+  - `line` `[半幅, 高さ, x0, z0, y0, x1, z1, y1, ...]`（ガードパイプ。折れ線に沿った薄い壁）
+  - `tree` `circle` と同じ形（木の幹）。木は V キーで消えないので、この判定も常に有効
+  - ブラウザでは移動・着地・ワープ先の判定だけが使う（カメラは建物だけを見る）。V キーで小物を消すと当たり判定も外れる。看板・日よけ・ベランダなど頭より上の物と、電線には判定がない
 
 ### 道路（PLATEAU の道路面）
 `tools/fetch_plateau.py` が PLATEAU の道路 LOD1 面（測量に基づく道路の範囲。歩道・車道の区別なし）も取得し `data/raw/plateau_road.json` に保存。`build_city.py` の `process_roads` が:

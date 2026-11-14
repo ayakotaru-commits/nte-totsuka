@@ -873,6 +873,8 @@ def main():
             city["attribution"] = city.get("attribution", "") + " / " + note
     CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"-> {CITY} ({CITY.stat().st_size // 1024} KB, buildings={len(city['buildings'])})")
+    import build_props  # 建物の形が変わると小物の置ける場所も変わるので、props.json も作り直す
+    build_props.main()
 
 
 if __name__ == "__main__":
