@@ -65,6 +65,29 @@ export function buildShapes(props) {
     group.add(sign, aw);
   }
 
+  // ---------- ランドマークの大きな壁面看板 (文字だけ。実物のロゴではない) ----------
+  for (const p of props.bigSigns || []) {
+    const nx = Math.sin(p.yaw), nz = Math.cos(p.yaw);
+    const tex = canvasTexture(1024, 128, (g, W, H) => {
+      g.fillStyle = p.bg; g.fillRect(0, 0, W, H);
+      g.fillStyle = p.fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+      let fs = 92;
+      const font = () => { g.font = `bold ${fs}px "Yu Gothic UI", "Meiryo", sans-serif`; };
+      font();
+      if ('letterSpacing' in g) g.letterSpacing = '14px';
+      while (g.measureText(p.text).width > W - 80 && fs > 30) { fs -= 4; font(); }
+      g.fillText(p.text, W / 2, H / 2 + 4);
+    });
+    const mat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.5 });
+    emissive.push(mat);
+    const side = new THREE.MeshStandardMaterial({ color: p.bg });
+    const sign = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, 0.4), [side, side, side, side, mat, side]);
+    sign.position.set(p.x + nx * 0.25, p.y, p.z + nz * 0.25);
+    sign.rotation.y = p.yaw;
+    sign.castShadow = true; sign.name = 'big_sign';
+    group.add(sign);
+  }
+
   console.info(`[detail] balcony walls=${props.balconies.length} shop signs=${props.signs.length}`);
   return { group, emissive };
 }
