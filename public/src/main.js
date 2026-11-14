@@ -15,7 +15,7 @@ import { BigMap } from './bigmap.js';
 import { loadDetail } from './detail/index.js'; // detail (お試し)
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
-import { setTerrain } from './terrain.js';
+import { setTerrain, setCover } from './terrain.js';
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
@@ -25,6 +25,8 @@ async function main() {
   const city = await (await fetch('data/city.json')).json();
   // 地形 (無ければ平らな地面)
   try { const r = await fetch('data/terrain.json'); if (r.ok) setTerrain(await r.json()); } catch { /* 平らなまま */ }
+  // 地面の種類 (tools/lidar_cover.py が作る。無ければ地面は一色。見比べ用に URL に ?nocover で使わない)
+  if (!new URLSearchParams(location.search).has('nocover')) try { const r = await fetch('data/cover.json'); if (r.ok) setCover(await r.json()); } catch { /* 無し */ }
   // 擁壁 (tools/lidar_walls.py --osm が作る。まだ見た目が不十分なので、URL に ?walls を付けたときだけ置く)
   if (new URLSearchParams(location.search).has('walls')) try { const r = await fetch('data/walls.json'); if (r.ok) city.walls = (await r.json()).walls; } catch { /* 無し */ }
   // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py が作る。無ければそれらを置かない)
