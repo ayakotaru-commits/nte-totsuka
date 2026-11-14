@@ -97,13 +97,13 @@ export function buildStation(props) {
     m.name = name; m.castShadow = m.receiveShadow = true;
     group.add(m);
   };
-  mesh(top, '#8f9194', 'platform_top');
+  mesh(top, '#55575a', 'platform_top');
   mesh(side, '#b9b4aa', 'platform_side');
   mesh(yellow, '#e3b921', 'platform_tactile');
   mesh(white, '#f1f1ee', 'platform_edge');
   mesh(roof, '#d3d6d6', 'canopy_roof', { side: THREE.DoubleSide });
   mesh(under, '#dfe1e0', 'canopy_under', { side: THREE.DoubleSide });
-  mesh(steel, '#aab0b4', 'rail_steel', { roughness: 0.7, metalness: 0.1 });
+  mesh(steel, '#e4e5e2', 'rail_steel', { roughness: 0.7 });
 
   // ---------- 架線 ----------
   const geo = new THREE.BufferGeometry();

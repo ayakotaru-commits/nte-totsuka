@@ -70,13 +70,21 @@ export function buildShapes(props) {
     const nx = Math.sin(p.yaw), nz = Math.cos(p.yaw);
     const tex = canvasTexture(1024, 128, (g, W, H) => {
       g.fillStyle = p.bg; g.fillRect(0, 0, W, H);
-      g.fillStyle = p.fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      let x0 = 0;
+      if (p.mark) { // 左端の色つきの印 (文字だけ)
+        x0 = W * 0.26;
+        g.fillStyle = p.mark.bg; g.fillRect(0, 0, x0, H);
+        g.fillStyle = p.mark.fg || '#ffffff'; g.font = 'bold 84px "Yu Gothic UI", "Meiryo", sans-serif';
+        g.fillText(p.mark.text, x0 / 2, H / 2 + 4);
+      }
+      g.fillStyle = p.fg;
       let fs = 92;
       const font = () => { g.font = `bold ${fs}px "Yu Gothic UI", "Meiryo", sans-serif`; };
       font();
       if ('letterSpacing' in g) g.letterSpacing = '14px';
-      while (g.measureText(p.text).width > W - 80 && fs > 30) { fs -= 4; font(); }
-      g.fillText(p.text, W / 2, H / 2 + 4);
+      while (g.measureText(p.text).width > W - x0 - 80 && fs > 30) { fs -= 4; font(); }
+      g.fillText(p.text, x0 + (W - x0) / 2, H / 2 + 4);
     });
     const mat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.5 });
     emissive.push(mat);

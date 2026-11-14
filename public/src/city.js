@@ -140,17 +140,17 @@ function facadeTextures(type) {
 
 // ---- ランドマークの外壁 (city.json の looks。tools/landmarks.py が設定) ----
 // テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
-const LOOK_ROWS = { shop: 0, panel: 1, panel2: 2, parking: 3, glass: 4, plain: 5, ribbon: 6 };
-const LOOK_NR = 8, LOOK_NB = 8, LOOK_BAY = 6; // 段の数、横のベイ数、1 ベイの幅 (m)
+const LOOK_ROWS = { shop: 0, panel: 1, screen: 2, parking: 3, glass: 4, plain: 5, ribbon: 6, screen2: 7, open: 8 };
+const LOOK_NR = 16, LOOK_NB = 8, LOOK_BAY = 6; // 段の数 (テクスチャは縦長)、横のベイ数、1 ベイの幅 (m)
 function lookTextures(L) {
-  const S = 1024, cw = S / LOOK_NB, rh = S / LOOK_NR;
-  const cv = document.createElement('canvas'); cv.width = cv.height = S;
-  const ev = document.createElement('canvas'); ev.width = ev.height = S;
+  const S = 1024, SH = 2048, cw = S / LOOK_NB, rh = SH / LOOK_NR;
+  const cv = document.createElement('canvas'); cv.width = S; cv.height = SH;
+  const ev = document.createElement('canvas'); ev.width = S; ev.height = SH;
   const g = cv.getContext('2d'), e = ev.getContext('2d');
   const rnd = hash('look-' + L.wall + L.accent);
-  g.fillStyle = L.wall; g.fillRect(0, 0, S, S);
-  e.fillStyle = '#000'; e.fillRect(0, 0, S, S);
-  const top = (r) => S - (r + 1) * rh; // 段 r の上端 (テクスチャの v は下から上)
+  g.fillStyle = L.wall; g.fillRect(0, 0, S, SH);
+  e.fillStyle = '#000'; e.fillRect(0, 0, S, SH);
+  const top = (r) => SH - (r + 1) * rh; // 段 r の上端 (テクスチャの v は下から上)
   const lit = (x, y, w, h, color, a) => { e.fillStyle = color; e.globalAlpha = a; e.fillRect(x, y, w, h); e.globalAlpha = 1; };
   const glass = (x, y, w, h, c0, c1) => { const gr = g.createLinearGradient(x, y, x, y + h); gr.addColorStop(0, c0); gr.addColorStop(1, c1); g.fillStyle = gr; g.fillRect(x, y, w, h); };
   for (let bx = 0; bx < LOOK_NB; bx++) {
@@ -165,14 +165,35 @@ function lookTextures(L) {
     g.fillStyle = '#8d8a84'; g.fillRect(x0, y + rh - 8, cw, 8);
     lit(x0 + 8, y + 29, cw - 16, rh - 40, '#ffe2b0', 0.85);
     // 白いパネルの壁に、こげ茶の縦の帯 (細い窓入り)。段ごとに帯の位置を半ベイずらす (千鳥)
-    for (const r of [LOOK_ROWS.panel, LOOK_ROWS.panel2]) {
-      y = top(r);
+    // (奇数階は壁を貼るときに半ベイずらす)
+    {
+      y = top(LOOK_ROWS.panel);
       g.fillStyle = 'rgba(0,0,0,.10)';
       g.fillRect(x0, y, 1.5, rh); g.fillRect(x0 + cw / 2, y, 1, rh); g.fillRect(x0, y + rh - 2, cw, 2); g.fillRect(x0, y + rh / 2, cw, 1);
-      const fx = x0 + 14 + (r === LOOK_ROWS.panel2 ? cw / 2 : 0), fw = 36;
+      const fx = x0 + 14, fw = 36;
       g.fillStyle = L.accent; g.fillRect(fx, y, fw, rh);
       glass(fx + 10, y + 16, fw - 20, rh - 36, '#3a4a58', '#222c35');
       if (rnd() < 0.5) lit(fx + 10, y + 16, fw - 20, rh - 36, '#ffd39a', 0.5 + rnd() * 0.4);
+    }
+    // アクセント色の壁に、白い縦の棒を互い違いに並べた目隠し (screen / screen2 を階ごとに交互に使う)。
+    // 8 ベイのうち 2 ベイは白い壁で、アクセント色の太い帯と灰色のルーバーの帯が上下に通る
+    for (const [r, xs] of [[LOOK_ROWS.screen, [12, 58, 98]], [LOOK_ROWS.screen2, [34, 78, 116]]]) {
+      y = top(r);
+      if (bx === 0) {
+        g.fillStyle = L.accent; g.fillRect(x0 + 24, y, 58, rh);
+        g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y + rh - 2, cw, 2);
+      } else if (bx === 1) {
+        g.fillStyle = '#b9bbb8'; g.fillRect(x0 + 30, y, 62, rh);
+        g.fillStyle = 'rgba(0,0,0,.16)'; for (let k = 0; k < rh; k += 5) g.fillRect(x0 + 30, y + k, 62, 1.5);
+        g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y + rh - 2, cw, 2);
+      } else {
+        g.fillStyle = L.accent; g.fillRect(x0, y, cw, rh);
+        g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(x0, y + rh - 3, cw, 3);
+        glass(x0 + xs[0] + 16, y + 34, 14, 52, '#2a333b', '#171c21'); // 小さな窓
+        g.fillStyle = L.wall;
+        for (const q of xs) g.fillRect(x0 + q, y + 6, 9, rh - 14);
+        if (rnd() < 0.35) lit(x0 + xs[0] + 16, y + 34, 14, 52, '#ffd39a', 0.5);
+      }
     }
     // 駐車場の階: 腰壁の上が暗い開口、柱と横のルーバー
     y = top(LOOK_ROWS.parking);
@@ -198,6 +219,13 @@ function lookTextures(L) {
     g.fillStyle = L.accent; g.fillRect(x0, y + 8, cw, 6);
     g.fillStyle = 'rgba(0,0,0,.10)'; g.fillRect(x0, y + rh - 2, cw, 2); g.fillRect(x0, y, 1.5, 26); g.fillRect(x0, y + rh - 40, 1.5, 40);
     for (let k = 0; k < 4; k++) if (rnd() < 0.75) lit(x0 + k * cw / 4 + 2, y + 26, cw / 4 - 2, rh - 66, '#fff0cf', 0.5 + rnd() * 0.35);
+    // 開いた入口 (駅の自由通路など): 上に白い梁、奥は暗く、天井の明かりが並ぶ
+    y = top(LOOK_ROWS.open);
+    glass(x0, y + 30, cw, rh - 30, '#2b2e31', '#15171a');
+    g.fillStyle = '#f3e9c4'; for (let k = 0; k < 3; k++) g.fillRect(x0 + 14 + k * 40, y + 44, 22, 4);
+    g.fillStyle = L.wall; g.fillRect(x0, y + 30, 10, rh - 30);
+    g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x0, y + 28, cw, 2);
+    lit(x0 + 10, y + 30, cw - 10, rh - 30, '#fff0cf', 0.55);
     // 窓のない壁 (屋上の塔屋など)
     y = top(LOOK_ROWS.plain);
     g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
@@ -218,11 +246,12 @@ function addLookWalls(gb, b, L, y0, y1) {
       const dx = c[0] - a[0], dz = c[1] - a[1], len = Math.hypot(dx, dz);
       if (len < 0.01) continue;
       const ux = dx / len, uz = dz / len, n = [uz * s, 0, -ux * s];
-      // 入口 (doors) の左右 7 m はガラス面
+      // 入口 (doors) の左右 door_w (既定 7 m) はガラス面 (door_kind で別の柄にできる)
+      const dw = L.door_w || 7;
       const iv = [];
       if (!isHole) for (const d of L.doors || []) {
         const t = (d[0] - a[0]) * ux + (d[1] - a[1]) * uz, off = Math.abs((d[0] - a[0]) * uz - (d[1] - a[1]) * ux);
-        if (off <= 8 && t > -4 && t < len + 4) iv.push([Math.max(0, t - 7), Math.min(len, t + 7)]);
+        if (off <= 8 && t > -4 && t < len + 4) iv.push([Math.max(0, t - dw), Math.min(len, t + dw)]);
       }
       const cuts = [...new Set([0, len, ...iv.flat()])].sort((p, q) => p - q);
       for (let j = 0; j + 1 < cuts.length; j++) {
@@ -234,12 +263,14 @@ function addLookWalls(gb, b, L, y0, y1) {
         for (let k = Math.floor((y0 - base) / fh + 1e-6); base + k * fh < y1 - 1e-6; k++) {
           const yf = base + k * fh, ya = Math.max(y0, yf), yb = Math.min(y1, yf + fh);
           let kind = (k >= 0 && L.floors[k]) || 'plain';
-          if (isGlass && k >= 0 && k < (L.glass_floors || 0)) kind = 'glass';
-          else if (kind === 'panel' && k % 2) kind = 'panel2';
+          let ush = 0;
+          if (isGlass && k >= 0 && k < (L.glass_floors || 0)) kind = L.door_kind || 'glass';
+          else if (kind === 'panel' && k % 2) ush = 0.5 / LOOK_NB; // 千鳥: 奇数階は半ベイずらす
+          else if (kind === 'screen' && k % 2) kind = 'screen2';
           const row = LOOK_ROWS[kind];
           const va = (row + Math.max(eps, (ya - yf) / fh)) / LOOK_NR, vb = (row + Math.min(1 - eps, (yb - yf) / fh)) / LOOK_NR;
-          gb.tri(P(t0, ya), P(t1, ya), P(t1, yb), n, [u0, va], [u1, va], [u1, vb], W);
-          gb.tri(P(t0, ya), P(t1, yb), P(t0, yb), n, [u0, va], [u1, vb], [u0, vb], W);
+          gb.tri(P(t0, ya), P(t1, ya), P(t1, yb), n, [u0 + ush, va], [u1 + ush, va], [u1 + ush, vb], W);
+          gb.tri(P(t0, ya), P(t1, yb), P(t0, yb), n, [u0 + ush, va], [u1 + ush, vb], [u0 + ush, vb], W);
         }
       }
       per += len;

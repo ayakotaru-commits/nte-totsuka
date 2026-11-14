@@ -1034,7 +1034,7 @@ def build_shapes(city, world, cx, cz, R):
             L, a, c, nx, nz = best[q]
             w = min(L * 0.5, sg.get("max_w", 24))
             big.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(L0["y0"] + sg["floor"] * L0["floor_h"]),
-                        "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * sg.get("ratio", 0.12)), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"]})
+                        "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * sg.get("ratio", 0.12)), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"], **({"mark": sg["mark"]} if sg.get("mark") else {})})
     print(f"balcony walls={len(balconies)} (apartments={apts}) shop signs={len(signs)} big signs={len(big)}")
     return {"balconies": balconies, "signs": signs, "bigSigns": big}
 
