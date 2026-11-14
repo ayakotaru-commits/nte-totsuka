@@ -140,7 +140,7 @@ function facadeTextures(type) {
 
 // ---- ランドマークの外壁 (city.json の looks。tools/landmarks.py が設定) ----
 // テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
-const LOOK_ROWS = { shop: 0, panel: 1, panel2: 2, parking: 3, glass: 4, plain: 5 };
+const LOOK_ROWS = { shop: 0, panel: 1, panel2: 2, parking: 3, glass: 4, plain: 5, ribbon: 6 };
 const LOOK_NR = 8, LOOK_NB = 8, LOOK_BAY = 6; // 段の数、横のベイ数、1 ベイの幅 (m)
 function lookTextures(L) {
   const S = 1024, cw = S / LOOK_NB, rh = S / LOOK_NR;
@@ -190,6 +190,14 @@ function lookTextures(L) {
     for (let k = 0; k < 4; k++) g.fillRect(x0 + k * cw / 4, y, 2, rh);
     g.fillRect(x0, y + rh * 0.45, cw, 2);
     for (let k = 0; k < 4; k++) if (rnd() < 0.6) lit(x0 + k * cw / 4 + 2, y, cw / 4 - 2, rh - 16, rnd() < 0.7 ? '#ffe2b0' : '#d8ecff', 0.4 + rnd() * 0.4);
+    // 横に続く窓の帯 (駅舎など): 下に腰壁、上にアクセント色の細い線
+    y = top(LOOK_ROWS.ribbon);
+    glass(x0, y + 26, cw, rh - 66, '#9db3c2', '#5d7385');
+    g.fillStyle = 'rgba(240,244,246,.9)';
+    for (let k = 0; k < 4; k++) g.fillRect(x0 + k * cw / 4, y + 26, 2, rh - 66);
+    g.fillStyle = L.accent; g.fillRect(x0, y + 8, cw, 6);
+    g.fillStyle = 'rgba(0,0,0,.10)'; g.fillRect(x0, y + rh - 2, cw, 2); g.fillRect(x0, y, 1.5, 26); g.fillRect(x0, y + rh - 40, 1.5, 40);
+    for (let k = 0; k < 4; k++) if (rnd() < 0.75) lit(x0 + k * cw / 4 + 2, y + 26, cw / 4 - 2, rh - 66, '#fff0cf', 0.5 + rnd() * 0.35);
     // 窓のない壁 (屋上の塔屋など)
     y = top(LOOK_ROWS.plain);
     g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
@@ -261,7 +269,16 @@ function roofColor(hex) {
   return [c.r, c.g, c.b];
 }
 
-function buildBuildings(buildings, looks = {}) {
+function inRing(x, z, ring) {
+  let ins = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, zi] = ring[i], [xj, zj] = ring[j];
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) ins = !ins;
+  }
+  return ins;
+}
+
+function buildBuildings(buildings, looks = {}, platforms = []) {
   const office = new GB(), house = new GB(), roof = new GB(), pitched = new GB(), euro = new GB();
   const lookGB = {}; // ランドマークの外壁 (外観ごとに 1 つ)
   for (const b of buildings) {
@@ -275,6 +292,9 @@ function buildBuildings(buildings, looks = {}) {
 
     // 車庫・駐輪場 (屋根だけ): 屋根板と柱
     if (style === 'carport') {
+      // ホームの上の屋根データは、ホームの屋根 (detail/station.js) と重なるので描かない
+      const cx = b.outer.reduce((t, q) => t + q[0], 0) / b.outer.length, cz = b.outer.reduce((t, q) => t + q[1], 0) / b.outer.length;
+      if (platforms.some(r => inRing(cx, cz, r))) continue;
       const yb = b.y || 0, yTop = yb + b.h, yBot = yb + Math.max(0.1, b.h - 0.2);
       addFlat(roof, b.outer, b.holes, yTop, rc, UP);
       addFlat(roof, b.outer, b.holes, yBot, rc.map(v => v * 0.7), DOWN);
@@ -779,7 +799,8 @@ export function buildCity(city, world, props = null) {
     water: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.2 }),
   };
 
-  const bg = buildBuildings(city.buildings, city.looks || {});
+  const bg = buildBuildings(city.buildings, city.looks || {},
+    props && props.rail ? (city.areas || []).filter(a => a.kind === 'platform').map(a => a.outer) : []); // ホームの屋根を props から作るときだけ、元の屋根データを省く
   for (const k of ['office', 'house', 'roof', 'pitched', 'euro']) {
     const mesh = new THREE.Mesh(bg[k], mats[k]);
     mesh.name = 'buildings_' + k;

@@ -6,6 +6,7 @@ import { buildStreet } from './street.js';
 import { applyTextures } from './textures.js';
 import { buildShapes } from './shapes.js';
 import { buildSites } from './site.js';
+import { buildStation } from './station.js';
 
 export async function loadDetail({ scene, city, world, built, props }) {
   const c = city.start || { x: 0, z: 0 };
@@ -43,6 +44,12 @@ export async function loadDetail({ scene, city, world, built, props }) {
     const st = buildSites(props);
     scene.add(st.group);
     emissive.push(...(st.group.userData.emissive || []));
+    parts.push({ set: (v) => { st.group.visible = v; } });
+  }
+
+  if (DETAIL.shapes && props) {
+    const st = buildStation(props); // ホーム・屋根・架線柱・架線
+    scene.add(st.group);
     parts.push({ set: (v) => { st.group.visible = v; } });
   }
 

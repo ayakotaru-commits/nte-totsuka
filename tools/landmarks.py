@@ -4,7 +4,7 @@ build_city.py から apply() が呼ばれる (点群で形を直した後)。lid
     python tools/landmarks.py          public/data/city.json にその場で適用 (何度実行しても同じ結果)
     python tools/landmarks.py --undo   適用前に戻す
 
-1 つのランドマーク = 指定した地点 (at) を含む建物と、その上の段 (part) 全部。
+1 つのランドマーク = 指定した地点 (at) を含む建物と、その上の段 (part) 全部。set で建物本体の値も変えられる (minH = 高架にする)。
   建物には look (外観の名前) を付け、外観の中身は city.json の looks に 1 つだけ書く。
   壁の柄は「地面からの階」で決まる (段ごとに柄がずれないよう、基準の高さ y0 を looks に持つ)。
   入口 (doors) は、建物に取り付く高架の歩道 (デッキ) の端から自動で決める。appearance.json の entrances で追加できる。
@@ -52,19 +52,19 @@ def undo(buildings, pois=None):
     for b in buildings:
         if "look" not in b:
             continue
-        old = b.pop("look0", {})
-        if "name" in old and pois is not None:
+        old = b.pop("look0", {})   # 適用前の値 (無かったものは None)
+        if old.get("name") is not None and pois is not None:
             for p in pois:
                 if p.get("cat") == "building" and p.get("name") == b.get("name"):
                     p["name"] = old["name"]
-        for k in ("name", "color"):
+        for k, v in old.items():
             b.pop(k, None)
-            if old.get(k) is not None:
-                b[k] = old[k]
+            if v is not None:
+                b[k] = v
         b.pop("look", None)
 
 
-def find_doors(host, roads, extra):
+def find_doors(hosts, roads, extra):
     """高架の歩道の端で、建物の壁に届いているもの + 手で指定した入口。近いものは 1 つにまとめる"""
     pts = [list(p) for p in extra]
     for w in roads or []:
@@ -72,7 +72,7 @@ def find_doors(host, roads, extra):
         if not ys or w.get("kind") == "steps":
             continue
         for p in (w["pts"][0], w["pts"][-1]):
-            if edge_dist(p, host["outer"]) <= DOOR_REACH:
+            if any(edge_dist(p, h["outer"]) <= DOOR_REACH for h in hosts):
                 pts.append([p[0], p[1]])
     doors = []
     for p in pts:
@@ -91,28 +91,35 @@ def apply(buildings, roads=None, pois=None, conf=None):
         conf = json.loads(APPEARANCE.read_text(encoding="utf-8"))
     looks = {}
     for lm in conf.get("landmarks", []):
-        at = lm["at"]
+        # at は 1 地点 [x, z] か、その並び (重なった建物データをまとめて 1 つの外観にする)。最初の地点の建物が本体
+        ats = lm["at"] if isinstance(lm["at"][0], list) else [lm["at"]]
         # 点群で輪郭を削る前の形 (lidar.outer0) でも探す: 中庭に当たる地点でも見つかるように
-        host = next((b for b in buildings if not b.get("part")
-                     and (point_in(at, b["outer"]) or point_in(at, (b.get("lidar") or {}).get("outer0") or []))), None)
-        if not host:
-            print(f"landmarks: building not found at {at}: {lm['name']}")
+        hosts = []
+        for at in ats:
+            hosts += [b for b in buildings if not b.get("part") and b not in hosts
+                      and (point_in(at, b["outer"]) or point_in(at, (b.get("lidar") or {}).get("outer0") or []))]
+        if not hosts:
+            print(f"landmarks: building not found at {ats}: {lm['name']}")
             continue
-        key, look = lm["key"], dict(lm["look"])
-        look["y0"] = host.get("y") or 0
-        look["doors"] = find_doors(host, roads, lm.get("entrances", []))
+        host, ids = hosts[0], {h["id"] for h in hosts}
+        key, look, extra = lm["key"], dict(lm["look"]), lm.get("set", {})
+        # 壁の柄の基準の高さ。本体を高架にする (set.minH) ときは、その床から数える
+        look["y0"] = round((host.get("y") or 0) + extra.get("minH", 0), 2)
+        look["doors"] = find_doors(hosts, roads, lm.get("entrances", []))
         looks[key] = look
         n = 0
         for b in buildings:
-            if b is not host and b.get("part") != host["id"]:
+            if b["id"] not in ids and b.get("part") not in ids:
                 continue
-            b["look0"] = {k: b[k] for k in ("name", "color") if k in b}
+            new = {"color": look["wall"], **(extra if b is host else {})}
+            if b is host and lm.get("rename"):
+                new["name"] = lm["rename"]
+            b["look0"] = {k: b.get(k) for k in new}
+            b.update(new)
             b["look"] = key
-            b["color"] = look["wall"]
             n += 1
         if lm.get("rename"):
-            old = host.get("name")
-            host["name"] = lm["rename"]
+            old = host["look0"].get("name")
             for p in pois or []:
                 if old and p.get("cat") == "building" and p.get("name") == old:
                     p["name"] = lm["rename"]

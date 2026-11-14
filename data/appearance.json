@@ -131,6 +131,45 @@
      "fg": "#ffffff"
     }
    }
+  },
+  {
+   "name": "戸塚駅 (JR の橋上駅舎)",
+   "key": "totsuka_station",
+   "at": [
+    [
+     19,
+     39
+    ],
+    [
+     21,
+     41
+    ]
+   ],
+   "rename": "戸塚駅",
+   "source": "線路をまたぐ橋上駅舎。屋根の形と高さは点群、ホーム・屋根の位置は航空写真と地図データで確認。床の高さ (線路から約 5 m)・壁の色・窓の帯・看板は推定",
+   "set": {
+    "minH": 7.0
+   },
+   "look": {
+    "facade": "mall",
+    "wall": "#e3e5e4",
+    "accent": "#2e7d4f",
+    "floor_h": 2.3,
+    "floors": [
+     "ribbon",
+     "ribbon"
+    ],
+    "glass_floors": 1,
+    "sign": {
+     "text": "戸塚駅",
+     "floor": 0.55,
+     "bg": "#2e7d4f",
+     "fg": "#ffffff",
+     "min_len": 12,
+     "max_w": 9,
+     "ratio": 0.17
+    }
+   }
   }
  ]
 }

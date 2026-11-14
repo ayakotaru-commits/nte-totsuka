@@ -1007,9 +1007,14 @@ def build_shapes(city, world, cx, cz, R):
     # 外向きの方角 (東西南北) ごとに、いちばん長い壁の中央に 1 枚。(x, z) = 壁の中点、y = 看板の中心の高さ、正面 (yaw) = 壁の外向き
     big = []
     looks = city.get("looks") or {}
+    main = {}  # 外観ごとに、いちばん広い建物 (本体) にだけ付ける
     for b in city["buildings"]:
+        if b.get("look") and not b.get("part"):
+            if b["look"] not in main or abs(js_signed_area(b["outer"])) > abs(js_signed_area(main[b["look"]]["outer"])):
+                main[b["look"]] = b
+    for b in main.values():
         sg = (looks.get(b.get("look")) or {}).get("sign")
-        if not sg or b.get("part"):
+        if not sg:
             continue
         L0 = looks[b["look"]]
         o = b["outer"]
@@ -1019,7 +1024,7 @@ def build_shapes(city, world, cx, cz, R):
             a, c = o[i], o[(i + 1) % len(o)]
             dx, dz = c[0] - a[0], c[1] - a[1]
             L = math.hypot(dx, dz)
-            if L < 25:
+            if L < sg.get("min_len", 25):
                 continue
             nx, nz = dz / L * s, -dx / L * s
             q = ("e" if nx > 0 else "w") if abs(nx) > abs(nz) else ("s" if nz > 0 else "n")
@@ -1027,9 +1032,9 @@ def build_shapes(city, world, cx, cz, R):
                 best[q] = (L, a, c, nx, nz)
         for q in sorted(best):
             L, a, c, nx, nz = best[q]
-            w = min(L * 0.5, 24)
+            w = min(L * 0.5, sg.get("max_w", 24))
             big.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(L0["y0"] + sg["floor"] * L0["floor_h"]),
-                        "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * 0.12), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"]})
+                        "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * sg.get("ratio", 0.12)), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"]})
     print(f"balcony walls={len(balconies)} (apartments={apts}) shop signs={len(signs)} big signs={len(big)}")
     return {"balconies": balconies, "signs": signs, "bigSigns": big}
 
@@ -1072,6 +1077,163 @@ def build_trees(city, world, H, col):
 
 
 # =====================================================================
+# =====================================================================
+# 5. 駅と線路: ホーム・ホームの屋根と柱・架線柱・架線
+# =====================================================================
+PLAT_H = 1.1        # レール面 (地面) からホーム上面まで
+CANOPY_H = 3.6      # ホーム上面から屋根の下面まで
+CANOPY_END = 8.0    # ホームの両端で屋根を付けない長さ
+WIRE_H = 5.0        # 地面から架線まで
+MAST_H = 7.0        # 架線柱の高さ
+GANTRY_STEP = 50.0  # 架線柱の間隔
+
+
+def _resample(chain, n):
+    """折れ線を、長さで等分した n 点に取り直す"""
+    acc = [0.0]
+    for a, b in zip(chain, chain[1:]):
+        acc.append(acc[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
+    out, j = [], 0
+    for k in range(n):
+        d = acc[-1] * k / (n - 1)
+        while j < len(chain) - 2 and acc[j + 1] < d:
+            j += 1
+        seg = acc[j + 1] - acc[j]
+        t = (d - acc[j]) / seg if seg > 0 else 0
+        out.append((chain[j][0] + (chain[j + 1][0] - chain[j][0]) * t, chain[j][1] + (chain[j + 1][1] - chain[j][1]) * t))
+    return out, acc[-1]
+
+
+def build_rail(city, world, H, col):
+    """ホーム (areas の platform) は細長い多角形。いちばん離れた 2 頂点を両端として、左右の縁を約 4 m ごとの点列に取り直す。
+    platforms: left / right = 両縁の点 [x, z]、y = 各点のホーム上面の高さ
+    canopies:  同じ形で、y = 屋根の下面の高さ (屋根の厚さ・形は描画側)
+    columns:   屋根の柱 [x, z, 下端 y, 上端 y]
+    gantries:  架線柱 (門形) [中心 x, 中心 z, 地面 y, 線路に直角な向き dx, dz, 半幅]。柱は中心 ± 半幅、高さ MAST_H
+    catenary:  架線の線分 [ax, ay, az, bx, by, bz]"""
+    def in_building(x, z, ground_only=False):
+        return any(World.contains(b, x, z) and not (ground_only and b["minH"] > 0) for b in world.query(x, z, x, z))
+
+    platforms, canopies, columns = [], [], []
+    plat_rings = []
+    for a in city.get("areas") or []:
+        if a["kind"] != "platform":
+            continue
+        o = a["outer"]
+        plat_rings.append(o)
+        n = len(o)
+        i0, j0 = max(((i, j) for i in range(n) for j in range(i + 1, n)), key=lambda ij: math.hypot(o[ij[0]][0] - o[ij[1]][0], o[ij[0]][1] - o[ij[1]][1]))
+        ca = o[i0:j0 + 1]
+        cb = (o[j0:] + o[:i0 + 1])[::-1]
+        length = math.hypot(o[i0][0] - o[j0][0], o[i0][1] - o[j0][1])
+        m = max(2, math.ceil(length / 4) + 1)
+        L, _ = _resample(ca, m)
+        R, _ = _resample(cb, m)
+        # 高さ: 中心線の地面 + PLAT_H。川をまたぐ所など地面が大きく下がる所は全体の中央値で置き換え、前後 7 点でならす
+        hs = [H((l[0] + r[0]) / 2, (l[1] + r[1]) / 2) for l, r in zip(L, R)]
+        med = sorted(hs)[len(hs) // 2]
+        hs = [h if abs(h - med) < 1.0 else med for h in hs]
+        ys = [sum(hs[max(0, k - 3):k + 4]) / len(hs[max(0, k - 3):k + 4]) + PLAT_H for k in range(m)]
+        platforms.append({"left": [[r2(x), r2(z)] for x, z in L], "right": [[r2(x), r2(z)] for x, z in R], "y": [r2(y) for y in ys]})
+        ring = [[r2(x), r2(z), r2(y - PLAT_H)] for (x, z), y in zip(L, ys)] + [[r2(x), r2(z), r2(y - PLAT_H)] for (x, z), y in list(zip(R, ys))[::-1]]
+        col.add_line(ring + [ring[0]], 0.1, PLAT_H)
+        # 屋根: 両端 CANOPY_END を除き、幅が 3 m 以上ある範囲。縁から少し内側
+        step = length / (m - 1)
+        ks = [k for k in range(m) if CANOPY_END <= k * step <= length - CANOPY_END and math.hypot(L[k][0] - R[k][0], L[k][1] - R[k][1]) >= 3]
+        if len(ks) >= 2:
+            k0, k1 = ks[0], ks[-1]
+            inset = lambda p, q: (p[0] + (q[0] - p[0]) * 0.04, p[1] + (q[1] - p[1]) * 0.04)
+            canopies.append({"left": [[r2(v) for v in inset(L[k], R[k])] for k in range(k0, k1 + 1)],
+                             "right": [[r2(v) for v in inset(R[k], L[k])] for k in range(k0, k1 + 1)],
+                             "y": [r2(ys[k] + CANOPY_H) for k in range(k0, k1 + 1)]})
+            for k in range(k0 + 1, k1, 2):  # 柱は約 8 m ごと。広いホームは 2 本
+                w = math.hypot(L[k][0] - R[k][0], L[k][1] - R[k][1])
+                for t in ((0.3, 0.7) if w > 7 else (0.5,)):
+                    x, z = L[k][0] + (R[k][0] - L[k][0]) * t, L[k][1] + (R[k][1] - L[k][1]) * t
+                    columns.append([r2(x), r2(z), r2(ys[k]), r2(ys[k] + CANOPY_H)])
+
+    def in_platform(x, z):
+        return any(pip(x, z, r) for r in plat_rings)
+
+    # 架線: 線路の真上。橋 (ys) はその高さ、ほかは地面から
+    rails = city.get("rails") or []
+    catenary = []
+    for r in rails:
+        pts, ys = r["pts"], r.get("ys")
+        prev = None
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            d = math.hypot(b[0] - a[0], b[1] - a[1])
+            n = max(1, math.ceil(d / 12))
+            for k in range(n + (1 if i == len(pts) - 2 else 0)):
+                t = k / n
+                x, z = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t
+                y = (ys[i] + (ys[i + 1] - ys[i]) * t if ys else H(x, z)) + WIRE_H
+                cur = [r2(x), r2(y), r2(z)]
+                if prev:
+                    catenary.append(prev + cur)
+                prev = cur
+
+    # 架線柱: 各線路を GANTRY_STEP ごとに歩き、直角な線が横切る線路をまとめて 1 つの門形にする (近くに既にあれば作らない)
+    segs = [(r["pts"][i], r["pts"][i + 1]) for r in rails if not r.get("ys") for i in range(len(r["pts"]) - 1)]
+    gantries, placed = [], PointGrid(40)
+
+    def gantry_at(x, z, dx, dz):
+        nx, nz = -dz, dx
+        ts = [0.0]
+        for a, b in segs:
+            ex, ez = b[0] - a[0], b[1] - a[1]
+            den = nx * ez - nz * ex
+            if abs(den) < 1e-9:
+                continue
+            t = ((a[0] - x) * ez - (a[1] - z) * ex) / den
+            u = ((a[0] - x) * nz - (a[1] - z) * nx) / den
+            if 0 <= u <= 1 and abs(t) < 45:
+                ts.append(t)
+        ts.sort()
+        i = ts.index(0.0)
+        lo = hi = i
+        while lo > 0 and ts[lo] - ts[lo - 1] < 9:
+            lo -= 1
+        while hi < len(ts) - 1 and ts[hi + 1] - ts[hi] < 9:
+            hi += 1
+        t0, t1 = ts[lo] - 2.3, ts[hi] + 2.3
+        cx, cz, half = x + nx * (t0 + t1) / 2, z + nz * (t0 + t1) / 2, (t1 - t0) / 2
+        if placed.near(cx, cz, 34):
+            return
+        n = max(2, math.ceil(half * 2 / 2))
+        for k in range(n + 1):  # 門の下にホーム・建物があれば作らない
+            t = -half + 2 * half * k / n
+            px, pz = cx + nx * t, cz + nz * t
+            if in_platform(px, pz) or in_building(px, pz):
+                return
+        y = min(H(cx - nx * half, cz - nz * half), H(cx + nx * half, cz + nz * half))
+        if abs(y - H(cx, cz)) > 2.5:  # 斜面・川岸
+            return
+        placed.add(cx, cz)
+        gantries.append([r2(cx), r2(cz), r2(y), round(nx, 4), round(nz, 4), r2(half)])
+        for sgn in (-1, 1):
+            col.add_circle(cx + nx * half * sgn, cz + nz * half * sgn, 0.2, y, MAST_H)
+
+    for r in rails:
+        if r.get("ys"):
+            continue
+        state = {"next": GANTRY_STEP / 2, "run": 0.0}
+        for a, b in zip(r["pts"], r["pts"][1:]):
+            d = math.hypot(b[0] - a[0], b[1] - a[1])
+            if d <= 0:
+                continue
+            dx, dz = (b[0] - a[0]) / d, (b[1] - a[1]) / d
+            while state["next"] <= state["run"] + d:
+                t = state["next"] - state["run"]
+                gantry_at(a[0] + dx * t, a[1] + dz * t, dx, dz)
+                state["next"] += GANTRY_STEP
+            state["run"] += d
+    print(f"platforms={len(platforms)} canopies={len(canopies)} columns={len(columns)} gantries={len(gantries)} catenary segs={len(catenary)}")
+    return {"platforms": platforms, "canopies": canopies, "columns": columns, "gantries": gantries, "catenary": catenary,
+            "dims": {"platH": PLAT_H, "mastH": MAST_H}}
+
+
 def build(city):
     H = load_terrain()
     world = World(city["buildings"])
@@ -1083,6 +1245,7 @@ def build(city):
     sites = build_sites(city, world, H, col)
     shapes = build_shapes(city, world, cx, cz, RADIUS)
     trees = build_trees(city, world, H, col)
+    rail = build_rail(city, world, H, col)
     print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
     return {
         "version": 1,
@@ -1092,6 +1255,7 @@ def build(city):
         "sites": sites,
         **shapes,
         "trees": trees,
+        "rail": rail,
         "colliders": {"circle": col.circle, "box": col.box, "line": col.line, "tree": col.tree},
     }
 
