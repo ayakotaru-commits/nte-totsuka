@@ -127,6 +127,53 @@ export function buildProps(props) {
   instanced(group, tilt(new THREE.TorusGeometry(0.4, 0.04, 8, 24), 0.08), orange, props.mirrors, 'mirror_rims');
   instanced(group, tilt(new THREE.CircleGeometry(0.4, 24), 0.09), mirrorMat, props.mirrors, 'mirror_glass', { shadow: false });
 
+  // ---------- 駐車場の車 (点群に写っていた駐車ますに置く。props.json の cars: {x, y, z, yaw, c: 色}) ----------
+  const cars = props.cars || [];
+  if (cars.length) {
+    const paintMat2 = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.35, metalness: 0.3 });
+    const glass = new THREE.MeshStandardMaterial({ color: '#232a33', roughness: 0.15, metalness: 0.4 });
+    const tyre = new THREE.MeshStandardMaterial({ color: '#1b1c1e', roughness: 0.9 });
+    const tint = new THREE.Color();
+    const colored = (geo, name) => { // 車体の色を 1 台ずつ変える
+      const m = instanced(group, geo, paintMat2, cars, name);
+      cars.forEach((c, i) => m.setColorAt(i, tint.set(c.c)));
+      return m;
+    };
+    colored(new THREE.BoxGeometry(1.72, 0.6, 4.3).translate(0, 0.6, 0), 'car_bodies');
+    colored(new THREE.BoxGeometry(1.5, 0.06, 2.0).translate(0, 1.45, -0.25), 'car_roofs');
+    instanced(group, new THREE.BoxGeometry(1.56, 0.52, 2.4).translate(0, 1.16, -0.25), glass, cars, 'car_cabins');
+    for (const z of [1.35, -1.35]) {
+      instanced(group, new THREE.CylinderGeometry(0.32, 0.32, 1.78, 12).rotateZ(Math.PI / 2).translate(0, 0.32, z), tyre, cars, 'car_wheels');
+    }
+  }
+
+  // ---------- 敷地の外周の柵 (工業用地・学校・墓地。props.json の fences: 柱 [x, z, y] とパネル [x, z, y, yaw, 長さ]) ----------
+  const meshTex = canvasTexture(64, 64, (g, W, H) => { // 金網: 細い格子 + 上下の横桟
+    g.clearRect(0, 0, W, H); g.strokeStyle = '#ffffff'; g.lineWidth = 1.2;
+    for (let k = -W; k < W * 2; k += 8) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k + H, H); g.stroke(); g.beginPath(); g.moveTo(k, H); g.lineTo(k + H, 0); g.stroke(); }
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, 3); g.fillRect(0, H - 3, W, 3);
+  });
+  meshTex.wrapS = THREE.RepeatWrapping; meshTex.repeat.set(4, 1);
+  for (const f of props.fences || []) {
+    const mat = new THREE.MeshStandardMaterial({ color: f.color, roughness: 0.6, metalness: 0.4 });
+    instanced(group, new THREE.CylinderGeometry(0.035, 0.035, f.h, 6).translate(0, f.h / 2, 0), mat, f.posts.map(([x, z, y]) => ({ x, y, z })), 'fence_posts_' + f.kind);
+    const pm = f.kind === 'construction' // 工事の仮囲いは白い板、ほかは金網
+      ? new THREE.MeshStandardMaterial({ color: f.color, side: THREE.DoubleSide, roughness: 0.7 })
+      : new THREE.MeshStandardMaterial({ color: f.color, map: meshTex, alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.6, metalness: 0.4 });
+    // 板は長さ 1 で作り、進行方向 (局所 +Z) に長さを掛ける
+    instanced(group, new THREE.PlaneGeometry(1, f.h - 0.1).translate(0, f.h / 2 + 0.05, 0).rotateY(Math.PI / 2), pm,
+      f.panels.map(([x, z, y, yaw, len]) => ({ x, y, z, yaw, len })), 'fence_panels_' + f.kind, { shadow: f.kind === 'construction', scale: (q, sc) => sc.set(1, 1, q.len) });
+  }
+
+  // ---------- 墓石 (props.json の graves) ----------
+  const graves = props.graves || [];
+  if (graves.length) {
+    const stone = new THREE.MeshStandardMaterial({ color: '#8f9094', roughness: 0.55 });
+    const base = new THREE.MeshStandardMaterial({ color: '#b3b1aa', roughness: 0.8 });
+    instanced(group, new THREE.BoxGeometry(1.1, 0.3, 1.1).translate(0, 0.15, 0), base, graves, 'grave_bases');
+    instanced(group, new THREE.BoxGeometry(0.34, 0.95, 0.34).translate(0, 0.77, 0), stone, graves, 'grave_stones');
+  }
+
   console.info(`[detail] poles=${poles.length} paint=${props.paint.length} guard runs=${props.guardRails.length} vending=${props.vending.length} mirrors=${props.mirrors.length}`);
   return { group, emissive };
 }

@@ -175,7 +175,29 @@ AREA_KIND = {
     ("leisure", "garden"): "park", ("amenity", "parking"): "parking", ("amenity", "school"): "school",
     ("amenity", "bus_station"): "plaza", ("highway", "pedestrian"): "plaza", ("amenity", "university"): "school",
     ("amenity", "kindergarten"): "school", ("place", "square"): "plaza",
+    # 敷地 (中の地面は cover.json の色を見せ、外周の柵などは build_props.py が置く)
+    ("landuse", "industrial"): "industrial", ("landuse", "cemetery"): "cemetery", ("amenity", "grave_yard"): "cemetery",
+    ("amenity", "place_of_worship"): "worship", ("amenity", "hospital"): "hospital",
 }
+AREA_KEYS = ("natural", "landuse", "leisure", "amenity", "place")
+POI_AREA_KINDS = ("park", "school", "plaza", "water", "residential", "industrial")  # 名前を施設名ラベルに出すエリア
+
+
+def osm_areas(el, t):
+    """OSM の要素 (way / relation) から、土地利用・施設のエリアを作る。対応していない種類は []"""
+    kind = next((AREA_KIND[(k, t.get(k))] for k in AREA_KEYS if (k, t.get(k)) in AREA_KIND), None)
+    out = []
+    if kind and el["type"] in ("way", "relation"):
+        for outer, holes in polygons(el):
+            if not any(in_limit(p, 200) for p in outer):
+                continue
+            a = {"kind": kind, "outer": outer}
+            if holes:
+                a["holes"] = holes
+            if t.get("name"):
+                a["name"] = t["name"]
+            out.append(a)
+    return out
 
 
 def clip_line(pts):
@@ -873,21 +895,7 @@ def main():
                 waterways.append({"kind": ww, "w": w, "pts": seg, **({"name": t["name"]} if t.get("name") else {})})
             continue
 
-        kind = None
-        for k in ("natural", "landuse", "leisure", "amenity", "place"):
-            if (k, t.get(k)) in AREA_KIND:
-                kind = AREA_KIND[(k, t.get(k))]
-                break
-        if kind and el["type"] in ("way", "relation"):
-            for outer, holes in polygons(el):
-                if not any(in_limit(p, 200) for p in outer):
-                    continue
-                a = {"kind": kind, "outer": outer}
-                if holes:
-                    a["holes"] = holes
-                if t.get("name"):
-                    a["name"] = t["name"]
-                areas.append(a)
+        areas.extend(osm_areas(el, t))
 
         if el["type"] == "node":
             sk = ("signal" if t.get("highway") == "traffic_signals"
@@ -956,7 +964,7 @@ def main():
             c = centroid(b["outer"])
             pois.append({"name": b["name"], "x": round(c[0], 1), "z": round(c[1], 1), "cat": "building", "h": b["h"]})
     for a in areas:
-        if a.get("name") and a["kind"] in ("park", "school", "plaza", "water", "residential"):
+        if a.get("name") and a["kind"] in POI_AREA_KINDS:
             c = centroid(a["outer"])
             if in_limit(c):
                 pois.append({"name": a["name"], "x": round(c[0], 1), "z": round(c[1], 1), "cat": f"area:{a['kind']}"})
@@ -988,6 +996,15 @@ def main():
     print(f"buildings={len(buildings)} roads={len(roads)} rails={len(rails)} water={len(waterways)} areas={len(areas)} pois={len(pois)} street_nodes={len(street_nodes)}")
     print(f"-> {DST} ({DST.stat().st_size // 1024} KB)")
 
+    # 点群と航空写真があれば、地面の種類・木・駐車場・建物データに無い建物も作る (lidar_cover.py。最後に build_props.py も実行する)
+    try:
+        import lidar_cover
+        have = lidar_cover.ORTHO_BIN.exists() and (lidar_cover.CACHE.exists() or any(lidar_cover.FL.CACHE.glob("*.zip")))
+    except ImportError:   # numpy が無い
+        have = False
+    if have:
+        lidar_cover.main()
+        return
     # 路上の小物・敷地の外構の配置と当たり判定 (public/data/props.json)
     import build_props
     build_props.main()

@@ -21,6 +21,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CITY = ROOT / "public" / "data" / "city.json"
 TERRAIN = ROOT / "public" / "data" / "terrain.json"
 DST = ROOT / "public" / "data" / "props.json"
+LOTS = ROOT / "data" / "lots.json"  # 点群から読んだ木の位置・広い舗装 (tools/lidar_cover.py が作る。無ければ使わない)
 
 RADIUS = 3000  # スタート地点からの半径 (m)。3000 = マップ全体 (旧 detail/config.js の radius)
 STEP = 0.4     # world.js の STEP (乗り越えられる段差)
@@ -1072,6 +1073,204 @@ def build_trees(city, world, H, col):
 
 
 # =====================================================================
+# 6. 点群から読んだ木と駐車場 (data/lots.json。tools/lidar_cover.py が作る)
+# =====================================================================
+def build_lidar_trees(lots, world, H, col):
+    """木: 点群で周りより高かった所に、その高さの木を置く。建物に近い木は、葉が壁に入らない大きさに縮める"""
+    trees = []
+    for x, z, h in lots["trees"]:
+        near = world.query(x - 5, z - 5, x + 5, z + 5)
+        if any(world.contains(b, x, z) for b in near):
+            continue
+        sc = min(2.6, max(0.6, h / 4.9))                      # 基準の木の高さは 4.9 m
+        d = min([world.closest_d(b, x, z) for b in near], default=9.0)
+        sc = max(0.5, min(sc, (d + 0.6) / 1.7))               # 葉の半径 1.7 m × 倍率
+        r = hash_rng(f"lt{x},{z}")()
+        y = H(x, z)
+        trees.append([r2(x), r2(z), r2(y), r3(sc), r3(r)])
+        col.tree.append([r2(x), r2(z), r3(0.25 * sc), r2(y), r2(y + 4.9 * sc)])
+    print(f"trees (lidar)={len(trees)}")
+    return trees
+
+
+STALL_W, STALL_D, AISLE = 2.5, 5.0, 6.0   # 駐車ますの幅・奥行き、車路の幅 (m)
+CAR_COLORS = ["#f4f4f2", "#f4f4f2", "#c9ccd0", "#c9ccd0", "#2b2d31", "#2b2d31", "#6f7378", "#1f3a6b", "#8a1f24", "#b9a98a"]
+
+
+def build_parking(lots, city, world, H, col, paint):
+    """広い舗装のうち、車が写っていた所と OSM の駐車場に、駐車ますの白線を引く。車は点群に写っていたますに置く。
+    ますの並びは、舗装のかたまりを囲む一番小さい長方形の長い辺に沿わせる (向きは推定)"""
+    cars, n_lots = [], 0
+    osm = [a for a in city["areas"] if a["kind"] == "parking"]
+    sites = lots.get("sites") or []
+    for lot in lots["parking"]:
+        cells = {(x, z) for z, x0, x1 in lot["rows"] for x in range(x0, x1)}
+        mx = sum(x for x, _ in cells) / len(cells) + 0.5
+        mz = sum(z for _, z in cells) / len(cells) + 0.5
+        if any(pip(mx, mz, s["outer"]) for s in sites):   # 造成地の中の舗装 (写っているのは工事の車) には引かない
+            continue
+        seen = lot["cars"]
+        if not ((len(seen) >= 4 and len(seen) * 350 >= lot["area"]) or any(pip(mx, mz, a["outer"]) for a in osm)):
+            continue
+        n_lots += 1
+        inside = lambda x, z: (math.floor(x), math.floor(z)) in cells
+        a = lot["angle"]
+        ux, uz = math.cos(a), math.sin(a)
+        us = [(x + 0.5) * ux + (z + 0.5) * uz for x, z in cells]
+        vs = [-(x + 0.5) * uz + (z + 0.5) * ux for x, z in cells]
+        if max(us) - min(us) < max(vs) - min(vs):   # 車路は長い辺に沿わせる
+            ux, uz = -uz, ux
+            us, vs = vs, [-u for u in us]
+        vx, vz = -uz, ux
+        u0, u1, v0, v1 = min(us), max(us), min(vs), max(vs)
+        rnd = hash_rng(f"lot{lot['rows'][0][0]},{lot['rows'][0][1]}")
+        lines = set()
+        # 奥行き方向: [ます][車路][ます] のくり返し (ますは背中合わせ)
+        nrow = 0
+        v = v0 + 0.5
+        while v + STALL_D <= v1:
+            side = nrow % 2                        # 0 = 車路が +v 側, 1 = 車路が -v 側
+            k, u = 0, u0 + 0.5
+            while u + STALL_W <= u1:
+                cu, cv = u + STALL_W / 2, v + STALL_D / 2
+                P = lambda du, dv: (ux * (cu + du) + vx * (cv + dv), uz * (cu + du) + vz * (cv + dv))
+                if all(inside(*P(du, dv)) for du, dv in ((0, 0), (-1.1, -2.3), (1.1, -2.3), (-1.1, 2.3), (1.1, 2.3))):
+                    lines.add((nrow, k))
+                    lines.add((nrow, k + 1))
+                    x, z = P(0, 0)
+                    if any((cx - x) ** 2 + (cz - z) ** 2 < 1.9 ** 2 for cx, cz in seen):
+                        nose = (1 if side == 0 else -1) * (1 if rnd() < 0.7 else -1)   # 7 割は頭を車路と反対に向ける (前向き駐車)
+                        dx, dz = -vx * nose, -vz * nose
+                        j = (rnd() - 0.5) * 0.3
+                        x, z = x + ux * j, z + uz * j
+                        y = H(x, z)
+                        yaw = math.atan2(dx, dz)
+                        cars.append({"x": r2(x), "z": r2(z), "y": r2(y), "yaw": r3(yaw), "c": CAR_COLORS[int(rnd() * len(CAR_COLORS))]})
+                        col.add_box(x, z, yaw, 0.88, 2.15, y, 1.45)
+                k += 1
+                u += STALL_W
+            for row, kk in sorted(l for l in lines if l[0] == nrow):
+                lu = u0 + 0.5 + kk * STALL_W
+                cv = v + STALL_D / 2
+                paint.append([r2(ux * lu + vx * cv), r2(uz * lu + vz * cv), r3(vx), r3(vz), STALL_D, 0.12])
+            nrow += 1
+            v += STALL_D if side == 1 else STALL_D + AISLE
+    print(f"parking lots={n_lots} / {len(lots['parking'])} cars={len(cars)}")
+    return cars
+
+
+# =====================================================================
+# 7. 敷地の外周の柵と、墓地の墓石 (OSM のエリア: 工業用地・学校・墓地。点群から読んだ造成地: 工事の仮囲い)
+# =====================================================================
+# 種類 → (色, 高さ m)。construction (仮囲い) は金網ではなく白い板
+FENCES = {"industrial": ("#8f969b", 1.8), "school": ("#5f8468", 1.5), "cemetery": ("#9a968c", 1.2), "construction": ("#e9e8e2", 2.0)}
+FENCE_STEP = 2.4
+
+
+def build_area_extras(city, world, H, col, sites=()):
+    B = city["bounds"]
+    # 道路の上かどうか (中心線から幅の半分 + 余白以内、または PLATEAU の道路面の中)
+    cell, sg, ag = 20, {}, {}
+    for r in city["roads"]:
+        hw = r.get("w", 4) / 2 + 1.5
+        for (ax, az), (bx, bz) in zip(r["pts"], r["pts"][1:]):
+            for i in range(math.floor((min(ax, bx) - hw) / cell), math.floor((max(ax, bx) + hw) / cell) + 1):
+                for j in range(math.floor((min(az, bz) - hw) / cell), math.floor((max(az, bz) + hw) / cell) + 1):
+                    sg.setdefault((i, j), []).append((ax, az, bx, bz, hw))
+    for a in city.get("roadAreas") or []:
+        xs, zs = [p[0] for p in a["outer"]], [p[1] for p in a["outer"]]
+        for i in range(math.floor(min(xs) / cell), math.floor(max(xs) / cell) + 1):
+            for j in range(math.floor(min(zs) / cell), math.floor(max(zs) / cell) + 1):
+                ag.setdefault((i, j), []).append((min(xs), max(xs), min(zs), max(zs), a))
+
+    def on_road(x, z):
+        k = (math.floor(x / cell), math.floor(z / cell))
+        for ax, az, bx, bz, hw in sg.get(k, ()):
+            ex, ez = bx - ax, bz - az
+            l2 = ex * ex + ez * ez
+            t = max(0, min(1, ((x - ax) * ex + (z - az) * ez) / l2)) if l2 > 0 else 0
+            if (x - ax - ex * t) ** 2 + (z - az - ez * t) ** 2 < hw * hw:
+                return True
+        for x0, x1, z0, z1, a in ag.get(k, ()):
+            if x0 <= x <= x1 and z0 <= z <= z1 and pip(x, z, a["outer"]) and not any(pip(x, z, h) for h in a.get("holes") or []):
+                return True
+        return False
+
+    def blocked(x, z):
+        if x < B["minX"] or x > B["maxX"] or z < B["minZ"] or z > B["maxZ"] or on_road(x, z):
+            return True
+        return any(world.contains(b, x, z) or world.closest_d(b, x, z) < 0.8 for b in world.query(x - 0.8, z - 0.8, x + 0.8, z + 0.8))
+
+    fences, graves = [], []
+    for a in list(city["areas"]) + list(sites):
+        f = FENCES.get(a["kind"])
+        if not f:
+            continue
+        ring = a["outer"]
+        sgn = 1 if signed_area(ring) > 0 else -1
+        posts = []   # 外周を一定間隔で歩いた点。道路や建物に当たる所は内側へずらし、ずらしても当たる所 (門・出入口) は空ける
+        for i in range(len(ring)):
+            p, q = ring[i], ring[(i + 1) % len(ring)]
+            L = math.hypot(q[0] - p[0], q[1] - p[1])
+            if L < 0.5:
+                continue
+            dx, dz = (q[0] - p[0]) / L, (q[1] - p[1]) / L
+            nx, nz = -dz * sgn, dx * sgn            # 内向き
+            n = max(1, round(L / FENCE_STEP))
+            for k in range(n):
+                x, z = p[0] + dx * L * k / n, p[1] + dz * L * k / n
+                for off in (0, 1, 2, 3, 4, 5, 6, 8, 10):
+                    xx, zz = x + nx * off, z + nz * off
+                    if not blocked(xx, zz) and (off == 0 or pip(xx, zz, ring)):   # 輪郭の線上 (off = 0) は内外の判定が不安定なので見ない
+                        posts.append((xx, zz))
+                        break
+                else:
+                    posts.append(None)
+        out_posts, panels = [], []
+        for i, p in enumerate(posts):
+            if not p:
+                continue
+            out_posts.append([r2(p[0]), r2(p[1]), r2(H(p[0], p[1]))])
+            q = posts[(i + 1) % len(posts)]
+            if not q:
+                continue
+            L = math.hypot(q[0] - p[0], q[1] - p[1])
+            mx, mz = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2
+            if L < 0.3 or L > FENCE_STEP * 1.6 or blocked(mx, mz):
+                continue
+            yaw = math.atan2(q[0] - p[0], q[1] - p[1])
+            y = min(H(p[0], p[1]), H(q[0], q[1]))
+            panels.append([r2(mx), r2(mz), r2(y), r3(yaw), r2(L)])
+            col.add_box(mx, mz, yaw, 0.05, L / 2, y, f[1])
+        if panels:
+            fences.append({"kind": a["kind"], "color": f[0], "h": f[1], "posts": out_posts, "panels": panels})
+
+        if a["kind"] == "cemetery":
+            # 墓石: 一番長い辺の向きに 2 m × 3 m 間隔で並べる
+            e = max(range(len(ring)), key=lambda i: math.hypot(ring[(i + 1) % len(ring)][0] - ring[i][0], ring[(i + 1) % len(ring)][1] - ring[i][1]))
+            p, q = ring[e], ring[(e + 1) % len(ring)]
+            L = math.hypot(q[0] - p[0], q[1] - p[1])
+            ux, uz = (q[0] - p[0]) / L, (q[1] - p[1]) / L
+            us = [x * ux + z * uz for x, z in ring]
+            vs = [-x * uz + z * ux for x, z in ring]
+            yaw = math.atan2(-uz, ux)
+            v = min(vs) + 1.5
+            while v < max(vs) - 1:
+                u = min(us) + 1.5
+                while u < max(us) - 1:
+                    x, z = ux * u - uz * v, uz * u + ux * v
+                    ok = pip(x, z, ring) and not any(pip(x, z, h) for h in a.get("holes") or []) and not blocked(x, z)
+                    if ok and all(not blocked(x + ox, z + oz) for ox, oz in ((1.2, 0), (-1.2, 0), (0, 1.2), (0, -1.2))):
+                        y = H(x, z)
+                        graves.append({"x": r2(x), "z": r2(z), "y": r2(y), "yaw": r3(yaw)})
+                        col.add_circle(x, z, 0.4, y, 1.3)
+                    u += 2.0
+                v += 3.0
+    print(f"area fences={len(fences)} panels={sum(len(f['panels']) for f in fences)} graves={len(graves)}")
+    return {"fences": fences, "graves": graves}
+
+
+# =====================================================================
 def build(city):
     H = load_terrain()
     world = World(city["buildings"])
@@ -1082,7 +1281,10 @@ def build(city):
     sig = build_signals(city, world, H, cx, cz, RADIUS, col, street["paint"])
     sites = build_sites(city, world, H, col)
     shapes = build_shapes(city, world, cx, cz, RADIUS)
-    trees = build_trees(city, world, H, col)
+    lots = json.loads(LOTS.read_text(encoding="utf-8")) if LOTS.exists() else None
+    # 木: 点群で見つけた位置があればそれを使う。無ければ公園・森・草地に散らす
+    trees = build_lidar_trees(lots, world, H, col) if lots and lots.get("trees") else build_trees(city, world, H, col)
+    cars = build_parking(lots, city, world, H, col, street["paint"]) if lots and lots.get("parking") else []
     print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
     return {
         "version": 1,
@@ -1092,6 +1294,8 @@ def build(city):
         "sites": sites,
         **shapes,
         "trees": trees,
+        "cars": cars,
+        **build_area_extras(city, world, H, col, (lots or {}).get("sites") or ()),
         "colliders": {"circle": col.circle, "box": col.box, "line": col.line, "tree": col.tree},
     }
 
