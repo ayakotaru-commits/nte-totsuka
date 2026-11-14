@@ -73,14 +73,14 @@ if (dDw > 0.0) {
   float gray = 1.0 - smoothstep(0.035, 0.08, sat);
   dRoad = (1.0 - smoothstep(0.14, 0.2, lum)) * gray;
   dPave = smoothstep(0.14, 0.2, lum) * gray;
-  vec3 a = mix(vec3(1.0), texture2D(uAsph, vDW.xz / 4.0).rgb / uAsphAvg, 0.75);
+  vec3 a = mix(vec3(1.0), max(texture2D(uAsph, vDW.xz / 4.0).rgb / uAsphAvg, vec3(0.95)), 0.75); // 暗い部分を下げ止め = ひび割れを消す (ざらつきは残す)
   vec3 p = texture2D(uPave, vDW.xz / 2.5).rgb / uPaveAvg;
   vec3 det = mix(vec3(1.0), a, dRoad) * mix(vec3(1.0), p, dPave);
   diffuseColor.rgb = mix(b, b * det, dDw);
 }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 if (dDw > 0.0) {
-  vec3 ta = texture2D(uAsphN, vDW.xz / 4.0).xyz * 2.0 - 1.0;
+  vec3 ta = texture2D(uAsphN, vDW.xz / 4.0, 4.5).xyz * 2.0 - 1.0; // 少しぼかしてひび割れの段差を消す
   vec3 tp = texture2D(uPaveN, vDW.xz / 2.5).xyz * 2.0 - 1.0;
   vec2 txy = ta.xy * dRoad + tp.xy * dPave;
   vec3 wn = normalize(vec3(txy.x * 0.8, 1.0, -txy.y * 0.8)); // 地面は上向き前提
