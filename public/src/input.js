@@ -9,6 +9,8 @@ export class Input {
       if (!this.down.has(e.code)) this.pressedQ.add(e.code);
       this.down.add(e.code);
     });
+    // 左クリック = 攻撃 (視点操作でマウスをつかんでいるときだけ。最初のクリックは、つかむためのもの)
+    addEventListener('mousedown', (e) => { if (e.button === 0 && document.pointerLockElement) this.pressedQ.add('Mouse0'); });
     addEventListener('keyup', (e) => this.down.delete(e.code));
     addEventListener('blur', () => { this.down.clear(); this.ax = this.az = 0; });
   }
