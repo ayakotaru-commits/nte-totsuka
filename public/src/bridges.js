@@ -11,14 +11,18 @@ export const getBridges = () => current;
 export class Bridges {
   constructor(city) {
     this.items = [];
-    for (const r of city.roads) if (r.ys) this.items.push({ r, rail: false, ped: PED.has(r.kind), w: r.w || 3, bridge: !!r.bridge });
-    for (const r of city.rails) if (r.ys) this.items.push({ r, rail: true, ped: false, w: 4.2, bridge: !!r.bridge });
+    for (const r of city.roads) if (r.ys) {
+      // 中心線から左右の縁まで (PLATEAU の道路面から測った half があれば左右で違う。左 = 進行方向の左 = (-dz, dx) の側)
+      const w = r.w || 3, half = !PED.has(r.kind) && r.half ? r.half : [w / 2, w / 2];
+      this.items.push({ r, rail: false, ped: PED.has(r.kind), w, hl: half[0], hr: half[1], bridge: !!r.bridge });
+    }
+    for (const r of city.rails) if (r.ys) this.items.push({ r, rail: true, ped: false, w: 4.2, hl: 2.1, hr: 2.1, bridge: !!r.bridge });
     this.cell = 20;
     this.grid = new Map();
     this.items.forEach((it, n) => {
       const p = it.r.pts;
       for (let i = 0; i < p.length - 1; i++) {
-        const m = it.w / 2 + 1;
+        const m = Math.max(it.hl, it.hr) + 1;
         for (let gx = Math.floor((Math.min(p[i][0], p[i + 1][0]) - m) / this.cell); gx <= Math.floor((Math.max(p[i][0], p[i + 1][0]) + m) / this.cell); gx++)
           for (let gz = Math.floor((Math.min(p[i][1], p[i + 1][1]) - m) / this.cell); gz <= Math.floor((Math.max(p[i][1], p[i + 1][1]) + m) / this.cell); gz++) {
             const k = gx * 100000 + gz;
@@ -45,7 +49,8 @@ export class Bridges {
       const tr = ((x - a[0]) * ex + (z - a[1]) * ez) / l2;
       const t = Math.max(0, Math.min(1, tr));
       const d = Math.hypot(x - a[0] - ex * t, z - a[1] - ez * t);
-      if (d > it.w / 2 + margin) continue;
+      const left = (x - a[0]) * -ez + (z - a[1]) * ex >= 0;
+      if (d > (left ? it.hl : it.hr) + margin) continue;
       const y = it.r.ys[i] + (it.r.ys[i + 1] - it.r.ys[i]) * t;
       if (y > maxY) continue;
       if (tr >= 0 && tr <= 1) { if (!best || y > best.y) best = { y, item: it }; }
@@ -66,7 +71,7 @@ export class Bridges {
     const piers = [];
     for (const it of this.items) {
       const { pts, ys } = it.r;
-      const hw = it.w / 2, top = it.rail ? 0.3 : 0.05;
+      const hw = it.w / 2, top = it.rail ? 0.3 : 0.05, kl = it.hl / hw, kr = it.hr / hw;
       const surf = it.rail ? P.ballast : it.ped ? P.ped : P.deck;
       for (let i = 0; i < pts.length - 1; i++) {
         const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
@@ -74,7 +79,7 @@ export class Bridges {
         if (L < 0.05) continue;
         const nx = -(bz - az) / L * hw, nz = (bx - ax) / L * hw;
         const ya = ys[i] + top, yb = ys[i + 1] + top;
-        const A = [ax + nx, ya, az + nz], B = [bx + nx, yb, bz + nz], C = [bx - nx, yb, bz - nz], D = [ax - nx, ya, az - nz];
+        const A = [ax + nx * kl, ya, az + nz * kl], B = [bx + nx * kl, yb, bz + nz * kl], C = [bx - nx * kr, yb, bz - nz * kr], D = [ax - nx * kr, ya, az - nz * kr];
         quad(surf, A, B, C, D);                                   // 路面
         if (it.rail) for (const o of [-0.72, 0.72]) {             // レール
           const ox = -(bz - az) / L * o, oz = (bx - ax) / L * o, w = 0.07 / hw;
@@ -93,14 +98,14 @@ export class Bridges {
         if (!it.bridge && !(it.ped && lifted)) continue;
         const th = it.ped ? 0.5 : 0.9;                             // 橋げたの厚さ
         for (const s of [1, -1]) {
-          const ex = nx * s, ez = nz * s;
+          const k = s > 0 ? kl : kr, ex = nx * s * k, ez = nz * s * k;
           const t0 = [ax + ex, ya, az + ez], t1 = [bx + ex, yb, bz + ez];
           const b0 = [ax + ex, ya - th, az + ez], b1 = [bx + ex, yb - th, bz + ez];
           quad(P.side, b0, b1, t1, t0);                            // 側面
           // 車道の橋の高欄 (歩行者用の手すりは detail/walkways.js が props.json から作る)
           if (!it.ped) quad(P.side, t0, t1, [t1[0], yb + 0.9, t1[2]], [t0[0], ya + 0.9, t0[2]]);
         }
-        quad(P.side, [ax - nx, ya - th, az - nz], [bx - nx, yb - th, bz - nz], [bx + nx, yb - th, bz + nz], [ax + nx, ya - th, az + nz]); // 底面
+        quad(P.side, [D[0], ya - th, D[2]], [C[0], yb - th, C[2]], [B[0], yb - th, B[2]], [A[0], ya - th, A[2]]); // 底面
         // 橋脚 (下が 2.5m 以上空いている所)。歩行者用は細い柱を 9 m ごと
         const step = it.ped ? 9 : 18;
         for (let t = Math.min(step / 2, L / 2); t < L; t += step) {
