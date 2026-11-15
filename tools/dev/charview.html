@@ -5,6 +5,8 @@
     pose = 速さ m/s (0 立ち / 1.6 歩き / 5.5 走り / 10 ダッシュ)、t = 何秒ぶん動かしてから止めるか (歩行の位相を選ぶ)、air=1 で空中
   パルクールの姿勢: ?act=vault&h=0.85&s=0.5 / ?act=climb&h=1.8&s=0.4 (h = 障害物の高さ m、s = 進み具合 0〜1、thick = 奥行き m)。
     灰色の箱が障害物。画面は 真横 / 斜め前 / 真後ろ / 斜め後ろ になる。
+  攻撃の姿勢: ?atk=1&ph=0&t=0.26 (手順 1〜5、局面、局面の中の時間 秒)。ph 0 の頭から t まで 1/60 秒刻みで動かして止める (剣と軌跡も出る)。
+    空中の局面 (4 の ph 1、5 の ph 0) は &air=1 を付ける。&spin=1.57 でその場で回した向き。画面は 正面 / 真横 / 真後ろ / 斜め後ろ。
   画面は 4 分割: 正面 / 真後ろ / 斜め後ろ / 左手のアップ。?live を付けると止めずに動かし続ける。?face で手の代わりに顔のアップ。 -->
 <html lang="ja">
 <head>
@@ -28,7 +30,8 @@ import { makeCharacter } from '../../public/src/character.js';
 import { plan, sample } from '../../public/src/parkour.js';
 
 const qs = new URLSearchParams(location.search);
-const speed = +(qs.get('pose') || 0), T = +(qs.get('t') || 1), air = qs.has('air');
+const atkStep = +(qs.get('atk') || 0), atkPh = +(qs.get('ph') || 0);
+const speed = +(qs.get('pose') || 0), T = atkStep ? 0 : +(qs.get('t') || 1), air = qs.has('air');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
@@ -64,7 +67,7 @@ if (actType) {
 const cam = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
 // [水平の角度 (0 = 正面), 距離, 注視点の高さ] または 'hand'
 const vy = 0.8 + actH * 0.6, vd = 4.6 + actH;
-const views = act ? [[Math.PI / 2, vd, vy], [Math.PI * 0.2, vd, vy], [Math.PI, vd, vy], [Math.PI * 0.75, vd, vy]]
+const views = atkStep ? [[0, 3.4, 0.9], [Math.PI / 2, 3.4, 0.9], [Math.PI, 3.4, 0.9], [Math.PI * 0.78, 3.4, 0.9]] : act ? [[Math.PI / 2, vd, vy], [Math.PI * 0.2, vd, vy], [Math.PI, vd, vy], [Math.PI * 0.75, vd, vy]]
   : [[0, 3.4, 0.85], [Math.PI, 3.4, 0.85], [Math.PI * 0.78, 3.4, 0.85], 'hand'];
 const tmp = new THREE.Vector3();
 function draw() {
@@ -102,6 +105,11 @@ function start() {
       ch.root.position.set(0, m.y, -act.tE + m.q);
       ch.update(1 / fps, 3, false, 1, 0, act.type === 'hop' ? null : { type: act.type, s: m.ps, ly: act.top - m.y, lz: act.tE - m.q });
     }
+  }
+  if (atkStep) { // 攻撃: 局面の頭から t まで動かす
+    const tt = +(qs.get('t') || 0), n = Math.max(1, Math.round(tt * fps));
+    ch.root.rotation.y = +(qs.get('spin') || 0);
+    for (let i = 1; i <= n; i++) ch.update(1 / fps, 0, !air, air ? (atkStep === 5 ? -6 : 2) : 0, 0, { type: 'atk', step: atkStep, ph: atkPh, t: i / fps }, true);
   }
   scene.updateMatrixWorld(true);
   draw();
