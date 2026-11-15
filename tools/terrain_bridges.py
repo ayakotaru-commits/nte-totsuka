@@ -1,17 +1,19 @@
 """高架の橋の下の地形を、周りの地面の高さに戻す。
 
-使い方: python tools/terrain_bridges.py          # public/data/terrain.json を書き換える (numpy が必要)
+使い方: python tools/terrain_bridges.py          # public/data/terrain.json を書き換える (numpy が必要。先に fetch_lidar.py)
         python tools/terrain_bridges.py --undo   # 元に戻す
-先に python tools/deck_heights.py (橋の高さ ys を実測に合わせる)。最後に build_props.py も実行する。
-deck_heights.py は「下げる前の地形」で測るので、どちらを何度実行しても同じ結果になる。
+最後に deck_heights.py (橋・階段の高さ。たもとは地面に固定するので、地面を直した後に決める) と build_props.py も実行する。
 
 地形 (terrain.json) は点群の各マスの最低点から作ってあるので、幅の広い高架の下は「高架の路面」が地面として入り、
 高架に沿って土手のように盛り上がる (下をくぐる道路や横断歩道が斜面に貼り付いて、うねって見える)。
 - 橋 (bridge。車道・歩行者用) の路面の範囲 + 4 m を「橋の下」とする
-- 橋の下の地形を、範囲の外の地面からなめらかに補う (ラプラス方程式)
-- 補った地面が橋の路面より 1.5 m 以上低い所だけ、その高さに下げる (地面と同じ高さの橋・川の上の橋は変わらない)
+- 橋の下の各頂点から、橋に直角な両方向へ範囲の外まで進み、そこの地面の高さを見る
+- 両側とも低い所だけ、高い方の地面の高さまで下げる。片側が高い所 (橋が高台や、地形として入っている広場の縁に
+  載っている所) は削らない
+- 点群の表面 (= 橋の路面) が、下げた後の地面より 1.5 m 以上高い所だけ (地面と同じ高さの橋・川の上の橋は変わらない)
 - 建物の基礎の高さ y は、輪郭の頂点の地面が下がった建物だけ、屋根の高さを保ったまま下げる
 元の高さは terrain.json の patch に控えるので、何度実行しても同じ結果になり、--undo で戻せる。
+橋の高さ (ys) には依らない (deck_heights.py とは互いに影響し合わない)。
 """
 import json
 import math
@@ -53,16 +55,17 @@ def sampler(T):
     return H
 
 
-def apply(T, city):
-    nx, nz, st, x0, z0 = T["nx"], T["nz"], T["step"], T["minX"], T["minZ"]
+def apply(T, city, dsm):
+    nx, nz, st, x0, z0, ref = T["nx"], T["nz"], T["step"], T["minX"], T["minZ"], T.get("ref", 0.0)
     h = np.array(T["h"], dtype=np.float64).reshape(nz, nx) / 100
     mask = np.zeros((nz, nx), bool)
-    deck = np.full((nz, nx), -1e9)   # その頂点の上にある橋の路面の高さ (一番高いもの)
+    cells = []   # (j, i, 橋に直角な向き nx, nz)
     for r in city["roads"]:
-        if not r.get("bridge") or not r.get("ys"):
+        if not r.get("bridge"):
             continue
+        pts = [r["pts"][k] for k in r["base"]] if r.get("base") else r["pts"]  # deck_heights.py が足した頂点は使わない
         hl, hr = r["half"] if r.get("half") else ((r.get("w") or 3) / 2,) * 2
-        for (a, b, ya, yb) in zip(r["pts"], r["pts"][1:], r["ys"], r["ys"][1:]):
+        for a, b in zip(pts, pts[1:]):
             L = math.hypot(b[0] - a[0], b[1] - a[1])
             if L < 0.05:
                 continue
@@ -70,7 +73,7 @@ def apply(T, city):
             m = max(hl, hr) + MARGIN + st
             i0, i1 = int((min(a[0], b[0]) - m - x0) / st), int((max(a[0], b[0]) + m - x0) / st) + 1
             j0, j1 = int((min(a[1], b[1]) - m - z0) / st), int((max(a[1], b[1]) + m - z0) / st) + 1
-            i0, j0, i1, j1 = max(i0, 0), max(j0, 0), min(i1, nx - 1), min(j1, nz - 1)
+            i0, j0, i1, j1 = max(i0, 1), max(j0, 1), min(i1, nx - 2), min(j1, nz - 2)
             if i1 < i0 or j1 < j0:
                 continue
             X, Z = np.meshgrid(x0 + np.arange(i0, i1 + 1) * st, z0 + np.arange(j0, j1 + 1) * st)
@@ -78,25 +81,48 @@ def apply(T, city):
             side = (X - a[0]) * -uz + (Z - a[1]) * ux          # 左が正 (half[0] の側)
             d = np.hypot(X - a[0] - ux * L * t, Z - a[1] - uz * L * t)
             inside = d <= np.where(side >= 0, hl, hr) + MARGIN
-            sub = mask[j0:j1 + 1, i0:i1 + 1]
-            sub |= inside
-            dk = deck[j0:j1 + 1, i0:i1 + 1]
-            np.maximum(dk, np.where(inside, ya + (yb - ya) * t, -1e9), out=dk)
-    # 範囲の外の地面から補う: 橋の下の頂点だけを動かして、上下左右の平均に近づける (初期値は今の高さ)
-    fill = h.copy()
-    js, is_ = np.nonzero(mask)
-    ok = (js > 0) & (js < nz - 1) & (is_ > 0) & (is_ < nx - 1)
-    js, is_ = js[ok], is_[ok]
-    red = (js + is_) % 2 == 0
-    for _ in range(3000):
-        for sel in (red, ~red):  # 赤黒の順に更新 (過緩和)
-            j, i = js[sel], is_[sel]
-            avg = (fill[j - 1, i] + fill[j + 1, i] + fill[j, i - 1] + fill[j, i + 1]) / 4
-            fill[j, i] += 1.8 * (avg - fill[j, i])
-    # 橋の路面より十分低い所だけ下げる (境目はなめらかに)
-    k = np.clip((deck - fill - (CLEAR - 0.5)) / 0.5, 0, 1)
-    new = np.where(mask, np.minimum(h, h + (fill - h) * k), h)
-    changed = np.nonzero(np.abs(new - h) > 0.02)
+            mask[j0:j1 + 1, i0:i1 + 1] |= inside
+            for jj, ii in zip(*np.nonzero(inside)):
+                cells.append((j0 + int(jj), i0 + int(ii), -uz, ux))
+
+    def at(x, z):
+        i, j = int(round((x - x0) / st)), int(round((z - z0) / st))
+        return (j, i) if 0 <= i < nx and 0 <= j < nz else None
+
+    def outside(j, i, dx, dz):
+        """(j, i) から (dx, dz) の向きへ進み、橋の範囲を出た所の地面の高さ。出られなければ None"""
+        x, z = x0 + i * st, z0 + j * st
+        for k in range(1, 40):
+            q = at(x + dx * st * k, z + dz * st * k)
+            if q is None:
+                return None
+            if not mask[q]:
+                q2 = at(x + dx * st * (k + 1), z + dz * st * (k + 1))   # 境目のぼやけを避けて、もう 1 マス先も見る
+                return min(h[q], h[q2]) if q2 is not None and not mask[q2] else h[q]
+        return None
+
+    # 橋の両側の地面がどちらも低い所だけ、高い方の地面の高さまで下げる
+    # (片側が高い = 橋が高台や広場の縁に載っている所。そこは削らない)
+    target = np.full((nz, nx), 1e9)
+    seen = np.zeros((nz, nx), bool)
+    for j, i, dx, dz in cells:
+        a, b = outside(j, i, dx, dz), outside(j, i, -dx, -dz)
+        v = 1e9 if a is None or b is None else max(a, b)
+        target[j, i] = v if not seen[j, i] else min(target[j, i], v)   # 重なる橋は低い方
+        seen[j, i] = True
+    # 橋の路面 (点群の表面) が、下げた後の地面より CLEAR 以上高い所だけ
+    surf = np.full((nz, nx), -1e9)
+    for j, i in zip(*np.nonzero(seen)):
+        vs = [v for v in (dsm.get(x0 + i * st + ox, z0 + j * st + oz) for ox in (-0.5, 0, 0.5) for oz in (-0.5, 0, 0.5)) if v is not None]
+        if vs:
+            surf[j, i] = sorted(vs)[len(vs) // 2] - ref
+    drop = np.where(seen & (target < h - 0.3) & (surf - target >= CLEAR), h - target, 0.0)
+    for _ in range(2):  # 下げ幅をならして、境目をなめらかに (下げない所は 0 のまま広げない)
+        p = np.pad(drop, 1, mode="edge")
+        sm = sum(p[1 + a:1 + a + nz, 1 + b:1 + b + nx] for a in (-1, 0, 1) for b in (-1, 0, 1)) / 9
+        drop = np.where(mask, sm, 0.0)
+    new = h - drop
+    changed = np.nonzero(drop > 0.02)
     idx = (changed[0] * nx + changed[1]).tolist()
     patch = {"idx": idx, "h0": [T["h"][i] for i in idx], "buildings": []}
     for i, v in zip(idx, np.round(new[changed] * 100).astype(int).tolist()):
@@ -112,7 +138,6 @@ def apply(T, city):
             d = b["y"] - round(g, 2)
             b["y"], b["h"] = round(g, 2), round(b["h"] + d, 2)
     T["patch"] = patch
-    drop = h[changed] - new[changed]
     return len(idx), (float(drop.max()) if len(idx) else 0.0), len(patch["buildings"])
 
 
@@ -123,15 +148,17 @@ def main():
     if "--undo" in sys.argv:
         print("元に戻した" if had else "戻すものが無い")
     else:
-        n, mx, nb = apply(T, city)
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import lidar_shape
+        if not lidar_shape.DSM_BIN.exists():
+            raise SystemExit("data/raw/lidar_dsm.bin がありません。先に python tools/fetch_lidar.py を実行してください")
+        n, mx, nb = apply(T, city, lidar_shape.DSM())
         print(f"terrain under bridges: {n} 頂点を下げた (最大 {mx:.1f} m)、基礎を下げた建物 {nb} 棟")
     TERRAIN.write_text(json.dumps(T), encoding="utf-8")  # 書式は元のまま (差分を小さく)
     CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    try:
-        import build_props
-        build_props.main()
-    except Exception as e:  # noqa
-        print("build_props.py は実行できなかった:", e)
+    # 地面が変わったので、橋・階段の高さ (たもとは地面に固定) と小物の高さを作り直す
+    import deck_heights
+    deck_heights.main()
 
 
 if __name__ == "__main__":

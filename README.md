@@ -235,13 +235,16 @@ python tools/deck_heights.py --report   # 道ごとに「測った高さ」と�
 #### 高架の下の地形（`tools/terrain_bridges.py`）
 地形は点群の各マスの最低点から作ってあるので、幅の広い高架の下は「高架の路面」が地面として入り、高架に沿って土手のように盛り上がる（下をくぐる道路や横断歩道が斜面に貼り付いてうねる）。
 ```
-python tools/terrain_bridges.py          # terrain.json を書き換える (numpy が必要。先に deck_heights.py)。最後に build_props.py も実行する
+python tools/terrain_bridges.py          # terrain.json を書き換える (numpy が必要。先に fetch_lidar.py)。最後に deck_heights.py と build_props.py も実行する
 python tools/terrain_bridges.py --undo   # 元に戻す
 ```
-- 橋の路面の範囲 + 4 m を「橋の下」とし、範囲の外の地面からなめらかに補う。補った地面が橋の路面より 1.5 m 以上低い所だけ下げる（地面と同じ高さの橋・川の上の橋は変わらない）
+- 橋の路面の範囲 + 4 m を「橋の下」とし、各頂点から橋に直角な両方向へ範囲の外まで進んで、そこの地面の高さを見る
+- 両側とも低い所だけ、高い方の地面の高さまで下げる。片側が高い所（橋が高台や、地形として入っている広場の縁に載っている所。例: 西口のバスセンターの上の広場）は削らない
+- 点群の表面（= 橋の路面）が、下げた後の地面より 1.5 m 以上高い所だけ（地面と同じ高さの橋・川の上の橋は変わらない）
 - 輪郭の頂点の地面が下がった建物は、屋根の高さを保ったまま基礎を下げる
-- 元の高さは `terrain.json` の `patch` に控える（何度実行しても同じ結果。`deck_heights.py` は下げる前の地形で測る）
-- `build_city.py` からは呼ばない。`build_city.py` を通しで実行した後は、`deck_heights.py` → `terrain_bridges.py` の順に実行する
+- 元の高さは `terrain.json` の `patch` に控える（何度実行しても同じ結果）。橋の高さ `ys` には依らない
+- 最後に `deck_heights.py` も実行する（橋・階段のたもとは地面に固定するので、地面を直した後に高さを決める。逆の順だと階段の下端が浮く）
+- `build_city.py` からは呼ばない。`build_city.py` を通しで実行した後は `terrain_bridges.py` を実行する
 - 車道の橋の路面は、PLATEAU の道路面から測った左右の幅（`half`）で描く（`public/src/bridges.js`）
 
 #### 手すり・高欄（`build_props.py` の `build_walk()` → `props.json` の `walk` → `public/src/detail/walkways.js`）
