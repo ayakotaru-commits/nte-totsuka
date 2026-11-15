@@ -34,7 +34,8 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   page.setDefaultTimeout(300000);
   await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/**', r =>
     r.fulfill({ path: path.join(THREE_DIR, r.request().url().replace('https://cdn.jsdelivr.net/npm/three@0.170.0/', '')), contentType: 'application/javascript' }));
-  await page.route('https://cdn.jsdelivr.net/npm/@pixiv/**', r => r.abort()); // VRM の部品は届かない → 組み立て式のキャラになる
+  const vrmLocal = path.join(__dirname, '.cache', 'three-vrm.module.min.js'); // あれば VRM のキャラも読む (npm pack @pixiv/three-vrm@3.3.3 の lib/ から置く)。無ければ組み立て式のキャラ
+  await page.route('https://cdn.jsdelivr.net/npm/@pixiv/**', r => fs.existsSync(vrmLocal) ? r.fulfill({ path: vrmLocal, contentType: 'application/javascript' }) : r.abort());
   await page.route('**/src/main.js', async r => {
     const t = (await (await r.fetch()).text()).replace('const qs = new URLSearchParams', 'window.__g = { player, cam, scene, bigmap, input };\n  const qs = new URLSearchParams');
     r.fulfill({ body: t, contentType: 'application/javascript' });
