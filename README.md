@@ -60,7 +60,8 @@ tools/                 データ変換ツール (Python, 標準ライブラリ�
   build_city.py        OSM + PLATEAU → public/data/city.json (ローカル座標)
   build_props.py       city.json → public/data/props.json (路上の小物・敷地の外構・ベランダ・看板・木・駐車場・柵の配置と当たり判定)
   lidar_cover.py       点群と航空写真 → 地面の種類 (public/data/cover.json)、木の位置・駐車場・造成地 (data/lots.json)、建物データに無い建物 (city.json)
-  deck_heights.py      点群 → 歩道橋・デッキ・そこへ上がる階段とスロープの高さ (city.json の roads の ys)
+  deck_heights.py      点群 → 橋 (車道の橋・歩道橋・デッキ) と、そこへ上がる階段とスロープの高さ (city.json の roads の ys)
+  terrain_bridges.py   高架の橋の下で盛り上がった地形を、周りの地面の高さに戻す (terrain.json)
   add_areas.py         後から対応した敷地 (工業用地・墓地・寺社・病院) だけを今の city.json に足す (build_city.py を通しで実行しないとき用)
 public/                ゲーム本体 (Three.js r170, CDN 読み込み・ビルド不要)
   data/city.json       街データ (建物・道路・線路・水域・エリア・POI)
@@ -218,7 +219,7 @@ OSM の土地利用のうち、工業用地 (`industrial`)・墓地 (`cemetery`)
 - ゲーム側 `public/src/bridges.js` が路面・側面・底面・橋脚（車道の橋は高欄も）を作り、`deckAt()` で上を歩ける。車道の橋の部分の PLATEAU 道路面は描かない
 
 #### デッキ・階段の高さを実測に合わせる（`tools/deck_heights.py`）
-上の推定だと、実際は水平なデッキが全体に坂になり、階段の勾配もまちまちで継ぎ目がずれる。点群があれば、歩行者用の橋とそこへ上がる階段・坂（`ramp`）の高さを実測に置き換える。個別の指示は不要。
+上の推定だと、実際は水平なデッキや高架が全体に坂になり、階段の勾配もまちまちで継ぎ目がずれる。点群があれば、橋（車道の橋も）とそこへ上がる階段・坂（`ramp`）の高さを実測に置き換える。個別の指示は不要。
 ```
 python tools/deck_heights.py            # 今の city.json にその場で適用 (先に fetch_lidar.py)。最後に build_props.py も実行する
 python tools/deck_heights.py --report   # 道ごとに「測った高さ」と「決めた高さ」を並べて表示 (調べるとき用)
@@ -227,12 +228,25 @@ python tools/deck_heights.py --report   # 道ごとに「測った高さ」と�
 - 橋の上で地面が写った所（細い橋と中心線のずれ）は「不明」。地面の道とつながる頂点は地面に固定。不明な所は両側からなめらかに補う
 - 階段は、下から上へ単調に上がる測点だけを使う。実測が半分に満たない階段は両端を直線で結ぶ。先が建物に入る階段の端は固定しない
 - 高さが折れる所に頂点を足す（元の頂点の番号は `base` に控える。何度実行しても同じ結果）。`build_city.py` も `compute_bridges` の後に同じ処理を呼ぶ
+- 車道の橋は、たもとの地形と実測が 1.2 m 以上合わないもの（川岸の地形が低すぎる橋など）は元の推定のまま。区間ごとの `cov` は足した頂点にも引き継ぐ
 - 読めなかった所は `data/appearance.json` の `deck_levels` で補える: `{"x", "z", "r", "y"}` =（x, z）から r m 以内のデッキの高さを y にする
 - 戸塚駅では、東口のデッキが高さ 6.8 m と 4.5 m の 2 段、西口が 8.1 m 前後で水平、と読めた（実測できた測点は 57%。残りは屋根の下・建物の中で、補間）
 
+#### 高架の下の地形（`tools/terrain_bridges.py`）
+地形は点群の各マスの最低点から作ってあるので、幅の広い高架の下は「高架の路面」が地面として入り、高架に沿って土手のように盛り上がる（下をくぐる道路や横断歩道が斜面に貼り付いてうねる）。
+```
+python tools/terrain_bridges.py          # terrain.json を書き換える (numpy が必要。先に deck_heights.py)。最後に build_props.py も実行する
+python tools/terrain_bridges.py --undo   # 元に戻す
+```
+- 橋の路面の範囲 + 4 m を「橋の下」とし、範囲の外の地面からなめらかに補う。補った地面が橋の路面より 1.5 m 以上低い所だけ下げる（地面と同じ高さの橋・川の上の橋は変わらない）
+- 輪郭の頂点の地面が下がった建物は、屋根の高さを保ったまま基礎を下げる
+- 元の高さは `terrain.json` の `patch` に控える（何度実行しても同じ結果。`deck_heights.py` は下げる前の地形で測る）
+- `build_city.py` からは呼ばない。`build_city.py` を通しで実行した後は、`deck_heights.py` → `terrain_bridges.py` の順に実行する
+- 車道の橋の路面は、PLATEAU の道路面から測った左右の幅（`half`）で描く（`public/src/bridges.js`）
+
 #### 手すり・高欄（`build_props.py` の `build_walk()` → `props.json` の `walk` → `public/src/detail/walkways.js`）
 - デッキ・歩道橋の両縁に高欄（高さ 1.1 m。支柱 1.5 m ごと・笠木・下の横桟・縦格子）、デッキへ上がる階段と急な坂に手すり（0.9 m、2 段 + 縦格子）、地面の階段に手すり（0.9 m、2 段、ステンレス色）。幅 4 m 以上の階段は中央にも 1 本
-- 置かない所: ほかの通路がつながる所（同じ高さの路面の中）、建物に入る所、地面すれすれの所。どこにもつながらず宙で終わる端はふさぐ
+- 置かない所: ほかの通路がつながる所（同じ高さの路面の中。車道の橋の上の歩道も含む）、建物に入る所、地面すれすれの所。どこにもつながらず宙で終わる端はふさぐ
 - 歩道でも勾配が 0.22 より急な区間は段にする（`public/src/stairs.js`。実測で段差になっている所）。坂（`ramp`）も地面から浮いている区間は側面・底面・柱を作る
 - 形は「よくある形」で、1 本ごとに実物と合わせてはいない。色・形を決める元データが無いため
 

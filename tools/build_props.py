@@ -1262,6 +1262,10 @@ def build_walk(city, world, H, col):
             ways.append({"pts": r["pts"], "ys": [y + 0.05 for y in r["ys"]], "hw": (r.get("w") or 3) / 2, "ground": False, "steps": r["kind"] == "steps"})
         elif r["kind"] == "steps":
             ways.append({"pts": r["pts"], "ys": [H(q[0], q[1]) + 0.12 for q in r["pts"]], "hw": (r.get("w") or 2.5) / 2, "ground": True, "steps": True})
+    n_walk = len(ways)
+    for r in city["roads"]:  # 車道の橋: 手すりは付けないが、歩道がその路面の中を通る所 (橋の上の歩道) には手すりを置かない
+        if r["kind"] not in WALK_PED and r.get("bridge") and r.get("ys"):
+            ways.append({"pts": r["pts"], "ys": [y + 0.05 for y in r["ys"]], "hw": max(r["half"]) if r.get("half") else (r.get("w") or 3) / 2, "ground": False, "steps": False})
     segs, grid = [], {}
     for wi, w in enumerate(ways):
         for i in range(len(w["pts"]) - 1):
@@ -1312,7 +1316,7 @@ def build_walk(city, world, H, col):
         col.add_line([[r2(q[0]), r2(q[2]), r2(q[1])] for q in pts], 0.05, RAIL_H if kind == "deck" else HANDRAIL_H)
 
     kind_of = lambda s: "ground" if s["ground"] else "stair" if s["grade"] > STEEP else "deck"
-    for wi, w in enumerate(ways):
+    for wi, w in enumerate(ways[:n_walk]):
         mine = [k for k, s in enumerate(segs) if s["w"] == wi]
         offsets = [1, -1] + ([0] if w["steps"] and w["hw"] >= 2.0 else [])
         for side in offsets:

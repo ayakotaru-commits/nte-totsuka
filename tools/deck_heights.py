@@ -1,4 +1,4 @@
-"""歩道橋・デッキ・そこへ上がる階段とスロープの高さ (roads の ys) を、点群の実測に合わせる。
+"""橋 (車道の橋・歩道橋・デッキ) と、そこへ上がる階段・スロープの高さ (roads の ys) を、点群の実測に合わせる。
 
 使い方: python tools/deck_heights.py [--report]
 入力:   public/data/city.json, public/data/terrain.json, data/raw/lidar_dsm.bin (fetch_lidar.py)
@@ -8,7 +8,7 @@ build_city.py の compute_bridges() は「たもとを地面に固定して間�
 実際は水平なデッキが全体に坂になり、階段の勾配もまちまちになる。ここで実測に置き換える。
 
 やり方:
-- 対象の道 (歩行者用で bridge か ramp) の中心線を 0.5 m ごとに測る (左右 ±1 m の中央値)
+- 対象の道 (bridge = 橋。車道も含む / 歩行者用の ramp = 橋へ上がる坂) の中心線を 0.5 m ごとに測る (左右 ±1 m の中央値)
 - 屋根・ひさし・建物を除く: 隣どうしで 1 m 以上飛ぶ所で面を分け、下の面より 1.8 m 以上高い面は屋根とみなす
 - 橋の上で地面が写っている所 (細い橋と中心線のずれ) は「不明」にする。坂 (ramp) では地面とみなす
 - 地面の道とつながる頂点は地面の高さに固定し、不明な所は両側からなめらかに補う
@@ -42,6 +42,9 @@ key = lambda p: (round(p[0], 1), round(p[1], 1))
 def terrain_sampler():
     T = json.loads(TERRAIN.read_text(encoding="utf-8"))
     nx, nz, step, x0, z0, h = T["nx"], T["nz"], T["step"], T["minX"], T["minZ"], T["h"]
+    # terrain_bridges.py が橋の下を下げた後でも、下げる前の地形で測る (下げ方は ys で決まるので、互いに影響し合わないように)
+    for i, v in zip(T.get("patch", {}).get("idx", ()), T.get("patch", {}).get("h0", ())):
+        h[i] = v
 
     def H(x, z):
         fx = max(0, min(nx - 1.0001, (x - x0) / step)); fz = max(0, min(nz - 1.0001, (z - z0) / step))
@@ -107,12 +110,14 @@ def inside_any(buildings):
 
 def apply(roads, H, ref, dsm, levels=(), report=False, in_building=lambda x, z: False):
     """roads を書き換える。戻り値は (直した道の数, 測れた測点の割合)"""
-    ways = [r for r in roads if r["kind"] in PED and (r.get("bridge") or r.get("ramp"))]
+    # 対象: 橋 (車道も)、歩行者用の坂 (ramp)
+    target = lambda r: r.get("bridge") or (r["kind"] in PED and r.get("ramp"))
+    ways = [r for r in roads if target(r)]
     if not ways:
         return 0, 0.0
     ground_nodes = set()
     for r in roads:
-        if not (r["kind"] in PED and (r.get("bridge") or r.get("ramp"))):
+        if not target(r):
             for p in r["pts"]:
                 ground_nodes.add(key(p))
     bridge_nodes = set()
@@ -135,7 +140,6 @@ def apply(roads, H, ref, dsm, levels=(), report=False, in_building=lambda x, z: 
     W = []            # 道ごと: dict(r, idx=[測点番号...], d=[道のり...], orig=[元の頂点の位置...])
     for r in ways:
         pts = r["pts"]
-        assert not r.get("cov") and not r.get("half"), "頂点ごとの値を持つ道は対象外"
         idx, dd, orig = [], [], []
         d0 = 0.0
         for i, p in enumerate(pts):
@@ -552,6 +556,16 @@ def apply(roads, H, ref, dsm, levels=(), report=False, in_building=lambda x, z: 
         r, idx, dd = w["r"], w["idx"], w["d"]
         if any(i in untouched for i in idx):
             continue
+        if r["kind"] not in PED:
+            # 車道の橋: たもとの地形と実測が 1.2 m 以上合わない橋 (川岸の地形が低すぎる所など) は、元の推定のままにする
+            bad = False
+            for end in (idx[:6], idx[-6:]):
+                fx = [S[i]["fixed"] for i in end if S[i]["fixed"] is not None]
+                raw = [S[i]["raw"] for i in end if S[i]["raw"] is not None and S[i]["raw"] < S[i]["g"] + TOO_HIGH]
+                if fx and raw and abs(median(raw) - fx[0]) > 1.2:
+                    bad = True
+            if bad:
+                continue
         ys = [y[i] for i in idx]
         keep = simplify(dd, ys, w["orig"], TOL)
         new_pts = [[round(S[idx[k]]["x"], 2), round(S[idx[k]]["z"], 2)] if k not in w["orig"] else r["pts"][w["orig"].index(k)] for k in keep]
@@ -569,6 +583,9 @@ def apply(roads, H, ref, dsm, levels=(), report=False, in_building=lambda x, z: 
         r["pts"], r["ys"] = new_pts, new_ys
         if len(keep) > len(w["orig"]):
             r["base"] = [keep.index(k) for k in w["orig"]]
+            if r.get("cov"):  # 区間ごとの値 (PLATEAU の道路面で覆われているか) は、元の区間の値を引き継ぐ
+                seg_of = [sum(1 for o in w["orig"] if o <= k) - 1 for k in keep[:-1]]
+                r["cov"] = [r["cov"][s] for s in seg_of]
     n_act = [n for n in active if S[n]["fixed"] is None]
     measured = sum(1 for n in n_act if S[n]["v"] is not None)
     return n_changed, measured / max(1, len(n_act))
@@ -579,6 +596,8 @@ def merge_points(roads):
     for r in roads:
         if "base" in r:
             keep = r.pop("base")
+            if r.get("cov"):
+                r["cov"] = [r["cov"][i] for i in keep[:-1]]
             r["pts"] = [r["pts"][i] for i in keep]
             if r.get("ys"):
                 r["ys"] = [r["ys"][i] for i in keep]
