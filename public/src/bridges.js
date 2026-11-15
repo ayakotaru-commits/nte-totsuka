@@ -65,7 +65,7 @@ export class Bridges {
   build() {
     const group = new THREE.Group();
     group.name = 'bridges';
-    const P = { deck: [], ped: [], side: [], rail: [], ballast: [] };
+    const P = { deck: [], ped: [], side: [], rail: [], ballast: [], wall: [] };
     const push = (arr, ...pts) => { for (const p of pts) arr.push(p[0], p[1], p[2]); };
     const quad = (arr, a, b, c, d) => push(arr, a, b, c, a, c, d);
     const piers = [];
@@ -100,8 +100,10 @@ export class Bridges {
         for (const s of [1, -1]) {
           const k = s > 0 ? kl : kr, ex = nx * s * k, ez = nz * s * k;
           const t0 = [ax + ex, ya, az + ez], t1 = [bx + ex, yb, bz + ez];
-          const b0 = [ax + ex, ya - th, az + ez], b1 = [bx + ex, yb - th, bz + ez];
-          quad(P.side, b0, b1, t1, t0);                            // 側面
+          // 広場の縁の床 (edge): 外側 (s < 0) の側面は地面まで下ろして、人工地盤の垂直な壁にする
+          const wall = it.r.edge && s < 0;
+          const b0 = [ax + ex, wall ? H(ax + ex, az + ez) - 0.3 : ya - th, az + ez], b1 = [bx + ex, wall ? H(bx + ex, bz + ez) - 0.3 : yb - th, bz + ez];
+          quad(wall ? P.wall : P.side, b0, b1, t1, t0);              // 側面
           // 車道の橋の高欄 (歩行者用の手すりは detail/walkways.js が props.json から作る)
           if (!it.ped) quad(P.side, t0, t1, [t1[0], yb + 0.9, t1[2]], [t0[0], ya + 0.9, t0[2]]);
         }
@@ -111,7 +113,7 @@ export class Bridges {
         for (let t = Math.min(step / 2, L / 2); t < L; t += step) {
           const x = ax + (bx - ax) * t / L, z = az + (bz - az) * t / L, y = ys[i] + (ys[i + 1] - ys[i]) * t / L - th;
           const g = H(x, z);
-          if (y - g > 2.5 && (L >= 4 || !it.ped)) piers.push([x, z, g, y, Math.atan2(bx - ax, bz - az), it.ped ? Math.min(it.w, 1.4) : it.w]);
+          if (y - g > 2.5 && (L >= 4 || !it.ped) && !it.r.edge) piers.push([x, z, g, y, Math.atan2(bx - ax, bz - az), it.ped ? Math.min(it.w, 1.4) : it.w]);
         }
       }
     }
@@ -130,6 +132,7 @@ export class Bridges {
     mesh(P.ballast, new THREE.MeshStandardMaterial({ color: '#7a7068', roughness: 1, ...ds }), 'bridge_ballast');
     mesh(P.rail, new THREE.MeshStandardMaterial({ color: '#b0b5ba', roughness: 0.4, metalness: 0.6, ...ds }), 'bridge_rails');
     mesh(P.side, new THREE.MeshStandardMaterial({ color: '#b9b6ae', roughness: 0.9, ...ds }), 'bridge_concrete');
+    mesh(P.wall, new THREE.MeshStandardMaterial({ color: '#a9a59c', roughness: 0.95, ...ds }), 'plaza_wall');
     if (piers.length) {
       const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: '#a9a69e', roughness: 0.9 }), piers.length);
       const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), S = new THREE.Vector3(), Pp = new THREE.Vector3();

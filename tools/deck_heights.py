@@ -108,7 +108,8 @@ def inside_any(buildings):
 def apply(roads, H, ref, dsm, levels=(), report=False, in_building=lambda x, z: False):
     """roads を書き換える。戻り値は (直した道の数, 測れた測点の割合)"""
     # 対象: 橋 (車道も)、歩行者用の坂 (ramp)
-    target = lambda r: r.get("bridge") or (r["kind"] in PED and r.get("ramp"))
+    # (edge = plaza_edges.py が足した広場の縁の床。高さはそちらで決めてある)
+    target = lambda r: (r.get("bridge") and not r.get("edge")) or (r["kind"] in PED and r.get("ramp"))
     ways = [r for r in roads if target(r)]
     if not ways:
         return 0, 0.0
