@@ -15,13 +15,15 @@ import { BigMap } from './bigmap.js';
 import { loadDetail } from './detail/index.js'; // detail (お試し)
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
-import { setTerrain, setCover } from './terrain.js';
+import { setTerrain, setCover, setLowMemory } from './terrain.js';
 import { TOUCH, setupTouch } from './touch.js';
+import { releaseGeometryAfterUpload } from './lowmem.js';
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
 
 async function main() {
+  setLowMemory(TOUCH); // スマホ・タブレットはメモリが少ないので、頂点データを小さい型で持つ
   status('地図データを読み込み中…');
   const city = await (await fetch('data/city.json')).json();
   // 地形 (無ければ平らな地面)
@@ -88,6 +90,8 @@ async function main() {
   }
   if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
   const detail = await loadDetail({ scene, city, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
+
+  releaseGeometryAfterUpload(scene); // スマホ・タブレットだけ: 頂点データの JS 側の控えを、GPU に送った後に手放す
 
   const input = new Input();
   const player = new Player(world, scene);

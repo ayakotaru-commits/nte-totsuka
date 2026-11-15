@@ -5,6 +5,7 @@
 // public/models/player.vrm があれば、その VRM キャラに差し替える (動きの角度は同じものを VRM の人型ボーンへ渡す)。
 // 無い・読めないときは、下で作る組み立て式のキャラのまま動く。
 import * as THREE from 'three';
+import { shrinkTextures } from './lowmem.js';
 
 const PI = Math.PI;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -430,6 +431,7 @@ export function makeCharacter() {
       const vrm = gltf.userData.vrm;
       if (!vrm) throw new Error('VRM ではないファイル');
       VRMUtils.removeUnnecessaryVertices?.(gltf.scene);
+      shrinkTextures(gltf.scene, 1024); // スマホ・タブレットだけ: 2048 px の模様を半分にする (メモリの節約)
       VRMUtils.rotateVRM0?.(vrm); // VRM 0.x は後ろ向きなので前向きに直す
       vrm.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
       // 足裏が地面、腰が自分の骨格と同じ高さになるよう、大きさを合わせる

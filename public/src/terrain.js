@@ -82,20 +82,37 @@ export function buildTerrainMesh(color = '#a4a296') {
   return m;
 }
 
+// メモリを節約するモード (スマホ・タブレット。main.js が設定する)。地形に沿わせた面の法線と色を小さい型で持つ
+let LOW_MEM = false;
+export function setLowMemory(v) { LOW_MEM = !!v; }
+
+// 伸びる型付き配列 (ふつうの配列に数を積むと、頂点が 1000 万個ある道路・エリアで数百 MB を使うため)
+class Buf {
+  constructor(Type, n = 1 << 16) { this.a = new Type(n); this.n = 0; }
+  need(k) { if (this.n + k > this.a.length) { const b = new this.a.constructor(Math.max(this.a.length * 2, this.n + k)); b.set(this.a); this.a = b; } }
+  done() { return this.a.slice(0, this.n); }
+}
+
 // 平らに作った面 (道路・エリア・路面標示など) を地形に沿わせる。
 // 各三角形を地形の三角形の辺 (格子線と対角線) で切り分けてから各頂点に H() を足す。
 // 切り分けた各片は地形の三角形1枚の上に収まるので、どの層も地形と平行になり (lift の差がそのまま保たれ)、
 // 重ねた層どうしが坂や土手で突き抜けない。maxEdge は互換のため残している (使わない)。
-export function drape(geom, maxEdge = 3.5, lift = 0.12, skip = null) {
+// 切り分けた片どうしが共有する頂点は 1 つにまとめる (元の三角形 1 枚の中で。index 付きの形になる)。
+// 法線は地形の傾き (地形メッシュと同じなめらかな陰影)。opts.drop = ['uv'] のように、使わない属性を捨てられる
+export function drape(geom, maxEdge = 3.5, lift = 0.12, skip = null, opts = {}) {
   if (!T || !geom) return geom;
   const g = geom.index ? geom.toNonIndexed() : geom;
-  const names = Object.keys(g.attributes);
+  const drop = opts.drop || [];
+  const hasNormal = !!g.attributes.normal;
+  const names = Object.keys(g.attributes).filter(n => n !== 'normal' && !drop.includes(n)); // 法線は最後に地形から作る
   const sizes = names.map(n => g.attributes[n].itemSize);
   const arrs = names.map(n => g.attributes[n].array);
-  const W = sizes.reduce((a, b) => a + b, 0); // 1頂点あたりの値の数 (position が先頭)
+  const W = sizes.reduce((a, b) => a + b, 0); // 1頂点あたりの値の数
   const pi = names.indexOf('position');
   const pOff = sizes.slice(0, pi).reduce((a, b) => a + b, 0);
-  const out = names.map(() => []);
+  const out = names.map(() => new Buf(Float32Array));
+  const index = new Buf(Uint32Array);
+  let count = 0; // 出力した頂点の数
   const { step, minX, minZ, nx, nz } = T;
   const P = g.attributes.position;
 
@@ -126,6 +143,22 @@ export function drape(geom, maxEdge = 3.5, lift = 0.12, skip = null) {
     }
     return [lo, hi];
   };
+  // 頂点の番号。元の三角形 1 枚の中で同じ位置 (格子の 1/4096 = 約 0.5 mm 単位) なら同じ番号を返す
+  const seen = new Map();
+  const id = (d) => {
+    const key = Math.round(d[0] * 4096) * 8388608 + Math.round(d[1] * 4096);
+    let i = seen.get(key);
+    if (i === undefined) {
+      i = count++;
+      seen.set(key, i);
+      let o = 2;
+      for (let a = 0; a < names.length; a++) {
+        const b = out[a]; b.need(sizes[a]);
+        for (let k = 0; k < sizes[a]; k++) b.a[b.n++] = d[o++];
+      }
+    }
+    return i;
+  };
   const emit = (poly) => {
     for (let i = 1; i < poly.length - 1; i++) {
       const tri = [poly[0], poly[i], poly[i + 1]];
@@ -133,10 +166,10 @@ export function drape(geom, maxEdge = 3.5, lift = 0.12, skip = null) {
       const ar = (tri[1][0] - tri[0][0]) * (tri[2][1] - tri[0][1]) - (tri[2][0] - tri[0][0]) * (tri[1][1] - tri[0][1]);
       if (Math.abs(ar) < 1e-9) continue;
       if (skip && skip((tri[0][2 + pOff] + tri[1][2 + pOff] + tri[2][2 + pOff]) / 3, (tri[0][4 + pOff] + tri[1][4 + pOff] + tri[2][4 + pOff]) / 3)) continue;
-      for (const d of tri) {
-        let o = 2;
-        for (let a = 0; a < names.length; a++) for (let k = 0; k < sizes[a]; k++) out[a].push(d[o++]);
-      }
+      const a = id(tri[0]), b = id(tri[1]), c = id(tri[2]);
+      if (a === b || b === c || a === c) continue;
+      index.need(3);
+      index.a[index.n++] = a; index.a[index.n++] = b; index.a[index.n++] = c;
     }
   };
   const cut = (poly, fi) => {
@@ -154,25 +187,32 @@ export function drape(geom, maxEdge = 3.5, lift = 0.12, skip = null) {
     }
     cut(rest, fi + 1);
   };
-  for (let i = 0; i < P.count; i += 3) cut([vert(i), vert(i + 1), vert(i + 2)], 0);
+  for (let i = 0; i < P.count; i += 3) { seen.clear(); cut([vert(i), vert(i + 1), vert(i + 2)], 0); }
 
-  const pos = out[pi];
+  const res = new THREE.BufferGeometry();
+  const pos = out[pi].done();
+  // 法線: 地形の傾きから (隣の格子点までの高さの差)。lift の前に計算する
+  if (hasNormal) {
+    const N = LOW_MEM ? new Int8Array(count * 3) : new Float32Array(count * 3), s = LOW_MEM ? 127 : 1;
+    for (let i = 0; i < count; i++) {
+      const x = pos[i * 3], z = pos[i * 3 + 2];
+      const gx = (H(x + step, z) - H(x - step, z)) / (2 * step), gz = (H(x, z + step) - H(x, z - step)) / (2 * step);
+      const l = Math.hypot(gx, 1, gz);
+      N[i * 3] = -gx / l * s; N[i * 3 + 1] = 1 / l * s; N[i * 3 + 2] = -gz / l * s;
+    }
+    res.setAttribute('normal', new THREE.BufferAttribute(N, 3, LOW_MEM));
+  }
   // lift: 地面 (地形メッシュ) より少し上に出す
   for (let i = 0; i < pos.length; i += 3) pos[i + 1] += H(pos[i], pos[i + 2]) + lift;
-  const ni = names.indexOf('normal');
-  if (ni >= 0) {
-    const nrm = out[ni];
-    for (let i = 0; i < pos.length; i += 9) {
-      const ax = pos[i + 3] - pos[i], ay = pos[i + 4] - pos[i + 1], az = pos[i + 5] - pos[i + 2];
-      const bx = pos[i + 6] - pos[i], by = pos[i + 7] - pos[i + 1], bz = pos[i + 8] - pos[i + 2];
-      let x = ay * bz - az * by, y = az * bx - ax * bz, z = ax * by - ay * bx;
-      if (y < 0) { x = -x; y = -y; z = -z; }
-      const l = Math.hypot(x, y, z) || 1;
-      for (let k = 0; k < 3; k++) { nrm[i + k * 3] = x / l; nrm[i + k * 3 + 1] = y / l; nrm[i + k * 3 + 2] = z / l; }
-    }
-  }
-  const res = new THREE.BufferGeometry();
-  names.forEach((n, a) => res.setAttribute(n, new THREE.Float32BufferAttribute(out[a], sizes[a])));
+  names.forEach((n, a) => {
+    const arr = a === pi ? pos : out[a].done();
+    if (n === 'color' && LOW_MEM) { // 色は 16 ビットで持つ (8 ビットだと暗い色がずれる)
+      const c = new Uint16Array(arr.length);
+      for (let i = 0; i < arr.length; i++) c[i] = Math.round(Math.max(0, Math.min(1, arr[i])) * 65535);
+      res.setAttribute(n, new THREE.BufferAttribute(c, sizes[a], true));
+    } else res.setAttribute(n, new THREE.BufferAttribute(arr, sizes[a]));
+  });
+  res.setIndex(new THREE.BufferAttribute(index.done(), 1));
   res.computeBoundingSphere();
   return res;
 }

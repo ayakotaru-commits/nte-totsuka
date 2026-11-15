@@ -1,5 +1,6 @@
 // city.json から街のメッシュを組み立てる
 import * as THREE from 'three';
+import { releaseCanvasAfterUpload } from './lowmem.js';
 import { H, drape, buildTerrainMesh, hasTerrain, hasCover } from './terrain.js';
 import { Bridges } from './bridges.js';
 import { buildStairs } from './stairs.js';
@@ -230,7 +231,7 @@ function lookTextures(L) {
     y = top(LOOK_ROWS.plain);
     g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
   }
-  const mk = (c) => { const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const mk = (c) => { const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return releaseCanvasAfterUpload(t); };
   return { map: mk(cv), emissiveMap: mk(ev) };
 }
 
@@ -789,7 +790,9 @@ function buildGround(city, bridges) {
     for (const off of [-0.72, 0.72]) addRibbon(gb, offsetLine(r.pts, off), 0.12, 0.25, rail, false);
   }
   // 車道の橋の部分の道路面は描かない (川底に沈むため。橋げたは bridges.js)
-  return { ground: drape(gb.geometry()), water: drape(water.geometry(), 3.5, 0.45), roads: drape(roadGB.geometry(), 3.5, 0.12, (x, z) => bridges.onVehicleBridge(x, z)) };
+  // 地面・水面・道路面のマテリアルは模様 (map) を使わないので、uv は捨てる (頂点が多く、メモリを使うため)
+  const NO_UV = { drop: ['uv'] };
+  return { ground: drape(gb.geometry(), 3.5, 0.12, null, NO_UV), water: drape(water.geometry(), 3.5, 0.45, null, NO_UV), roads: drape(roadGB.geometry(), 3.5, 0.12, (x, z) => bridges.onVehicleBridge(x, z), NO_UV) };
 }
 
 // ---- 木 (公園・森・草地) ----
