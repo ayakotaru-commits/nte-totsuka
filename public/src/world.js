@@ -288,8 +288,8 @@ export class World {
     let g = H(x, z) + GROUND_LIFT;
     const br = getBridges();
     if (br) { // 橋・歩道橋・坂の路面 (足元より高すぎる所は、下をくぐっている)
-      const d = br.deckAt(x, z, 0.3, (it) => !it.rail);
-      if (d && d.y + 0.05 <= footY + STEP) g = Math.max(g, d.y + 0.05);
+      const d = br.deckAt(x, z, 0.3, (it) => !it.rail, footY + STEP - 0.05);
+      if (d) g = Math.max(g, d.y + 0.05);
     }
     for (const b of this.querySolid(x, z, x, z)) {
       if (b.minY > footY + STEP || !this.contains(b, x, z)) continue;

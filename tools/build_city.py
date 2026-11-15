@@ -954,6 +954,13 @@ def main():
         buildings = lidar_shape.apply(buildings, ref)
         lidar_note = "形と屋根の色: 神奈川県 点群・オルソ画像 (CC BY 4.0)"
 
+        # 歩道橋・デッキ・そこへ上がる階段の高さも実測に合わせる (deck_heights.py)
+        import deck_heights
+        Hd, _ = deck_heights.terrain_sampler()
+        levels = json.loads(APPEARANCE.read_text(encoding="utf-8")).get("deck_levels", []) if APPEARANCE.exists() else []
+        n_deck, rate = deck_heights.apply(roads, Hd, ref, lidar_shape.DSM(), levels, False, deck_heights.inside_any(buildings))
+        print(f"deck heights: {n_deck} ways (measured {rate * 100:.0f}%)")
+
     # 目印になる大きな建物の外観 (data/appearance.json の landmarks)。上の段にも付けるので、形を直した後に行う
     import landmarks
     looks = landmarks.apply(buildings, roads)

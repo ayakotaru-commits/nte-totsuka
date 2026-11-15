@@ -1,5 +1,5 @@
 // 橋・歩道橋・デッキと、それにつながる坂 (build_city.py の ys = 各頂点の高さ)
-// - 橋げた (路面・側面・底面)、手すり、橋脚を作る
+// - 橋げた (路面・側面・底面)、車道の橋の高欄、橋脚を作る (歩行者用の手すりは detail/walkways.js)
 // - deckAt(x, z): その地点の橋の路面の高さ (当たり判定・路面の貼り付けに使う)
 import * as THREE from 'three';
 import { H } from './terrain.js';
@@ -31,23 +31,27 @@ export class Bridges {
   }
 
   // filter(item) が true の橋だけを見る。路面の内側 (幅/2 + margin) にあれば {y, item}
-  deckAt(x, z, margin = 0.3, filter = null) {
+  // 重なっているときは、maxY 以下で一番高い路面 (デッキの下をくぐる階段にいるとき、頭上のデッキを選ばないように)
+  deckAt(x, z, margin = 0.3, filter = null, maxY = Infinity) {
     const list = this.grid.get(Math.floor(x / this.cell) * 100000 + Math.floor(z / this.cell));
     if (!list) return null;
-    let best = null;
+    let best = null, cap = null; // cap: 区間の端より先 (角の丸み) で当たったもの。区間の中で当たるものが無いときだけ使う
     for (const [n, i] of list) {
       const it = this.items[n];
       if (filter && !filter(it)) continue;
       const a = it.r.pts[i], b = it.r.pts[i + 1];
       const ex = b[0] - a[0], ez = b[1] - a[1], l2 = ex * ex + ez * ez;
       if (l2 < 1e-6) continue;
-      const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / l2));
+      const tr = ((x - a[0]) * ex + (z - a[1]) * ez) / l2;
+      const t = Math.max(0, Math.min(1, tr));
       const d = Math.hypot(x - a[0] - ex * t, z - a[1] - ez * t);
       if (d > it.w / 2 + margin) continue;
       const y = it.r.ys[i] + (it.r.ys[i + 1] - it.r.ys[i]) * t;
-      if (!best || y > best.y) best = { y, item: it };
+      if (y > maxY) continue;
+      if (tr >= 0 && tr <= 1) { if (!best || y > best.y) best = { y, item: it }; }
+      else if (!cap || y > cap.y) cap = { y, item: it };
     }
-    return best;
+    return best || cap;
   }
 
   // 車道の橋の上か (PLATEAU の道路面のうち橋の部分は描かず、橋げた側で描く)
@@ -56,7 +60,7 @@ export class Bridges {
   build() {
     const group = new THREE.Group();
     group.name = 'bridges';
-    const P = { deck: [], ped: [], side: [], rail: [], ballast: [], steel: [] };
+    const P = { deck: [], ped: [], side: [], rail: [], ballast: [] };
     const push = (arr, ...pts) => { for (const p of pts) arr.push(p[0], p[1], p[2]); };
     const quad = (arr, a, b, c, d) => push(arr, a, b, c, a, c, d);
     const piers = [];
@@ -76,23 +80,33 @@ export class Bridges {
           const ox = -(bz - az) / L * o, oz = (bx - ax) / L * o, w = 0.07 / hw;
           quad(P.rail, [ax + ox + nx * w, ya + 0.2, az + oz + nz * w], [bx + ox + nx * w, yb + 0.2, bz + oz + nz * w], [bx + ox - nx * w, yb + 0.2, bz + oz - nz * w], [ax + ox - nx * w, ya + 0.2, az + oz - nz * w]);
         }
-        if (!it.bridge) continue;                                 // 坂 (地面側の歩道・階段) は路面だけ
+        // 角の外側にできる三角のすき間を埋める (歩行者用。次の区間の始点側の縁とつなぐ)
+        if (it.ped && i + 2 < pts.length) {
+          const [cx, cz] = pts[i + 2], L2 = Math.hypot(cx - bx, cz - bz);
+          if (L2 > 0.05) {
+            const mx = -(cz - bz) / L2 * hw, mz = (cx - bx) / L2 * hw;
+            for (const s of [1, -1]) push(surf, [bx, yb, bz], [bx + nx * s, yb, bz + nz * s], [bx + mx * s, yb, bz + mz * s]);
+          }
+        }
+        // 坂 (地面側の歩道・階段) は、地面から浮いている区間だけ側面・底面を作る
+        const lifted = ya - H(ax, az) > 0.6 || yb - H(bx, bz) > 0.6;
+        if (!it.bridge && !(it.ped && lifted)) continue;
         const th = it.ped ? 0.5 : 0.9;                             // 橋げたの厚さ
         for (const s of [1, -1]) {
           const ex = nx * s, ez = nz * s;
           const t0 = [ax + ex, ya, az + ez], t1 = [bx + ex, yb, bz + ez];
           const b0 = [ax + ex, ya - th, az + ez], b1 = [bx + ex, yb - th, bz + ez];
           quad(P.side, b0, b1, t1, t0);                            // 側面
-          // 手すり / 高欄
-          const hh = it.ped ? 1.1 : 0.9;
-          quad(it.ped ? P.steel : P.side, t0, t1, [t1[0], yb + hh, t1[2]], [t0[0], ya + hh, t0[2]]);
+          // 車道の橋の高欄 (歩行者用の手すりは detail/walkways.js が props.json から作る)
+          if (!it.ped) quad(P.side, t0, t1, [t1[0], yb + 0.9, t1[2]], [t0[0], ya + 0.9, t0[2]]);
         }
         quad(P.side, [ax - nx, ya - th, az - nz], [bx - nx, yb - th, bz - nz], [bx + nx, yb - th, bz + nz], [ax + nx, ya - th, az + nz]); // 底面
-        // 橋脚 (下が 2.5m 以上空いている所)
-        for (let t = 9; t < L; t += 18) {
+        // 橋脚 (下が 2.5m 以上空いている所)。歩行者用は細い柱を 9 m ごと
+        const step = it.ped ? 9 : 18;
+        for (let t = Math.min(step / 2, L / 2); t < L; t += step) {
           const x = ax + (bx - ax) * t / L, z = az + (bz - az) * t / L, y = ys[i] + (ys[i + 1] - ys[i]) * t / L - th;
           const g = H(x, z);
-          if (y - g > 2.5) piers.push([x, z, g, y, Math.atan2(bx - ax, bz - az), it.w]);
+          if (y - g > 2.5 && (L >= 4 || !it.ped)) piers.push([x, z, g, y, Math.atan2(bx - ax, bz - az), it.ped ? Math.min(it.w, 1.4) : it.w]);
         }
       }
     }
@@ -111,11 +125,10 @@ export class Bridges {
     mesh(P.ballast, new THREE.MeshStandardMaterial({ color: '#7a7068', roughness: 1, ...ds }), 'bridge_ballast');
     mesh(P.rail, new THREE.MeshStandardMaterial({ color: '#b0b5ba', roughness: 0.4, metalness: 0.6, ...ds }), 'bridge_rails');
     mesh(P.side, new THREE.MeshStandardMaterial({ color: '#b9b6ae', roughness: 0.9, ...ds }), 'bridge_concrete');
-    mesh(P.steel, new THREE.MeshStandardMaterial({ color: '#5f8a9a', roughness: 0.5, metalness: 0.4, transparent: true, opacity: 0.85, ...ds }), 'bridge_railing');
     if (piers.length) {
       const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: '#a9a69e', roughness: 0.9 }), piers.length);
       const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), S = new THREE.Vector3(), Pp = new THREE.Vector3();
-      piers.forEach(([x, z, g, y, ang, w], i) => { Q.setFromAxisAngle(Y, ang); im.setMatrixAt(i, M.compose(Pp.set(x, g, z), Q, S.set(Math.min(w * 0.6, 8), y - g, 1.2))); });
+      piers.forEach(([x, z, g, y, ang, w], i) => { Q.setFromAxisAngle(Y, ang); im.setMatrixAt(i, M.compose(Pp.set(x, g, z), Q, S.set(Math.min(w * 0.6, 8), y - g, w < 2 ? w * 0.6 : 1.2))); });
       im.castShadow = im.receiveShadow = true; im.name = 'bridge_piers';
       group.add(im);
     }
