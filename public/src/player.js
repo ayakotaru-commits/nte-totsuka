@@ -57,7 +57,7 @@ export class Player {
       target = input.held('ShiftLeft') || input.held('ShiftRight') ? SPEED.dash : walk ? SPEED.walk : SPEED.run;
     }
     // 階段: 速さを抑え、上り(+1)・下り(-1) をキャラに伝える
-    const stair = this.onGround ? stairAt(this.pos.x, this.pos.z) : null;
+    const stair = this.onGround ? stairAt(this.pos.x, this.pos.z, this.pos.y) : null;
     if (stair && target > STAIR_SPEED) target = STAIR_SPEED;
     const sl = this.vel.length();
     this.stair = stair && sl > 0.1 ? Math.max(-1, Math.min(1, (this.vel.x * stair.ux + this.vel.y * stair.uz) / sl * Math.min(1, stair.grade * 1.6))) : 0;
