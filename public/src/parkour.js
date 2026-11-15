@@ -41,7 +41,7 @@ export function sample(a, s) {
   if (a.type === 'hop') {
     return { q: a.D * s, y: a.y0 + a.h * sstep(0, 0.6, s) + 0.8 * s * (1 - s), ps: s };
   }
-  const q1 = Math.max(0, a.tE - 0.3), q2 = Math.max(q1, a.tE - 0.14);
+  const q1 = a.tE - 0.3, q2 = a.tE - 0.14; // 軒の下に入り込んでいるとき (tE が小さい) は、いったん下がって縁の手前へ
   const q = mix(mix(mix(0, q1, sstep(0, 0.18, s)), q2, sstep(0.3, 0.62, s)), a.D, sstep(0.7, 1, s));
   const y = mix(mix(mix(a.y0, a.yH, sstep(0, 0.18, s)), a.yM, sstep(0.16, 0.62, s)), a.yEnd, sstep(0.58, 0.9, s));
   return { q, y, ps: s };

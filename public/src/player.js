@@ -106,7 +106,7 @@ export class Player {
   // 目の前の障害物を調べ、越えられるなら動きを始める
   tryParkour(dx, dz) {
     const W = this.world, sp = this.vel.length();
-    const p = W.probeLedge(this.pos, dx, dz, R, R + (this.onGround ? 0.15 + 0.1 * sp : 0.25));
+    const p = W.probeLedge(this.pos, dx, dz, R, R + (this.onGround ? 0.3 + 0.1 * sp : 0.3));
     if (!p) return false;
     const y0 = this.pos.y, h = p.top - y0;
     if (h > REACH_H || -(dx * p.nx + dz * p.nz) < 0.6) return false; // 高すぎる・壁に沿って走っているだけ
@@ -121,13 +121,13 @@ export class Player {
       return start('vault', dx, dz, p, { end: p.far, thick: p.thick, yEnd, endAir: g < yEnd - 0.01 });
     }
     // 飛び乗り: 低い台
-    if (h <= HOP_H && p.stand && p.t <= R + 0.3 + 0.05 * sp) return start('hop', dx, dz, p, { end: Math.min(R + 0.05, (p.thick ?? 9) / 2), yEnd: p.top, endAir: false });
+    if (h <= HOP_H && p.stand && p.t <= R + 0.3 + 0.05 * sp) return start('hop', dx, dz, p, { end: p.sd, yEnd: p.standY, endAir: false });
     // よじ登り: 壁に正対して近くにいるとき。壁にまっすぐ向き直って登る
     if (p.t > R + 0.3 || -(dx * p.nx + dz * p.nz) < 0.75) return false;
     const ux = -p.nx, uz = -p.nz;
     const q = W.probeLedge(this.pos, ux, uz, R, R + 0.45);
     if (!q || q.top - y0 > REACH_H || q.top - y0 <= HOP_H && !q.stand) return false;
-    if (q.stand) return start('climb', ux, uz, q, { end: Math.min(R + 0.05, (q.thick ?? 9) / 2), yEnd: q.top, endAir: false });
+    if (q.stand) return start('climb', ux, uz, q, { end: q.sd, yEnd: q.standY, endAir: false });
     if (q.far !== null) return start('climb', ux, uz, q, { end: q.far, yEnd: q.top - 0.1, endAir: true }); // 薄い塀: 越えて向こうへ降りる
     return false;
   }
