@@ -55,13 +55,26 @@ def sampler(T):
     return H
 
 
+def lower_buildings(T, city, patch):
+    """輪郭の頂点の地面が下がった建物は、屋根の高さを保ったまま基礎を下げる (元の値は patch に控える)"""
+    H = sampler(T)
+    for b in city["buildings"]:
+        if "y" not in b or b.get("minH"):
+            continue
+        g = min(H(x, z) for x, z in b["outer"])
+        if g < b["y"] - 0.2:
+            patch["buildings"].append([b["id"], b["y"], b["h"]])
+            d = b["y"] - round(g, 2)
+            b["y"], b["h"] = round(g, 2), round(b["h"] + d, 2)
+
+
 def apply(T, city, dsm):
     nx, nz, st, x0, z0, ref = T["nx"], T["nz"], T["step"], T["minX"], T["minZ"], T.get("ref", 0.0)
     h = np.array(T["h"], dtype=np.float64).reshape(nz, nx) / 100
     mask = np.zeros((nz, nx), bool)
     cells = []   # (j, i, 橋に直角な向き nx, nz)
     for r in city["roads"]:
-        if not r.get("bridge"):
+        if not r.get("bridge") or r.get("edge"):
             continue
         pts = [r["pts"][k] for k in r["base"]] if r.get("base") else r["pts"]  # deck_heights.py が足した頂点は使わない
         hl, hr = r["half"] if r.get("half") else ((r.get("w") or 3) / 2,) * 2
@@ -127,16 +140,7 @@ def apply(T, city, dsm):
     patch = {"idx": idx, "h0": [T["h"][i] for i in idx], "buildings": []}
     for i, v in zip(idx, np.round(new[changed] * 100).astype(int).tolist()):
         T["h"][i] = v
-    # 建物: 輪郭の頂点の地面が下がった建物は、屋根の高さを保ったまま基礎を下げる
-    H = sampler(T)
-    for b in city["buildings"]:
-        if "y" not in b or b.get("minH"):
-            continue
-        g = min(H(x, z) for x, z in b["outer"])
-        if g < b["y"] - 0.2:
-            patch["buildings"].append([b["id"], b["y"], b["h"]])
-            d = b["y"] - round(g, 2)
-            b["y"], b["h"] = round(g, 2), round(b["h"] + d, 2)
+    lower_buildings(T, city, patch)
     T["patch"] = patch
     return len(idx), (float(drop.max()) if len(idx) else 0.0), len(patch["buildings"])
 
@@ -144,6 +148,9 @@ def apply(T, city, dsm):
 def main():
     T = json.loads(TERRAIN.read_text(encoding="utf-8"))
     city = json.loads(CITY.read_text(encoding="utf-8"))
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import plaza_edges
+    plaza_edges.restore(T, city)   # 後から足した分を先に戻す
     had = restore(T, city)
     if "--undo" in sys.argv:
         print("元に戻した" if had else "戻すものが無い")
@@ -152,8 +159,11 @@ def main():
         import lidar_shape
         if not lidar_shape.DSM_BIN.exists():
             raise SystemExit("data/raw/lidar_dsm.bin がありません。先に python tools/fetch_lidar.py を実行してください")
-        n, mx, nb = apply(T, city, lidar_shape.DSM())
+        dsm = lidar_shape.DSM()
+        n, mx, nb = apply(T, city, dsm)
         print(f"terrain under bridges: {n} 頂点を下げた (最大 {mx:.1f} m)、基礎を下げた建物 {nb} 棟")
+        ne, le = plaza_edges.apply(T, city, dsm, lower_buildings)
+        print(f"plaza edges: 縁の床 {ne} 本 ({le:.0f} m)、地形 {len(T['patch_edges']['idx'])} 頂点")
     TERRAIN.write_text(json.dumps(T), encoding="utf-8")  # 書式は元のまま (差分を小さく)
     CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     # 地面が変わったので、橋・階段の高さ (たもとは地面に固定) と小物の高さを作り直す
