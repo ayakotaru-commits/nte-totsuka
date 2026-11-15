@@ -6,6 +6,7 @@
 // 無い・読めないときは、下で作る組み立て式のキャラのまま動く。
 import * as THREE from 'three';
 import { shrinkTextures } from './lowmem.js';
+import { samplePose, trailOn, LEGS } from './attack.js';
 
 const PI = Math.PI;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -131,7 +132,7 @@ export function makeCharacter() {
 
   const st = {
     t: 0, phase: 0, gw: 0, airW: 0, land: 0, lastVy: 0, wasAir: false, prevSpeed: 0, lastHipsY: IDLE_EXT + HIP_DROP,
-    lastYaw: 0, roll: 0, stair: 0, a1: 0.35, v1: 0, a2: 0.15, v2: 0,
+    lastYaw: 0, roll: 0, stair: 0, a1: 0.35, v1: 0, a2: 0.15, v2: 0, sword: 0, trail: false, atkId: -1, atkFrom: null, atkLast: null, atkP: null,
     actW: 0, actPose: null, anchor: null,
   };
 
@@ -148,7 +149,146 @@ export function makeCharacter() {
     const gamma = Math.acos(clamp((ARM_A * ARM_A + ARM_B * ARM_B - d * d) / (2 * ARM_A * ARM_B), -1, 1));
     return [-(dirA - beta) - pitch, -(PI - gamma)];
   }
+  // ---- 攻撃 (attack.js の姿勢の表 → 骨の角度) ----
+  // 腕は、肩から見た手の位置 (胸の座標系) から 2 関節の IK で解く。肩の回転は 3 軸のオイラー角にすると腕を高く上げたときに
+  // 不連続になるので、クォータニオンのまま骨へ渡す (X.q)。肘は 1 軸 (前へ曲がる) なのでオイラー角のまま
+  const _v = new THREE.Vector3(), _al = new THREE.Vector3(), _pl = new THREE.Vector3(), _du = new THREE.Vector3(), _fo = new THREE.Vector3();
+  const _gv = new THREE.Vector3(), _ax = new THREE.Vector3(), _ay = new THREE.Vector3(), _m4 = new THREE.Matrix4();
+  const POLE = { 1: new THREE.Vector3(0.5, -0.7, -0.5), '-1': new THREE.Vector3(-0.5, -0.7, -0.5) }; // 肘が向く側 (外・下・後ろ)
+  function armIK(tx, ty, tz, side, out) {
+    _v.set(tx, ty, tz);
+    const d = clamp(_v.length(), 0.12, ARM_A + ARM_B - 0.004);
+    if (_v.lengthSq() < 1e-8) _v.set(0, -1, 0);
+    _al.copy(_v).normalize();
+    const cb = clamp((ARM_A * ARM_A + d * d - ARM_B * ARM_B) / (2 * ARM_A * d), -1, 1), sb = Math.sqrt(1 - cb * cb);
+    _pl.copy(POLE[side]); _pl.addScaledVector(_al, -_pl.dot(_al));
+    if (_pl.lengthSq() < 1e-6) _pl.set(0, 0, -1).addScaledVector(_al, _al.z);
+    _pl.normalize();
+    _du.copy(_al).multiplyScalar(cb).addScaledVector(_pl, sb);          // 上腕の向き
+    _fo.copy(_al).multiplyScalar(d).addScaledVector(_du, -ARM_A).normalize(); // 前腕の向き
+    const cf = clamp(_du.dot(_fo), -1, 1);
+    _gv.copy(_fo).addScaledVector(_du, -cf);                              // 前腕が上腕からそれる向き (= 腕の局所 +Z)
+    if (_gv.lengthSq() < 1e-8) _gv.copy(_pl).negate();
+    _gv.normalize();
+    _ay.copy(_du).negate();                                               // 局所 +Y = 上腕の反対
+    _ax.crossVectors(_ay, _gv);                                           // 局所 +X
+    _m4.makeBasis(_ax, _ay, _gv);
+    out.setFromRotationMatrix(_m4);
+    return Math.acos(cf);
+  }
+  const _eu = new THREE.Euler(), _qn = new THREE.Quaternion();
+  const atkQ = { shL: new THREE.Quaternion(), shR: new THREE.Quaternion() };
+  function atkPose(act) {
+    const X = pose();
+    const [hy, cy, lean, roll, lx, ly, lz, rx, ry, rz, stance, crouch] = st.atkP = samplePose(act.step, act.ph, act.t);
+    // 前の手順の姿勢からなめらかにつなぐ (手順が変わった直後の短い間)
+    const id = act.step * 10 + act.ph;
+    if (st.atkId !== id) { st.atkId = id; st.atkFrom = st.atkLast ? st.atkLast.slice() : null; }
+    const P = st.atkP;
+    if (st.atkFrom) { const w = sstep(0, 0.1, act.t); for (let i = 0; i < P.length; i++) P[i] = st.atkFrom[i] + (P[i] - st.atkFrom[i]) * w; }
+    st.atkLast = P;
+    const [Hy, Cy, Lean, Roll, Lx, Ly, Lz, Rx, Ry, Rz, Stance, Crouch] = P;
+    const legMode = LEGS[act.step + ':' + act.ph] || 0;
+    // 胴: 腰が回り、残りを背骨と胸が回す。頭は半分だけついていく
+    X.hips = [Lean * (legMode === 2 ? 0.5 : 0.2), Hy, Roll * 0.5];
+    X.spine = [Lean * 0.4, (Cy - Hy) * 0.4, Roll * 0.25];
+    X.chest = [Lean * 0.6, (Cy - Hy) * 0.6, Roll * 0.25];
+    X.neck = [-Lean * 0.3, -Cy * 0.25, 0]; X.head = [-Lean * 0.4, -Cy * 0.25, 0];
+    // 腕
+    const fl = armIK(Lx, Ly, Lz, 1, atkQ.shL), fr = armIK(Rx, Ry, Rz, -1, atkQ.shR);
+    X.q = atkQ;
+    X.shL = [0, 0, 0]; X.shR = [0, 0, 0];
+    X.elL = [-fl, 0, 0]; X.elR = [-fr, 0, 0];
+    X.haL = [0, 0, 0.15]; X.haR = [0, 0, -0.15];
+    // 脚。足は地面に対して平らに着ける (足首 = -(太もも + 膝))。腰をひねっても足先は向きを保つ
+    const leg = (th, kn, ft, side, tx, kx, fx) => {
+      X[th] = [tx, -Hy * 0.9, side * 0.09]; X[kn] = [kx, 0, 0]; X[ft] = [fx === undefined ? -(tx + kx) : fx, 0, 0];
+    };
+    if (legMode === 1) { leg('thL', 'knL', 'ftL', 1, -0.9, 1.3, 0.3); leg('thR', 'knR', 'ftR', -1, -0.55, 1.5, 0.4); } // 膝を抱える
+    else if (legMode === 2) { leg('thL', 'knL', 'ftL', 1, 0.35, 0.5, 0.7); leg('thR', 'knR', 'ftR', -1, 0.5, 0.35, 0.7); } // 脚を後ろへ流す
+    else if (legMode === 3) { // 滑る: 左脚を前へ伸ばし、右膝を折る
+      leg('thL', 'knL', 'ftL', 1, -1.3, 0.05); leg('thR', 'knR', 'ftR', -1, 0.1, 2.0, 0.4); X.thR[2] = -0.2;
+    } else {
+      const a = Math.abs(Stance), lead = Stance >= 0 ? 'L' : 'R', back = Stance >= 0 ? 'R' : 'L', sg = (c) => c === 'L' ? 1 : -1;
+      leg('th' + lead, 'kn' + lead, 'ft' + lead, sg(lead), -(0.1 + 0.6 * a + 0.35 * Crouch), 0.1 + 0.55 * a + 0.5 * Crouch);
+      leg('th' + back, 'kn' + back, 'ft' + back, sg(back), 0.05 + 0.4 * a, 0.2 + 0.4 * a + 0.7 * Crouch);
+      X['th' + back][2] = sg(back) * 0.14; // 後ろ足は少し外へ開く
+    }
+    return X;
+  }
+
+  // ---- 剣 (握った手の先に出る。攻撃しなくなって少しすると消える) ----
+  const bladeMats = [new THREE.MeshBasicMaterial({ color: '#c9f2ff' }), new THREE.MeshBasicMaterial({ color: '#e6d6ff' })];
+  const trailCols = [[0.45, 0.88, 1.0], [0.72, 0.6, 1.0]]; // 左 (水色)・右 (薄紫)
+  const swords = [0, 1].map((i) => {
+    const g = new THREE.Group(), blade = new THREE.Group();
+    const bl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.78, 0.014), bladeMats[i]);
+    bl.position.y = 0.06 + 0.39; blade.add(bl);
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(0, 0.025, 0.1, 4), bladeMats[i]);
+    tip.scale.z = 0.28; tip.position.y = 0.06 + 0.78 + 0.05; blade.add(tip);
+    const line = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.74, 0.02), M.accent); // 刃の芯 (水色)
+    line.position.y = 0.06 + 0.37; blade.add(line);
+    g.add(blade);
+    g.add(shape(new THREE.BoxGeometry(0.15, 0.022, 0.04), M.jacket, [0, 0.05, 0], 0.02, true));   // つば
+    g.add(shape(new THREE.CylinderGeometry(0.02, 0.02, 0.15, 8), M.pants, [0, -0.03, 0], 0.02, true)); // 柄
+    g.add(shape(new THREE.SphereGeometry(0.03, 8, 6), M.accent, [0, -0.11, 0], 0.03, false));          // 柄頭
+    g.visible = false; root.add(g);
+    return { g, blade };
+  });
+  // 軌跡: 刃の先と根もとの世界座標を残し、古いものほど薄くするリボン
+  const TRAIL_LIFE = 0.18, TRAIL_MAX = 56;
+  const fx = new THREE.Group(); fx.frustumCulled = false;
+  const trails = [0, 1].map((i) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 2 * 3), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(TRAIL_MAX * 2 * 4), 4));
+    const idx = []; for (let k = 0; k < TRAIL_MAX - 1; k++) idx.push(2 * k, 2 * k + 1, 2 * k + 2, 2 * k + 1, 2 * k + 3, 2 * k + 2);
+    geo.setIndex(idx); geo.setDrawRange(0, 0);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false, toneMapped: false }));
+    mesh.frustumCulled = false; fx.add(mesh);
+    return { geo, samples: [] };
+  });
+  const _hp = new THREE.Vector3(), _ep = new THREE.Vector3(), _dir = new THREE.Vector3(), _qs = new THREE.Quaternion(), _o = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3();
+  function updateSwords(dt, armed, trailing) {
+    if (!fx.parent && root.parent) root.parent.add(fx);
+    st.sword = clamp(st.sword + (armed ? dt / 0.14 : -dt / 0.28), 0, 1);
+    const S = st.sword;
+    root.updateMatrixWorld(true);
+    const J = vrmRig && vrmRig.nodes.haL ? vrmRig.nodes : BONE;
+    for (let i = 0; i < 2; i++) {
+      const sw = swords[i], tr = trails[i], hand = i === 0 ? J.haL : J.haR, elb = i === 0 ? J.elL : J.elR;
+      sw.g.visible = S > 0.001;
+      if (sw.g.visible) {
+        hand.getWorldPosition(_hp); elb.getWorldPosition(_ep);
+        root.worldToLocal(_hp); root.worldToLocal(_ep);
+        _dir.subVectors(_hp, _ep).normalize();
+        _o.copy(_hp).addScaledVector(_dir, 0.05);
+        sw.g.position.copy(_o);
+        sw.g.quaternion.setFromUnitVectors(YAX, _dir);
+        const e = sstep(0, 1, S);
+        sw.blade.scale.set(1 + 2.5 * (1 - e), e, 1 + 2.5 * (1 - e)); // 出るときは、短く太い光が伸びる
+        if (trailing) { // 刃の先と根もとを世界座標で残す
+          _t1.copy(_o).addScaledVector(_dir, 0.88); _t2.copy(_o).addScaledVector(_dir, 0.2);
+          root.localToWorld(_t1); root.localToWorld(_t2);
+          tr.samples.unshift({ a: _t1.clone(), b: _t2.clone(), age: 0 });
+        }
+      }
+      // 古いものを消し、頂点を作り直す
+      for (const sm of tr.samples) sm.age += dt;
+      while (tr.samples.length && (tr.samples[tr.samples.length - 1].age > TRAIL_LIFE || tr.samples.length > TRAIL_MAX)) tr.samples.pop();
+      const n = tr.samples.length, pos = tr.geo.attributes.position.array, col = tr.geo.attributes.color.array, c = trailCols[i];
+      for (let k = 0; k < n; k++) {
+        const sm = tr.samples[k], al = Math.pow(Math.max(0, 1 - sm.age / TRAIL_LIFE), 1.6) * 0.5;
+        pos.set([sm.a.x, sm.a.y, sm.a.z, sm.b.x, sm.b.y, sm.b.z], k * 6);
+        col.set([c[0], c[1], c[2], al, c[0], c[1], c[2], al * 0.08], k * 8);
+      }
+      tr.geo.attributes.position.needsUpdate = true; tr.geo.attributes.color.needsUpdate = true;
+      tr.geo.setDrawRange(0, Math.max(0, n - 1) * 6);
+    }
+  }
+
   function actPose(act, Aa) {
+    if (act.type === 'atk') return atkPose(act);
     const X = pose();
     const s = act.s, hy = IDLE_EXT + HIP_DROP;
     const leg = (th, kn, ft, h, k, side) => { X[th] = [-h, 0, side * 0.03]; X[kn] = [k, 0, 0]; X[ft] = [0.35, 0, 0]; };
@@ -210,9 +350,11 @@ export function makeCharacter() {
     return { h, k, fp: fp * g.gw, swing };
   }
 
-  function update(dt, speed, onGround, vy, stair = 0, act = null) {
+  // act: パルクール ({type, s, ly, lz}) か攻撃 ({type: 'atk', step, ph, t})。armed: 剣を出しているか
+  function update(dt, speed, onGround, vy, stair = 0, act = null, armed = false) {
     updateInner(dt, speed, onGround, vy, stair, act);
     if (vrmRig) applyVRM(dt);
+    updateSwords(Math.max(1e-4, Math.min(dt, 0.1)), armed, st.trail);
   }
 
   function updateInner(dt, speed, onGround, vy, stair, act) {
@@ -308,6 +450,8 @@ export function makeCharacter() {
     // --- パルクールの姿勢 (終わった後は、最後の姿勢からふつうの姿勢へ戻す) ---
     st.anchor = null;
     if (act) st.actPose = actPose(act, Aa);
+    st.trail = !!act && act.type === 'atk' && trailOn(act.step, act.ph, act.t);
+    if (!act || act.type !== 'atk') { st.atkId = -1; st.atkLast = null; }
     st.actW += ((act ? 1 : 0) - st.actW) * rate(act ? 30 : 10);
     if (st.actW < 0.01 && !act) st.actPose = null;
     const X = st.actPose, xw = X ? st.actW : 0;
@@ -317,6 +461,12 @@ export function makeCharacter() {
     for (const n of NAMES) {
       const b = BONE[n].rotation;
       const tg = G[n], ta = Aa[n];
+      if (xw && X.q && X.q[n]) { // 肩 (攻撃): 角度の補間ではなく、向きそのものをなめらかに近づける
+        _eu.set(mix(tg[0], ta[0], st.airW), mix(tg[1], ta[1], st.airW), mix(tg[2], ta[2], st.airW), 'XYZ');
+        _qn.setFromEuler(_eu).slerp(X.q[n], xw);
+        BONE[n].quaternion.slerp(_qn, k);
+        continue;
+      }
       for (let i = 0; i < 3; i++) {
         let v = mix(tg[i], ta[i], st.airW);
         if (xw) v = mix(v, X[n][i], xw);

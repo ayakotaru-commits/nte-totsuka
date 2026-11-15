@@ -4,6 +4,7 @@ import { STEP } from './world.js';
 import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
+import { STEPS, LAUNCH, SPIN, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE } from './attack.js';
 
 const R = 0.35;
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
@@ -21,13 +22,18 @@ export class Player {
     this.walkMode = false;
     this.act = null;       // 実行中のパルクール (parkour.js の plan() の結果)
     this.actCool = 0;      // 終わった直後に続けて発動しないための待ち時間
+    this.atk = null;       // 実行中の攻撃 { step, ph, t, queued, fx, fz, v0 }。step 1〜5 (attack.js)
+    this.comboNext = 1;    // 続きの入力を受け付けている間の、次の手順
+    this.comboGrace = 0;   // その残り時間 (秒)
+    this.armedT = 99;      // 最後に攻撃してからの秒数。SWORD_IDLE を超えると剣が消える
+    this.spin = 0;         // 4 の空中の回転 (rad)。見た目だけ
     this.model = makeCharacter();
     scene.add(this.model.root);
   }
 
   teleport(x, z) {
     this.pos.set(x, this.world.groundAt(x, z, H(x, z)), z);
-    this.vel.set(0, 0); this.vy = 0; this.act = null;
+    this.vel.set(0, 0); this.vy = 0; this.act = null; this.atk = null; this.spin = 0; this.comboGrace = 0;
   }
 
   update(dt, input, cam) {
@@ -54,6 +60,12 @@ export class Player {
       dx /= len; dz /= len;
       target = input.held('ShiftLeft') || input.held('ShiftRight') ? SPEED.dash : walk ? SPEED.walk : SPEED.run;
     }
+    // 攻撃 (J / クリック / 画面の「攻撃」)。地上で押すと始まり、続けて押すと 5 連撃になる
+    const atkPress = input.pressed('KeyJ') || input.pressed('Mouse0');
+    this.armedT += dt;
+    this.comboGrace = Math.max(0, this.comboGrace - dt);
+    if ((atkPress || this.atk) && this.updateAtk(dt, atkPress, len > 0 ? [dx, dz] : null)) return;
+
     // 階段: 上り(+1)・下り(-1) をキャラに伝える (速さは落とさない。持ち主の希望)
     const stair = this.onGround ? stairAt(this.pos.x, this.pos.z, this.pos.y) : null;
     const sl = this.vel.length();
@@ -79,7 +91,14 @@ export class Player {
       else if (this.jumps < 2) { this.vy = JUMP2_V; this.jumps = 2; }
     }
 
-    // 水平移動 (すり抜け防止にサブステップ)
+    const sp = this.vel.length();
+    this.moveBody(dt);
+
+    this.show(dt, sp);
+  }
+
+  // 水平移動 (すり抜け防止にサブステップ) と垂直 (重力・着地)
+  moveBody(dt) {
     const sp = this.vel.length();
     const steps = Math.max(1, Math.ceil(sp * dt / 0.2));
     for (let i = 0; i < steps; i++) {
@@ -87,8 +106,6 @@ export class Player {
       this.pos.z += this.vel.y * dt / steps;
       this.world.resolve(this.pos, R);
     }
-
-    // 垂直
     const prevY = this.pos.y;
     this.vy -= GRAVITY * dt;
     this.pos.y += this.vy * dt;
@@ -100,8 +117,87 @@ export class Player {
     } else {
       this.onGround = false;
     }
+  }
 
-    this.show(dt, sp);
+  get armed() { return !!this.atk || this.armedT < SWORD_IDLE; }
+
+  // 攻撃の 1 手順を始める。動かしている向きがあればそちらへ向き直る
+  startStep(step, dir) {
+    if (dir) this.facing = Math.atan2(dir[0], dir[1]);
+    this.atk = { step, ph: 0, t: 0, queued: false, v0: 0 };
+    this.armedT = 0;
+    this.comboGrace = 0;
+    if (step === 5) {
+      if (this.onGround) { this.atk.ph = 1; this.atk.v0 = DIVE.fwd * 0.9; } // 着地してから押した: そのまま滑る
+      else { this.vy = DIVE.vy; this.atk.v0 = DIVE.fwd; }
+    }
+  }
+
+  endStep(next) {
+    this.comboNext = next; this.comboGrace = next > 1 ? COMBO_GRACE : 0;
+    this.atk = null; this.armedT = 0; this.spin = 0;
+  }
+
+  // 攻撃中の 1 フレーム。操作は受け付けず、手順ごとの動きで体を動かす。処理したら true
+  updateAtk(dt, press, dir) {
+    let a = this.atk;
+    if (!a) {
+      if (!this.onGround) return false;
+      this.startStep(this.comboGrace > 0 ? this.comboNext : 1, dir);
+      a = this.atk;
+    } else if (press && a.step !== 5) a.queued = true;
+    a.t += dt;
+    const S = STEPS[a.step], dur = S.dur[a.ph];
+    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+    let v = 0;
+    if (a.step <= 3) {
+      const [m0, m1, dist] = S.move;
+      if (a.t > m0 && a.t < m1) v = dist / (m1 - m0) * (Math.PI / 2) * Math.sin(Math.PI * (a.t - m0) / (m1 - m0)); // 踏み込む (進んだ距離が dist になる)
+      if (a.queued && a.t >= S.cancel) { this.startStep(a.step + 1, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
+      if (a.t >= dur) { this.endStep(a.step + 1); return this.finishAtk(dt, null, 0); }
+    } else if (a.step === 4) {
+      if (a.ph === 0) {
+        if (a.t >= dur) { // 跳ぶ
+          this.vy = LAUNCH.vy; this.onGround = false; this.jumps = 1; a.ph = 1; a.t -= dur; this.spin = 0;
+        }
+      } else if (a.ph === 1) {
+        v = LAUNCH.fwd;
+        this.spin = Math.PI * 2 * Math.min(1, a.t / SPIN.dur);
+        if (this.onGround && a.t > 0.15) { a.ph = 2; a.t = 0; this.spin = 0; a.v0 = v; }
+      } else {
+        v = a.v0 * Math.exp(-12 * a.t);
+        if (a.t >= dur) { this.endStep(1); return this.finishAtk(dt, null, 0); }
+      }
+      // 5 へ: 空中の斬り上げのあと、または着地の直後に押していたとき
+      if (a.queued && ((a.ph === 1 && a.t >= AIR5_FROM) || (a.ph === 2 && a.t <= LAND5_UNTIL))) {
+        this.startStep(5, null); a = this.atk; v = a.v0;
+        return this.finishAtk(dt, a, v);
+      }
+    } else { // 5
+      if (a.ph === 0) {
+        v = DIVE.fwd;
+        if (this.spin > 0) { this.spin += (Math.PI * 2 - this.spin) * (1 - Math.exp(-16 * dt)); if (this.spin > Math.PI * 2 - 0.03) this.spin = 0; } // 4 の回転の続き
+        if (this.onGround && a.t > 0.04) { a.ph = 1; a.t = 0; a.v0 = DIVE.fwd; this.spin = 0; }
+      } else if (a.ph === 1) {
+        v = a.v0 * Math.exp(-DIVE.slide * a.t);
+        if (a.t >= dur) { a.ph = 2; a.t = 0; a.v0 = v; }
+      } else {
+        v = a.v0 * Math.exp(-14 * a.t);
+        if (a.t >= dur) { this.endStep(1); return this.finishAtk(dt, null, 0); }
+      }
+    }
+    return this.finishAtk(dt, a, v);
+  }
+
+  // 前へ踏み込む速さ v で体を動かし、姿勢を渡す
+  finishAtk(dt, a, v) {
+    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+    if (a) this.vel.set(fx * v, fz * v);
+    else this.vel.multiplyScalar(Math.exp(-14 * dt));
+    this.moveBody(dt);
+    this.stair = 0;
+    this.show(dt, 0, a ? { type: 'atk', step: a.step, ph: a.ph, t: a.t } : null);
+    return true;
   }
 
   // 目の前の障害物を調べ、越えられるなら動きを始める
@@ -160,7 +256,7 @@ export class Player {
 
   show(dt, sp, act = null) {
     this.model.root.position.copy(this.pos);
-    this.model.root.rotation.y = this.facing;
-    this.model.update(dt, this.poseSpeed ?? sp, this.onGround, this.vy, this.stair || 0, act); // poseSpeed: 撮影用 (?shot&pose=5.5 でその場で歩き・走りの姿勢)
+    this.model.root.rotation.y = this.facing + this.spin;
+    this.model.update(dt, this.poseSpeed ?? sp, this.onGround, this.vy, this.stair || 0, act, this.armed); // poseSpeed: 撮影用 (?shot&pose=5.5 でその場で歩き・走りの姿勢)
   }
 }
