@@ -42,9 +42,6 @@ key = lambda p: (round(p[0], 1), round(p[1], 1))
 def terrain_sampler():
     T = json.loads(TERRAIN.read_text(encoding="utf-8"))
     nx, nz, step, x0, z0, h = T["nx"], T["nz"], T["step"], T["minX"], T["minZ"], T["h"]
-    # terrain_bridges.py が橋の下を下げた後でも、下げる前の地形で測る (下げ方は ys で決まるので、互いに影響し合わないように)
-    for i, v in zip(T.get("patch", {}).get("idx", ()), T.get("patch", {}).get("h0", ())):
-        h[i] = v
 
     def H(x, z):
         fx = max(0, min(nx - 1.0001, (x - x0) / step)); fz = max(0, min(nz - 1.0001, (z - z0) / step))
