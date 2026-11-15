@@ -187,7 +187,10 @@ async function main() {
   if (perfOn) $('fps').hidden = false; // スマホではタブの題名が見えないので、画面にも出す
   renderer.setAnimationLoop(() => {
     if (perfOn && ++fpsN >= 60) { const t = performance.now(); document.title = $('fps').textContent = Math.round(fpsN * 1000 / (t - fpsT)) + ' fps / ' + renderer.info.render.triangles + ' tris'; fpsN = 0; fpsT = t; }
-    const dt = Math.min(clock.getDelta(), 1 / 30);
+    // 1 コマの経過時間。描画が遅い端末 (30 fps 未満) でも、キャラの速さが実時間で変わらないようにする。
+    // 以前は 1/30 秒で頭打ちにしていたので、重い場所ほどスローモーションになり、走りもダッシュも遅くなっていた。
+    // 長く止まった後 (タブの切り替えなど) に飛ばないよう、上限は 0.25 秒
+    const dt = Math.min(clock.getDelta(), 0.25);
 
     if (input.pressed('KeyV')) detail.on = !detail.on; // detail (お試し)
     if (input.pressed('KeyT')) $('hud-time').textContent = tod.next();
@@ -200,7 +203,9 @@ async function main() {
 
     // マップ表示中はキャラを止める
     if (!bigmap.open) {
-      player.update(dt, input, cam);
+      // キャラの動きは 1/30 秒以下に刻んで進める (すり抜け防止)。ジャンプなどの「押した瞬間」は最初の 1 刻みだけに効かせる
+      const n = Math.ceil(dt / (1 / 30) - 1e-6) || 1;
+      for (let i = 0; i < n; i++) { player.update(dt / n, input, cam); if (n > 1) input.endFrame(); }
       cam.update(dt, player.pos, false, player);
     }
     tod.update(dt);
