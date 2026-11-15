@@ -1,11 +1,12 @@
-// 全画面マップ (M キー)。北が上。ホイールでズーム、ドラッグで移動、F で現在地へ。
+// 全画面マップ (M キー)。北が上。ホイール・2 本指でズーム、ドラッグで移動、F で現在地へ。
 import { MAP_PX_PER_M } from './minimap.js';
 
 const MIN_SCALE = 0.25, MAX_SCALE = 8;
 
 export class BigMap {
-  constructor({ minimap, city, pois, canvas, onWarp }) {
+  constructor({ minimap, city, pois, canvas, onWarp, touch = false }) {
     this.onWarp = onWarp;
+    this.touch = touch; // タッチ操作のとき: ワープは画面のボタンから
     this.target = null; // クリックで選んだワープ先 {x, z}
     this.map = minimap.map;
     this.B = city.bounds;
@@ -18,33 +19,59 @@ export class BigMap {
     this.cx = 0; this.cz = 0; this.scale = 1;
     this.player = { x: 0, z: 0, facing: 0 };
 
-    let drag = null;
-    canvas.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, cx: this.cx, cz: this.cz, moved: false }; });
-    addEventListener('mouseup', (e) => {
-      // ほとんど動かさずに離したらクリック扱い: ワープ先のピンを立てる
-      if (drag && !drag.moved && this.open) this.target = this.toWorld(e.clientX, e.clientY);
-      drag = null;
+    // マウスとタッチを同じ扱いにする (pointer イベント)。1 本でドラッグ、2 本でつまんで拡大縮小
+    let drag = null, pinch = null;
+    const pts = new Map(); // 触れている指 (pointerId → 位置)
+    const startDrag = (p, moved) => { drag = { x: p.x, y: p.y, cx: this.cx, cz: this.cz, moved }; };
+    const two = () => { const [a, b] = [...pts.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 }; };
+    canvas.addEventListener('pointerdown', (e) => {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) startDrag(pts.get(e.pointerId), false);
+      else if (pts.size === 2) { drag = null; pinch = two(); }
     });
+    const up = (e) => {
+      if (!pts.delete(e.pointerId)) return;
+      // ほとんど動かさずに離したらクリック扱い: ワープ先のピンを立てる
+      if (drag && !drag.moved && this.open && e.type === 'pointerup') this.target = this.toWorld(e.clientX, e.clientY);
+      drag = null; pinch = null;
+      if (pts.size === 1) startDrag([...pts.values()][0], true); // つまんだ後、残った指でそのまま動かせる
+    };
+    addEventListener('pointerup', up);
+    addEventListener('pointercancel', up);
     canvas.addEventListener('dblclick', (e) => {
       this.target = this.toWorld(e.clientX, e.clientY);
       this.warp();
     });
-    addEventListener('mousemove', (e) => {
-      if (!drag || !this.open) return;
-      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) drag.moved = true;
+    addEventListener('pointermove', (e) => {
+      const p = pts.get(e.pointerId);
+      if (!p || !this.open) return;
+      p.x = e.clientX; p.y = e.clientY;
+      if (pinch && pts.size === 2) {
+        const n = two();
+        this.cx -= (n.x - pinch.x) / this.scale; this.cz -= (n.y - pinch.y) / this.scale;
+        this.zoomAt(n.x, n.y, n.d / pinch.d);
+        pinch = n;
+        return;
+      }
+      if (!drag) return;
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > (e.pointerType === 'touch' ? 10 : 4)) drag.moved = true;
       this.cx = drag.cx - (e.clientX - drag.x) / this.scale;
       this.cz = drag.cz - (e.clientY - drag.y) / this.scale;
     });
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       e.stopPropagation(); // 3Dカメラのズームに伝えない
-      // カーソル位置を中心にズーム
-      const r = canvas.getBoundingClientRect();
-      const mx = e.clientX - r.left - r.width / 2, my = e.clientY - r.top - r.height / 2;
-      const wx = this.cx + mx / this.scale, wz = this.cz + my / this.scale;
-      this.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, this.scale * (e.deltaY > 0 ? 0.85 : 1.18)));
-      this.cx = wx - mx / this.scale; this.cz = wz - my / this.scale;
+      this.zoomAt(e.clientX, e.clientY, e.deltaY > 0 ? 0.85 : 1.18);
     }, { passive: false });
+  }
+
+  // 画面上の点 (カーソル・指の中間) を中心に k 倍する
+  zoomAt(clientX, clientY, k) {
+    const r = this.canvas.getBoundingClientRect();
+    const mx = clientX - r.left - r.width / 2, my = clientY - r.top - r.height / 2;
+    const wx = this.cx + mx / this.scale, wz = this.cz + my / this.scale;
+    this.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, this.scale * k));
+    this.cx = wx - mx / this.scale; this.cz = wz - my / this.scale;
   }
 
   show(px, pz) {
@@ -138,7 +165,7 @@ export class BigMap {
       c.beginPath(); c.moveTo(x, y); c.lineTo(x - 7, y - 14); c.arc(x, y - 18, 8, Math.PI * 0.8, Math.PI * 0.2); c.closePath(); c.fill(); c.stroke();
       c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y - 18, 3, 0, Math.PI * 2); c.fill();
       c.font = 'bold 13px "Yu Gothic UI", sans-serif';
-      halo(c, 'ダブルクリック / Enter でワープ', x, y - 36, '#8a1d3a');
+      halo(c, this.touch ? '「ワープ」で移動' : 'ダブルクリック / Enter でワープ', x, y - 36, '#8a1d3a');
     }
 
     // 現在地 (点滅する輪 + 向きの矢印)

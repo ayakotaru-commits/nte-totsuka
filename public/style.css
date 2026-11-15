@@ -36,10 +36,35 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #help b { color: #5fd3ff; font-weight: 600; }
 #credit { position: fixed; right: 12px; bottom: 8px; font-size: 11px; opacity: .8; text-shadow: 0 1px 2px #000; pointer-events: none; }
 
-#overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(5,10,20,.55); cursor: pointer; }
+#overlay { position: fixed; inset: 0; z-index: 8; display: flex; align-items: center; justify-content: center; background: rgba(5,10,20,.55); cursor: pointer; }
 #overlay .box { text-align: center; }
 #overlay h1 { font-size: 56px; letter-spacing: .4em; margin: 0 0 12px; font-weight: 300; }
 #overlay .sub { opacity: .75; font-size: 14px; }
 
 .label { font-size: 12px; color: #fff; background: rgba(10,20,35,.6); border: 1px solid rgba(95,211,255,.6); padding: 2px 7px; border-radius: 3px; white-space: nowrap; pointer-events: none; }
 .label.station { font-size: 15px; font-weight: 700; border-color: #ffcf5f; }
+
+/* ---- タッチ操作 (スマホ・タブレット。src/touch.js が body に touch を付ける) ---- */
+#app canvas, #bigmap { touch-action: none; }
+#fps { position: fixed; left: 50%; top: 4px; transform: translateX(-50%); font-size: 11px; background: rgba(0,0,0,.5); padding: 1px 8px; border-radius: 4px; pointer-events: none; z-index: 30; }
+body.touch { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: none; }
+body.touch #help { display: none; }
+body.touch #hud-location { left: calc(12px + env(safe-area-inset-left)); top: 10px; }
+body.touch #hud-location .place { font-size: 17px; }
+body.touch #hud-goal { left: calc(12px + env(safe-area-inset-left)); top: 58px; font-size: 12px; }
+body.touch #minimap { width: 120px; height: 120px; right: calc(12px + env(safe-area-inset-right)); top: 12px; pointer-events: auto; }
+body.touch #hud-time { width: 120px; right: calc(12px + env(safe-area-inset-right)); top: 138px; font-size: 12px; }
+body.touch #credit { left: 8px; right: 8px; bottom: 2px; font-size: 8px; text-align: center; opacity: .6; }
+body.touch #overlay h1 { font-size: 36px; }
+
+.tbtn { font: inherit; font-size: 13px; color: #fff; background: rgba(10,20,35,.55); border: 1px solid rgba(255,255,255,.55); border-radius: 8px; padding: 0; min-width: 48px; height: 38px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.tbtn:active, .tbtn.on { background: rgba(95,211,255,.55); }
+.tbtn.round { position: fixed; border-radius: 50%; font-size: 12px; }
+#tb-top { position: fixed; left: calc(12px + env(safe-area-inset-left)); top: 82px; display: flex; gap: 6px; z-index: 5; }
+#tb-jump { width: 78px; height: 78px; right: calc(22px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom)); z-index: 5; }
+#tb-dash { width: 62px; height: 62px; right: calc(112px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 5; }
+#stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid rgba(255,255,255,.45); background: rgba(10,20,35,.25); pointer-events: none; display: none; z-index: 5; }
+#stick.on { display: block; }
+#stick-knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(255,255,255,.7); }
+#map-touch { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 10px; z-index: 11; }
+#map-touch .tbtn { min-width: 76px; height: 44px; background: rgba(10,20,35,.85); }

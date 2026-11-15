@@ -42,6 +42,10 @@ export class Player {
     if (input.held('KeyS') || input.held('ArrowDown')) mz -= 1;
     if (input.held('KeyD') || input.held('ArrowRight')) mx += 1;
     if (input.held('KeyA') || input.held('ArrowLeft')) mx -= 1;
+    // タッチのスティック: 浅く倒すと歩き、深く倒すと走り
+    const tilt = Math.hypot(input.ax, input.az);
+    mx += input.ax; mz += input.az;
+    const walk = this.walkMode || (tilt > 0 && tilt < 0.6);
 
     const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw);
     // forward = (-sin, -cos), right = (cos, -sin)
@@ -50,7 +54,7 @@ export class Player {
     let target = 0;
     if (len > 0) {
       dx /= len; dz /= len;
-      target = input.held('ShiftLeft') || input.held('ShiftRight') ? SPEED.dash : this.walkMode ? SPEED.walk : SPEED.run;
+      target = input.held('ShiftLeft') || input.held('ShiftRight') ? SPEED.dash : walk ? SPEED.walk : SPEED.run;
     }
     // 階段: 速さを抑え、上り(+1)・下り(-1) をキャラに伝える
     const stair = this.onGround ? stairAt(this.pos.x, this.pos.z) : null;
@@ -70,7 +74,7 @@ export class Player {
     }
 
     // パルクール: 走り・ダッシュで障害物へ向かっているとき、自動で飛び越える・よじ登る (歩きでは発動しない)
-    if (len > 0 && !this.walkMode && this.actCool <= 0 && this.tryParkour(dx, dz)) return this.updateAct(0);
+    if (len > 0 && !walk && this.actCool <= 0 && this.tryParkour(dx, dz)) return this.updateAct(0);
 
     // ジャンプ (2段)
     if (input.pressed('Space')) {

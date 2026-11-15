@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>TOTSUKA</title>
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
@@ -25,8 +25,27 @@
 <canvas id="minimap" width="200" height="200"></canvas>
 <div id="hud-time">昼</div>
 <div id="hud-goal"></div>
+<div id="fps" hidden></div>
 <canvas id="bigmap" hidden></canvas>
 <div id="map-help" hidden><b>M</b> / <b>Esc</b> 閉じる　<b>ホイール</b> 拡大縮小　<b>ドラッグ</b> 移動　<b>F</b> 現在地へ　<b>クリック</b> 行き先を選ぶ　<b>ダブルクリック</b> / <b>Enter</b> ワープ</div>
+
+<!-- タッチ操作 (スマホ・タブレットのときだけ表示。動きは src/touch.js) -->
+<div id="touch-ui" hidden>
+  <div id="stick"><div id="stick-knob"></div></div>
+  <div id="tb-top">
+    <button class="tbtn" data-key="KeyM">地図</button>
+    <button class="tbtn" data-key="KeyT">時間</button>
+    <button class="tbtn" data-key="KeyR">戻る</button>
+    <button class="tbtn" data-act="streetView">写真</button>
+  </div>
+  <button class="tbtn round" id="tb-dash" data-hold="ShiftLeft">ダッシュ</button>
+  <button class="tbtn round" id="tb-jump" data-key="Space">ジャンプ</button>
+</div>
+<div id="map-touch" hidden>
+  <button class="tbtn" data-key="KeyM">閉じる</button>
+  <button class="tbtn" data-key="KeyF">現在地</button>
+  <button class="tbtn" data-act="warp">ワープ</button>
+</div>
 
 <div id="help">
   <b>WASD</b> 移動　<b>Shift</b> ダッシュ　<b>C</b> 歩き切替　<b>Space</b> ジャンプ（2段）　走って柵・塀に向かうと自動で飛び越える・よじ登る<br>
@@ -38,7 +57,7 @@
   <div class="box">
     <h1>TOTSUKA</h1>
     <p id="status">読み込み中…</p>
-    <p class="sub">クリックで開始（Escでマウス解放）</p>
+    <p class="sub" id="start-hint">クリックで開始（Escでマウス解放）</p>
   </div>
 </div>
 

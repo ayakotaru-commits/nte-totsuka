@@ -25,14 +25,20 @@ export class ThirdPersonCamera {
     document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === dom; });
     addEventListener('mousemove', (e) => {
       if (!this.locked && !(this.freeRotate && (e.buttons & 2))) return;
-      if (e.movementX || e.movementY) this.idle = 0;
-      this.yaw -= e.movementX * 0.0025;
-      this.pitch = Math.max(-0.45, Math.min(1.35, this.pitch + e.movementY * 0.0025));
+      this.rotate(e.movementX * 0.0025, e.movementY * 0.0025);
     });
-    addEventListener('wheel', (e) => {
-      this.dist = Math.max(1.8, Math.min(this.maxDist, this.dist * (e.deltaY > 0 ? 1.1 : 0.9)));
-    }, { passive: true });
+    addEventListener('wheel', (e) => this.zoom(e.deltaY > 0 ? 1.1 : 0.9), { passive: true });
   }
+
+  // 視点を回す (rad。マウスとタッチの両方から呼ぶ)
+  rotate(dYaw, dPitch) {
+    if (dYaw || dPitch) this.idle = 0;
+    this.yaw -= dYaw;
+    this.pitch = Math.max(-0.45, Math.min(1.35, this.pitch + dPitch));
+  }
+
+  // カメラの距離を k 倍にする
+  zoom(k) { this.dist = Math.max(1.8, Math.min(this.maxDist, this.dist * k)); }
 
   // player を渡すと自動追従する (修正モード中は無効)
   update(dt, playerPos, snap = false, player = null) {

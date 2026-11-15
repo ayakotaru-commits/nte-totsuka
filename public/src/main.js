@@ -16,6 +16,7 @@ import { loadDetail } from './detail/index.js'; // detail (お試し)
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
 import { setTerrain, setCover } from './terrain.js';
+import { TOUCH, setupTouch } from './touch.js';
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
@@ -39,7 +40,8 @@ async function main() {
   // 重さの切り分け用 (URL): ?pr=1 解像度の倍率, ?log 対数深度バッファを使う (標準は使わない。重いので), ?noaa アンチエイリアス無し, ?noshadow 影なし
   const Q = new URLSearchParams(location.search);
   const renderer = new THREE.WebGLRenderer({ antialias: !Q.has('noaa'), logarithmicDepthBuffer: Q.has('log') });
-  renderer.setPixelRatio(Q.has('pr') ? +Q.get('pr') : Math.min(devicePixelRatio, 2));
+  // スマホ・タブレット (タッチ操作) は軽くする: 解像度の倍率の上限 1.5、影の解像度は半分
+  renderer.setPixelRatio(Q.has('pr') ? +Q.get('pr') : Math.min(devicePixelRatio, TOUCH ? 1.5 : 2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = !Q.has('noshadow');
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -66,7 +68,7 @@ async function main() {
   scene.add(hemi);
   const sun = new THREE.DirectionalLight('#ffffff', 3);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(TOUCH ? 1024 : 2048, TOUCH ? 1024 : 2048);
   Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 400 });
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
@@ -99,7 +101,7 @@ async function main() {
     cam.update(0, player.pos, true);
     toggleMap();
   };
-  const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z) });
+  const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z), touch: TOUCH });
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
@@ -141,19 +143,23 @@ async function main() {
     cam.update(0, player.pos, true);
   }
   if (restore) { overlay.hidden = true; editor.show(); cam.dist = restore.dist; cam.update(0, player.pos, true); }
-  overlay.addEventListener('click', () => renderer.domElement.requestPointerLock());
-  renderer.domElement.addEventListener('click', () => { if (!cam.locked && !editor.open) renderer.domElement.requestPointerLock(); });
+  // 操作の開始・中断。PC はマウスを固定する。タッチ操作は固定が要らない (使えない端末もある) ので、開始の表示を消すだけ
+  const lock = () => { if (TOUCH) overlay.hidden = true; else renderer.domElement.requestPointerLock?.(); };
+  const unlock = () => document.exitPointerLock?.();
+  overlay.addEventListener('click', lock);
+  renderer.domElement.addEventListener('click', () => { if (!TOUCH && !cam.locked && !editor.open) lock(); });
   document.addEventListener('pointerlockchange', () => { overlay.hidden = document.pointerLockElement === renderer.domElement || bigmap.open || editor.open; });
   const toggleMap = () => {
     if (bigmap.open) {
-      bigmap.hide(); $('map-help').hidden = true;
-      renderer.domElement.requestPointerLock();
+      bigmap.hide(); $('map-help').hidden = true; $('map-touch').hidden = true;
+      lock();
     } else {
-      bigmap.show(player.pos.x, player.pos.z); $('map-help').hidden = false;
+      bigmap.show(player.pos.x, player.pos.z); $('map-help').hidden = TOUCH; $('map-touch').hidden = !TOUCH;
       overlay.hidden = true;
-      document.exitPointerLock();
+      unlock();
     }
   };
+  if (TOUCH) setupTouch({ dom: renderer.domElement, input, cam, streetView, warp: () => bigmap.warp() });
   addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Escape' && bigmap.open) toggleMap();
@@ -174,8 +180,9 @@ async function main() {
   const clock = new THREE.Clock();
   const perfOn = new URLSearchParams(location.search).has('perf'); // 計測用: タブの題名にフレームレートを出す
   let fpsN = 0, fpsT = performance.now();
+  if (perfOn) $('fps').hidden = false; // スマホではタブの題名が見えないので、画面にも出す
   renderer.setAnimationLoop(() => {
-    if (perfOn && ++fpsN >= 60) { const t = performance.now(); document.title = Math.round(fpsN * 1000 / (t - fpsT)) + ' fps / ' + renderer.info.render.triangles + ' tris'; fpsN = 0; fpsT = t; }
+    if (perfOn && ++fpsN >= 60) { const t = performance.now(); document.title = $('fps').textContent = Math.round(fpsN * 1000 / (t - fpsT)) + ' fps / ' + renderer.info.render.triangles + ' tris'; fpsN = 0; fpsT = t; }
     const dt = Math.min(clock.getDelta(), 1 / 30);
 
     if (input.pressed('KeyV')) detail.on = !detail.on; // detail (お試し)
