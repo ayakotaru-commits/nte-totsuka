@@ -5,8 +5,6 @@ import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
 
-const STAIR_SPEED = 3.4; // 階段を上り下りする速さの上限 (m/s)。走りから落とすのは少しだけ (歩き 1.6・走り 5.5)
-
 const R = 0.35;
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
 const GRAVITY = 24, JUMP_V = 8.2, JUMP2_V = 7.6;
@@ -56,9 +54,8 @@ export class Player {
       dx /= len; dz /= len;
       target = input.held('ShiftLeft') || input.held('ShiftRight') ? SPEED.dash : walk ? SPEED.walk : SPEED.run;
     }
-    // 階段: 速さを抑え、上り(+1)・下り(-1) をキャラに伝える
+    // 階段: 上り(+1)・下り(-1) をキャラに伝える (速さは落とさない。持ち主の希望)
     const stair = this.onGround ? stairAt(this.pos.x, this.pos.z, this.pos.y) : null;
-    if (stair && target > STAIR_SPEED) target = STAIR_SPEED;
     const sl = this.vel.length();
     this.stair = stair && sl > 0.1 ? Math.max(-1, Math.min(1, (this.vel.x * stair.ux + this.vel.y * stair.uz) / sl * Math.min(1, stair.grade * 1.6))) : 0;
     const accel = this.onGround ? 12 : 3;
