@@ -10,15 +10,20 @@ const RISE = 0.17, TREAD_MIN = 0.28;
 const CELL = 10, grid = new Map();
 const cellOf = (v) => Math.floor(v / CELL);
 
-// (x, z) が階段の上なら、上り方向の単位ベクトル {ux, uz} と勾配を返す。階段でなければ null
-export function stairAt(x, z) {
+// (x, z) が階段の上なら、上り方向の単位ベクトル {ux, uz} と勾配を返す。階段でなければ null。
+// y (足元の高さ) を渡すと、その高さに階段があるときだけ返す (駅前のように、階段の真下の地面や真上のデッキを歩いているときは階段扱いにしない)。
+// 階段の両端の先 (上り口・下り口の手前の平らな所) も階段扱いにしない
+const END_MARGIN = 0.3, Y_TOL = 1.2;
+export function stairAt(x, z, y = null) {
   const list = grid.get(cellOf(x) * 100000 + cellOf(z));
   if (!list) return null;
   for (const s of list) {
     const ex = s.bx - s.ax, ez = s.bz - s.az, l2 = ex * ex + ez * ez;
-    const t = Math.max(0, Math.min(1, ((x - s.ax) * ex + (z - s.az) * ez) / l2));
+    const L = Math.sqrt(l2), t = ((x - s.ax) * ex + (z - s.az) * ez) / l2;
+    if (t < -END_MARGIN / L || t > 1 + END_MARGIN / L) continue;
     if (Math.hypot(x - s.ax - ex * t, z - s.az - ez * t) > s.hw + 0.2) continue;
-    const L = Math.sqrt(l2), up = Math.sign(s.yb - s.ya) || 1;
+    if (y !== null && Math.abs(y - (s.ya + (s.yb - s.ya) * Math.max(0, Math.min(1, t)))) > Y_TOL) continue;
+    const up = Math.sign(s.yb - s.ya) || 1;
     return { ux: ex / L * up, uz: ez / L * up, grade: Math.abs(s.yb - s.ya) / L };
   }
   return null;
