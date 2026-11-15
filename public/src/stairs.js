@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { H } from './terrain.js';
 
 const RISE = 0.17, TREAD_MIN = 0.28;
+const STEEP = 0.22; // 階段でない歩道も、これより急な区間は段にする (tools/build_props.py の STEEP と同じ値)
+const PED = new Set(['footway', 'pedestrian', 'path', 'cycleway', 'corridor']);
 
 // 階段の当たり (アクション用): 区間ごとの {a, b, ya, yb, hw} を 10m 格子に入れる
 const CELL = 10, grid = new Map();
@@ -35,7 +37,9 @@ export function buildStairs(city) {
   const push = (arr, ...pts) => { for (const p of pts) arr.push(p[0], p[1], p[2]); };
   const quad = (arr, a, b, c, d) => push(arr, a, b, c, a, c, d);
   for (const r of city.roads) {
-    if (r.kind !== 'steps') continue;
+    // 階段 (steps) と、デッキへ上がる歩道のうち急な区間 (実測で段差になっている所。STEEP より急)
+    const steps = r.kind === 'steps';
+    if (!steps && !(r.ys && PED.has(r.kind))) continue;
     const hw = (r.w || 2.5) / 2;
     const yAt = (i, x, z) => r.ys ? r.ys[i] + 0.05 : H(x, z) + 0.12;
     for (let i = 0; i < r.pts.length - 1; i++) {
@@ -45,6 +49,7 @@ export function buildStairs(city) {
       const ya = yAt(i, ax, az), yb = r.ys ? r.ys[i + 1] + 0.05 : H(bx, bz) + 0.12;
       const n = Math.max(1, Math.min(Math.round(Math.abs(yb - ya) / RISE), Math.floor(L / TREAD_MIN)));
       if (Math.abs(yb - ya) < 0.3) continue; // ほぼ平らな区間は段にしない (踊り場)
+      if (!steps && Math.abs(yb - ya) / L <= STEEP) continue;
       const seg = { ax, az, bx, bz, hw };
       seg.ya = ya; seg.yb = yb;
       for (let gx = cellOf(Math.min(ax, bx) - hw - 1); gx <= cellOf(Math.max(ax, bx) + hw + 1); gx++)

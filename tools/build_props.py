@@ -1235,6 +1235,137 @@ def build_rail(city, world, H, col):
             "dims": {"platH": PLAT_H, "mastH": MAST_H}}
 
 
+# 5b. 歩道橋・デッキ・階段・スロープの手すり
+# =====================================================================
+WALK_PED = {"footway", "pedestrian", "path", "cycleway", "steps", "corridor"}
+RAIL_H = 1.1        # デッキの高欄の高さ
+HANDRAIL_H = 0.9    # 階段の手すりの高さ (段の先を結んだ線から)
+STEEP = 0.22        # これより急な区間は階段として作る (stairs.js と同じ値)
+
+
+def build_walk(city, world, H, col):
+    """手すりを置く線 (rails) を作る。1 本 = {"k": 種類, "p": [[x, y, z], ...]} で、p は路面の縁の線 (y = 路面の高さ)。
+    k: "deck" = デッキ・歩道橋の高欄 / "stair" = デッキへ上がる階段・急な坂の手すり / "ground" = 地面の階段の手すり
+    - 路面の両縁に沿って置く。ほかの通路がつながる所 (同じ高さの路面の中)・建物に入る所・地面すれすれの所には置かない
+    - どこにもつながらず宙で終わる端は、端をふさぐ
+    - 幅 4 m 以上の階段は中央にも 1 本"""
+    ways = []
+    degree = {}
+    nkey = lambda q: (round(q[0], 1), round(q[1], 1))
+    for r in city["roads"]:
+        for q in r["pts"]:
+            degree[nkey(q)] = degree.get(nkey(q), 0) + 1
+    for r in city["roads"]:
+        if r["kind"] not in WALK_PED:
+            continue
+        if r.get("ys"):
+            ways.append({"pts": r["pts"], "ys": [y + 0.05 for y in r["ys"]], "hw": (r.get("w") or 3) / 2, "ground": False, "steps": r["kind"] == "steps"})
+        elif r["kind"] == "steps":
+            ways.append({"pts": r["pts"], "ys": [H(q[0], q[1]) + 0.12 for q in r["pts"]], "hw": (r.get("w") or 2.5) / 2, "ground": True, "steps": True})
+    segs, grid = [], {}
+    for wi, w in enumerate(ways):
+        for i in range(len(w["pts"]) - 1):
+            a, b = w["pts"][i], w["pts"][i + 1]
+            L = math.hypot(b[0] - a[0], b[1] - a[1])
+            if L < 0.05:
+                continue
+            s = {"w": wi, "i": i, "a": a, "b": b, "ya": w["ys"][i], "yb": w["ys"][i + 1], "L": L, "hw": w["hw"],
+                 "ux": (b[0] - a[0]) / L, "uz": (b[1] - a[1]) / L, "ground": w["ground"]}
+            s["grade"] = abs(s["yb"] - s["ya"]) / L
+            m = w["hw"] + 0.5
+            for gx in range(int((min(a[0], b[0]) - m) // 10), int((max(a[0], b[0]) + m) // 10) + 1):
+                for gz in range(int((min(a[1], b[1]) - m) // 10), int((max(a[1], b[1]) + m) // 10) + 1):
+                    grid.setdefault((gx, gz), []).append(len(segs))
+            segs.append(s)
+
+    def covered(x, z, y, me):
+        """(x, z, y) が、ほかの区間の路面の中か (= 通路がつながっている所)"""
+        for k in grid.get((int(x // 10), int(z // 10)), ()):
+            if k == me:
+                continue
+            s = segs[k]
+            t = ((x - s["a"][0]) * s["ux"] + (z - s["a"][1]) * s["uz"]) / s["L"]
+            tc = max(0.0, min(1.0, t))
+            d = math.hypot(x - s["a"][0] - s["ux"] * s["L"] * tc, z - s["a"][1] - s["uz"] * s["L"] * tc)
+            if d < s["hw"] - 0.08 and abs(s["ya"] + (s["yb"] - s["ya"]) * tc - y) < 0.8:
+                return True
+        return False
+
+    def in_building(x, z, y):
+        for b in world.query(x, z, x, z):
+            if b["topY"] > y + 0.5 and b["minY"] < y + 1.5 and world.contains(b, x, z):
+                return True
+        return False
+
+    rails = []
+    n_len = 0.0
+
+    def emit(kind, pts):
+        nonlocal n_len
+        if len(pts) < 2:
+            return
+        L = sum(math.hypot(q[0] - p[0], q[2] - p[2]) for p, q in zip(pts, pts[1:]))
+        if L < 0.6:
+            return
+        n_len += L
+        rails.append({"k": kind, "p": [[r2(q[0]), r2(q[1]), r2(q[2])] for q in pts]})
+        col.add_line([[r2(q[0]), r2(q[2]), r2(q[1])] for q in pts], 0.05, RAIL_H if kind == "deck" else HANDRAIL_H)
+
+    kind_of = lambda s: "ground" if s["ground"] else "stair" if s["grade"] > STEEP else "deck"
+    for wi, w in enumerate(ways):
+        mine = [k for k, s in enumerate(segs) if s["w"] == wi]
+        offsets = [1, -1] + ([0] if w["steps"] and w["hw"] >= 2.0 else [])
+        for side in offsets:
+            cur, cur_kind = [], None   # つながっている途中の線
+            for k in mine:
+                s = segs[k]
+                off = side * (s["hw"] - 0.06)
+                nx, nz = -s["uz"] * off, s["ux"] * off
+                n = max(1, int(math.ceil(s["L"] / 0.5)))
+                kd = kind_of(s)
+                run = None
+                for j in range(n + 1):
+                    t = j / n
+                    x, z = s["a"][0] + s["ux"] * s["L"] * t + nx, s["a"][1] + s["uz"] * s["L"] * t + nz
+                    y = s["ya"] + (s["yb"] - s["ya"]) * t
+                    ok = not covered(x, z, y, k) and not in_building(x, z, y)
+                    if ok and not s["ground"] and y - H(x, z) < 0.45:
+                        ok = False  # 地面すれすれ (たもと) には置かない
+                    if ok and side == 0 and s["grade"] <= 0.1:
+                        ok = False  # 中央の手すりは段のある所だけ
+                    if ok:
+                        if run is None:
+                            run = [[x, y, z], [x, y, z]]
+                            # 前の区間の線が終点まで届いていて、種類が同じなら続ける (角の外側をつなぐ)
+                            if j == 0 and cur and cur_kind == kd and math.hypot(cur[-1][0] - x, cur[-1][2] - z) < 2 * s["hw"] + 0.5:
+                                run = cur + [[x, y, z], [x, y, z]]
+                            elif cur:
+                                emit(cur_kind, cur)
+                            cur = []
+                        run[-1] = [x, y, z]
+                    elif run is not None:
+                        emit(kd, run)
+                        run = None
+                if run is not None:
+                    cur, cur_kind = run, kd   # 終点まで届いた。次の区間へ続くかもしれない
+                elif cur:
+                    emit(cur_kind, cur); cur = []
+            if cur:
+                emit(cur_kind, cur)
+        # 宙で終わる端をふさぐ
+        if not w["ground"] and mine:
+            for k, end in ((mine[0], 0), (mine[-1], 1)):
+                s = segs[k]
+                q = s["b"] if end else s["a"]
+                y = s["yb"] if end else s["ya"]
+                if degree[nkey(q)] > 1 or y - H(q[0], q[1]) < 0.6 or in_building(q[0], q[1], y) or covered(q[0], q[1], y, k):
+                    continue
+                o = s["hw"] - 0.06
+                emit("deck", [[q[0] - s["uz"] * o, y, q[1] + s["ux"] * o], [q[0] + s["uz"] * o, y, q[1] - s["ux"] * o]])
+    print(f"walkway rails={len(rails)} ({n_len:.0f} m)")
+    return {"rails": rails, "dims": {"railH": RAIL_H, "handrailH": HANDRAIL_H}}
+
+
 # 6. 点群から読んだ木と駐車場 (data/lots.json。tools/lidar_cover.py が作る)
 # =====================================================================
 def build_lidar_trees(lots, world, H, col):
@@ -1448,6 +1579,7 @@ def build(city):
     trees = build_lidar_trees(lots, world, H, col) if lots and lots.get("trees") else build_trees(city, world, H, col)
     cars = build_parking(lots, city, world, H, col, street["paint"]) if lots and lots.get("parking") else []
     rail = build_rail(city, world, H, col)
+    walk = build_walk(city, world, H, col)
     print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
     return {
         "version": 1,
@@ -1458,6 +1590,7 @@ def build(city):
         **shapes,
         "trees": trees,
         "rail": rail,
+        "walk": walk,
         "cars": cars,
         **build_area_extras(city, world, H, col, (lots or {}).get("sites") or ()),
         "colliders": {"circle": col.circle, "box": col.box, "line": col.line, "tree": col.tree},

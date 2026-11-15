@@ -7,6 +7,7 @@ import { applyTextures } from './textures.js';
 import { buildShapes } from './shapes.js';
 import { buildSites } from './site.js';
 import { buildStation } from './station.js';
+import { buildWalkways } from './walkways.js';
 
 export async function loadDetail({ scene, city, world, built, props }) {
   const c = city.start || { x: 0, z: 0 };
@@ -51,6 +52,12 @@ export async function loadDetail({ scene, city, world, built, props }) {
     const st = buildStation(props); // ホーム・屋根・架線柱・架線
     scene.add(st.group);
     parts.push({ set: (v) => { st.group.visible = v; } });
+  }
+
+  if (DETAIL.shapes && props) {
+    const wk = buildWalkways(props); // 歩道橋・デッキ・階段の手すり
+    scene.add(wk.group);
+    parts.push({ set: (v) => { wk.group.visible = v; } });
   }
 
   // 当たり判定 (V キーで見た目を消すと一緒に外す)
