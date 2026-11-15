@@ -1,4 +1,5 @@
 // サーバーとの接続 (WebSocket)。つなぐ・切れたらつなぎ直す・自分の状態を間引いて送る、だけを受け持つ。
+// 作っただけではつながない。start() で部屋に入り、stop() で抜ける (抜けた後はつなぎ直さない)。
 // 通信の中身は server/room.js の先頭の説明。
 import { PUBLIC_ROOMS } from './config.js';
 
@@ -12,12 +13,26 @@ export class Net {
     this.base = base.replace(/\/+$/, '');
     this.room = room; this.on = on;
     this.pub = 1; this.ws = null; this.open = false; this.retry = 0; this.timer = 0;
-    this.lastSent = ''; this.lastAt = 0; this.hiddenAt = 0; this.stopped = false;
+    this.lastSent = ''; this.lastAt = 0; this.hiddenAt = 0; this.stopped = true;
     document.addEventListener('visibilitychange', () => {
+      if (this.stopped) return;
       if (document.hidden) { this.hiddenAt = performance.now(); setTimeout(() => this.checkHidden(), HIDDEN_MS + 500); }
       else if (!this.ws && !this.stopped) { clearTimeout(this.timer); this.connect(); }
     });
+  }
+
+  start() {
+    if (!this.stopped) return;
+    this.stopped = false; this.pub = 1; this.retry = 0;
     this.connect();
+  }
+
+  stop() {
+    this.stopped = true;
+    clearTimeout(this.timer);
+    const ws = this.ws;
+    this.ws = null; this.open = false;
+    if (ws) try { ws.close(1000, 'leave'); } catch { /* */ }
   }
 
   checkHidden() {
@@ -37,7 +52,7 @@ export class Net {
       this.on[m.t]?.(m);
     };
     ws.onclose = (e) => {
-      if (this.ws !== ws) return;
+      if (this.ws !== ws || this.stopped) return;
       this.ws = null; this.open = false;
       this.on.status?.('closed');
       if (document.hidden) return; // 戻ってきたときにつなぎ直す

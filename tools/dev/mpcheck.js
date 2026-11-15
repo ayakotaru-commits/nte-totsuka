@@ -8,6 +8,8 @@ const ROOT = path.resolve(__dirname, '..', '..'), PUBLIC = path.join(ROOT, 'publ
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json' };
 const OUT = process.argv[2] || '.', WS_PORT = 8791;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// cond が true になるまで待つ (最大 ms)。この環境の描画は 1 コマ 1〜2 秒なので、相手の画面に届いた値が反映されるまで時間がかかる
+const until = async (cond, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await cond()) return true; await sleep(500); } return false; };
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   const srv = spawn('node', ['local.js', String(WS_PORT)], { cwd: path.join(ROOT, 'server'), stdio: 'inherit' });
@@ -31,7 +33,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     });
     page.on('pageerror', e => console.log(label, 'ERR', e.message));
     page.on('console', m => { if (m.type() === 'error') console.log(label, 'console:', m.text()); });
-    await page.goto(`http://127.0.0.1:${server.address().port}/?mp=ws://127.0.0.1:${WS_PORT}&room=check&noshadow&noaa&pr=0.5&nofollow`);
+    await page.goto(`http://127.0.0.1:${server.address().port}/?mp=ws://127.0.0.1:${WS_PORT}&room=check&join&noshadow&noaa&pr=0.5&nofollow`);
     await page.waitForFunction(() => window.__g && window.__g.mp && window.__g.mp.me.id);
     await page.evaluate(() => { document.getElementById('overlay').hidden = true; });
     return page;
@@ -61,15 +63,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await hide(A, 'all'); await hide(B, 'all');
   await A.evaluate(() => { const g = window.__g; g.player.teleport(-300, 1432); g.player.facing = 0; });
   await B.evaluate(() => { const g = window.__g; g.player.teleport(-300, 1433.6); g.player.facing = Math.PI; });
-  await sleep(6000);
-  a = await info(A); b = await info(B);
+  b = await info(B);
+  await until(async () => { a = await info(A); return Math.hypot(a.others[0].x - b.x, a.others[0].z - b.z) < 0.3; });
   ok(Math.hypot(a.others[0].x - b.x, a.others[0].z - b.z) < 0.3, `B の位置が A に伝わる (ずれ ${Math.hypot(a.others[0].x - b.x, a.others[0].z - b.z).toFixed(2)} m)`);
   // B が走る → A から見て動く
   await B.evaluate(() => { window.__g.player.teleport(-300, 1432); }); await sleep(1000); b = await info(B);
   // この環境の描画は 1 コマ 1〜2 秒かかり、1 コマの上限 0.25 秒のため、待つだけではほとんど進まない。ゲームの更新を直接 2 秒ぶん進める
   await B.evaluate(() => { const g = window.__g; g.cam.yaw = 4.0 - 0.72; g.input.az = 1; for (let i = 0; i < 60; i++) g.player.update(1 / 30, g.input, g.cam); g.input.az = 0; }); // スタート近くの道を道なりに (speedcheck.js と同じ)
-  await sleep(6000);
-  const a2 = await info(A), b2 = await info(B);
+  const b2 = await info(B); let a2;
+  await until(async () => { a2 = await info(A); return Math.hypot(a2.others[0].x - b2.x, a2.others[0].z - b2.z) < 0.5; });
   ok(Math.hypot(b2.x - b.x, b2.z - b.z) > 5 && Math.hypot(a2.others[0].x - b2.x, a2.others[0].z - b2.z) < 0.5, `B が走ると A の画面でも動く (B は ${Math.hypot(b2.x - b.x, b2.z - b.z).toFixed(1)} m 進んだ)`);
 
   // 戦闘オフのまま斬っても当たらない
@@ -120,6 +122,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await A.evaluate(() => window.__g.input.press('KeyJ'));
   await sleep(2500);
   await B.screenshot({ path: path.join(OUT, 'mp_B.png') });
+  // 「1 人に戻る」→ 相手の画面から消える。もう一度「みんなと遊ぶ」→ また見える
+  await B.evaluate(() => window.__g.mp.leave()); await sleep(3000);
+  ok((await info(A)).others.length === 0 && await B.evaluate(() => !window.__g.mp.joined && window.__g.mp.remotes.map.size === 0 && !document.getElementById('mp-join').hidden),
+    '「1 人に戻る」で抜けると、A の画面から消え、B は 1 人用に戻る');
+  await sleep(3000);
+  ok((await info(A)).others.length === 0, '抜けた後は、勝手につなぎ直さない');
+  await B.evaluate(() => window.__g.mp.join()); await sleep(4000);
+  ok((await info(A)).others.length === 1, '「みんなと遊ぶ」でまた入れる');
   // 退室
   await B.close(); await sleep(1500);
   ok((await info(A)).others.length === 0, 'B が閉じると A の画面から消える');

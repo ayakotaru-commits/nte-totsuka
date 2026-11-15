@@ -39,7 +39,7 @@
 
 ### 公開した後
 
-1. まず試す: ゲームの URL の後ろに `?mp=wss://totsuka-mp.<アカウント名>.workers.dev` を付けて開く（PC の `http://localhost:8000/` からも試せる）。左上に「オンライン 1 人」と出ればつながっている。別のタブや別の端末でも開くと、お互いが見える。
+1. まず試す: ゲームの URL の後ろに `?mp=wss://totsuka-mp.<アカウント名>.workers.dev` を付けて開き（PC の `http://localhost:8000/` からも試せる）、左上の「みんなと遊ぶ」を押す。「オンライン 1 人」と出ればつながっている。別のタブや別の端末でも開くと、お互いが見える。
 2. 常に有効にする: `public/src/net/config.js` の `SERVER` にその URL（`wss://` で始める）を書く。
 3. ゲームを公開する場所が `https://ayakotaru-commits.github.io` 以外なら、`wrangler.toml` の `ALLOWED_ORIGINS` に足す。
 4. やめるとき: `SERVER` を空に戻す。サーバーごと消すなら Cloudflare の画面で Worker `totsuka-mp` を削除する。
@@ -50,7 +50,7 @@
 cd server && npm install
 node test.js                      # room.js の確認
 node local.js                     # ws://localhost:8787 で待つ
-# ゲームを http://localhost:8000/?mp=ws://localhost:8787 で開く (タブを 2 つ開くと、お互いが見える)
+# ゲームを http://localhost:8000/?mp=ws://localhost:8787 で開き、「みんなと遊ぶ」を押す (タブを 2 つ開くと、お互いが見える。?join を足すとすぐ入る)
 npx wrangler@4 dev --local        # Cloudflare 用の入口を、手元の実行環境で動かす (公開はしない)
 node test-net.js ws://localhost:8787 http://localhost:8000
 ```
@@ -59,6 +59,7 @@ node test-net.js ws://localhost:8787 http://localhost:8000
 
 ## 決まり（`room.js` の先頭の定数）
 
+- 入り方: 開いた直後は 1 人用で、通信しない。「みんなと遊ぶ」（O キー）を押したときだけつなぎ、「1 人に戻る」で切る（無料枠も使わない）。
 - 部屋: だれでも入れる部屋が 8 つ（`pub1`〜`pub8`、ゲーム側の `PUBLIC_ROOMS`）。1 部屋 16 人で、満員なら次の部屋へ。URL に `?room=合言葉`（英小文字・数字・ハイフン）を付けると、同じ合言葉の人だけの部屋になる。
 - 名前: サーバーが自動で付ける（「あおいタヌキ」など）。自由に入力する名前・チャットは無い（荒らし対策）。アカウントも無く、送るのは位置と動きだけ。
 - 戦闘: 「戦闘オン」にした人同士だけ当たる。体力 100、ダメージは手順 1〜5 で 12・12・16・22・28。倒れると 3 秒後にスタート地点で復活し、その後 3 秒は当たらない。6 秒当てられないと体力が戻る（1 秒に 8）。当てた・当てられた後の 5 秒は戦闘オフにできない。
