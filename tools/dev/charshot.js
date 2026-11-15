@@ -7,6 +7,7 @@
 // 使い方: node tools/dev/charshot.js <出力フォルダ> "<charview.html の ? より後ろ>" ...
 //   例: node tools/dev/charshot.js out "act=vault&h=0.85&s=0.3" "act=vault&h=0.85&s=0.5" "act=climb&h=1.8&s=0.4"
 //   出力は 000.png, 001.png, ... (指定した順)。--novrm を付けると VRM を読まず、組み立て式のキャラで撮る。
+//   --scale 3 で 3 倍の解像度 (細部を切り出して見るとき)。
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -19,6 +20,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.json': '
 (async () => {
   const args = process.argv.slice(2);
   const novrm = args.includes('--novrm'); if (novrm) args.splice(args.indexOf('--novrm'), 1);
+  const si = args.indexOf('--scale'); const scale = si < 0 ? 1 : +args.splice(si, 2)[1]; // 細部を見るときの拡大率
   const [out, ...queries] = args;
   if (!out || !queries.length) { console.error('usage: node tools/dev/charshot.js <出力フォルダ> "<クエリ>" ...'); process.exit(1); }
   fs.mkdirSync(out, { recursive: true });
@@ -31,7 +33,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.json': '
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}/tools/dev/charview.html?`;
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
+  const page = await browser.newPage({ viewport: { width: 960, height: 720 }, deviceScaleFactor: scale });
   await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/**', r =>
     r.fulfill({ path: path.join(CACHE, 'package', r.request().url().replace('https://cdn.jsdelivr.net/npm/three@0.170.0/', '')), contentType: 'application/javascript' }));
   await page.route('https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.3/**', r =>

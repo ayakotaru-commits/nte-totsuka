@@ -10,7 +10,7 @@ const mix = (a, b, t) => a + (b - a) * t;
 export const REACH_H = 2.3;  // 足元から手が届く高さ (m)。これより高い縁はつかめない
 export const VAULT_H = 1.25; // 飛び越えられる高さ
 export const HOP_H = 0.9;    // 手を使わずに飛び乗れる高さ
-const HANG = 1.9;            // ぶら下がったときの、手から足先まで
+const HANG = 1.7;            // ぶら下がったときの、手から足先まで (腕の短い VRM でも届く長さ。これより高い縁へは、はじめに跳び上がる)
 const MANTLE = 0.8;          // 縁に腕を突っ張って腰まで上がったときの、縁から足先まで
 
 // o: { y0: 始めの足元の高さ, top: 上端の高さ, tE: 壁までの距離, end: 壁から終点までの距離, thick: 奥行き (vault),

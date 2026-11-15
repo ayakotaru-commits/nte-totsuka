@@ -30,6 +30,7 @@ import { plan, sample } from '../../public/src/parkour.js';
 const qs = new URLSearchParams(location.search);
 const speed = +(qs.get('pose') || 0), T = +(qs.get('t') || 1), air = qs.has('air');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 document.body.appendChild(renderer.domElement);
@@ -43,6 +44,7 @@ const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshLamber
 floor.rotation.x = -Math.PI / 2;
 scene.add(floor);
 const ch = makeCharacter();
+window.__ch = ch; // 確認用スクリプトから骨の向きを読めるように
 ch.root.position.y = air ? 1 : 0;
 scene.add(ch.root);
 
