@@ -26,6 +26,15 @@
 <div id="hud-time">昼</div>
 <div id="hud-goal"></div>
 <div id="fps" hidden></div>
+<!-- マルチプレイ (サーバーが設定されているときだけ表示。動きは src/net/index.js) -->
+<div id="mp" hidden>
+  <div id="mp-head"><span id="mp-count">接続中…</span><button id="mp-pvp">戦闘 OFF</button></div>
+  <div id="mp-hp" hidden><i></i></div>
+  <div id="mp-list" hidden></div>
+  <div id="mp-feed"></div>
+</div>
+<div id="mp-hurt"></div>
+<div id="mp-down" hidden>やられた… 復活まで <span>3</span></div>
 <canvas id="bigmap" hidden></canvas>
 <div id="map-help" hidden><b>M</b> / <b>Esc</b> 閉じる　<b>ホイール</b> 拡大縮小　<b>ドラッグ</b> 移動　<b>F</b> 現在地へ　<b>クリック</b> 行き先を選ぶ　<b>ダブルクリック</b> / <b>Enter</b> ワープ</div>
 
@@ -50,7 +59,7 @@
 
 <div id="help">
   <b>WASD</b> 移動　<b>Shift</b> ダッシュ　<b>C</b> 歩き切替　<b>Space</b> ジャンプ（2段）　<b>J</b> / <b>クリック</b> 攻撃（連続で押すと5連撃）　走って柵・塀に向かうと自動で飛び越える・よじ登る<br>
-  <b>マウス</b> 視点　<b>ホイール</b> ズーム　<b>E</b> 修正モード　<b>P</b> ストリートビュー　<b>M</b> 大きいマップ　<b>V</b> ディテール　<b>T</b> 時間帯　<b>R</b> スタート地点に戻る　<b>G</b> 街をGLB出力　<b>H</b> ヘルプ表示切替
+  <b>マウス</b> 視点　<b>ホイール</b> ズーム　<b>E</b> 修正モード　<b>P</b> ストリートビュー　<b>M</b> 大きいマップ　<b>V</b> ディテール　<b>T</b> 時間帯　<b>R</b> スタート地点に戻る　<b>G</b> 街をGLB出力　<b>H</b> ヘルプ表示切替<span id="help-mp" hidden>　<b>B</b> 戦闘オン・オフ（オンの人同士だけ当たる）　<b>L</b> 参加者の一覧</span>
 </div>
 <div id="credit">地図データ © OpenStreetMap contributors (ODbL)</div>
 

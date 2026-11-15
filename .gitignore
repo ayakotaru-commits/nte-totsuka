@@ -13,3 +13,7 @@ __pycache__/
 Thumbs.db
 .vscode/
 tools/dev/.cache/
+
+# マルチプレイのサーバー (server/)
+server/node_modules/
+server/.wrangler/

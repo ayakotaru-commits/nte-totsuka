@@ -18,6 +18,7 @@ import { openStreetView } from './streetview.js';
 import { setTerrain, setCover, setLowMemory } from './terrain.js';
 import { TOUCH, setupTouch } from './touch.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
+import { startMultiplayer } from './net/index.js';
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
@@ -126,6 +127,9 @@ async function main() {
     Object.assign(cam, { yaw: restore.yaw, pitch: restore.pitch, dist: restore.dist });
   }
 
+  // マルチプレイ (サーバーが設定されているときだけ。net/config.js)
+  const mp = startMultiplayer({ scene, player, respawn });
+
   // ---- UI ----
   const overlay = $('overlay');
   status('準備完了');
@@ -208,6 +212,7 @@ async function main() {
       for (let i = 0; i < n; i++) { player.update(dt / n, input, cam); if (n > 1) input.endFrame(); }
       cam.update(dt, player.pos, false, player);
     }
+    if (mp) mp.update(dt, input);
     tod.update(dt);
     detail.update(clock.elapsedTime); // detail (お試し)
 
@@ -217,7 +222,7 @@ async function main() {
 
     labels.update(dt, player.pos.x, player.pos.z);
     waypoints.update(dt, player.pos.x, player.pos.z);
-    minimap.update(player.pos.x, player.pos.z, cam.yaw, player.facing);
+    minimap.update(player.pos.x, player.pos.z, cam.yaw, player.facing, mp ? mp.dots() : null);
     bigmap.draw(player.pos.x, player.pos.z, player.facing);
     if ((placeTimer -= dt) <= 0) {
       placeTimer = 0.5;

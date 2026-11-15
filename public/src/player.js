@@ -8,6 +8,7 @@ import { STEPS, LAUNCH, SPIN, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_I
 
 const R = 0.35;
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
+export const ACT_ID = { atk: 1, vault: 2, climb: 3, hurt: 4, down: 5 }; // 動きの種類の番号 (通信用)
 const GRAVITY = 24, JUMP_V = 8.2, JUMP2_V = 7.6;
 
 export class Player {
@@ -27,6 +28,12 @@ export class Player {
     this.comboGrace = 0;   // その残り時間 (秒)
     this.armedT = 99;      // 最後に攻撃してからの秒数。SWORD_IDLE を超えると剣が消える
     this.spin = 0;         // 4 の空中の回転 (rad)。見た目だけ
+    this.atkN = 0;         // 攻撃の通し番号 (一振りごとに増える。マルチプレイで、同じ一振りが 2 回当たらないように使う)
+    this.stun = 0;         // 攻撃を受けて動けない残り時間 (秒)
+    this.dead = false;     // 倒されて復活を待っている
+    this.hurtT = 0;        // 攻撃を受けてからの秒数
+    this.lastAct = null;   // 最後に見せた動き (マルチプレイで他の人へ送る)
+    this.lastSp = 0;
     this.model = makeCharacter();
     scene.add(this.model.root);
   }
@@ -38,6 +45,7 @@ export class Player {
 
   update(dt, input, cam) {
     if (input.pressed('KeyC')) this.walkMode = !this.walkMode;
+    if (this.dead || this.stun > 0) return this.updateHurt(dt);
     if (this.act) return this.updateAct(dt);
     this.actCool -= dt;
 
@@ -119,12 +127,45 @@ export class Player {
     }
   }
 
+  // ---- マルチプレイ (net/index.js から呼ぶ) ----
+  // 攻撃を受けた。(dx, dz) = 飛ばされる向き、step = 相手の攻撃の手順 (4・5 は強く飛ぶ)
+  hurt(dx, dz, step) {
+    const k = step >= 4 ? 7 : 4.5;
+    this.act = null; this.atk = null; this.spin = 0; this.comboGrace = 0;
+    this.vel.set(dx * k, dz * k);
+    if (step >= 4 && this.onGround) { this.vy = 4; this.onGround = false; this.jumps = 1; }
+    this.stun = 0.35; this.hurtT = 0;
+  }
+  down() { this.dead = true; this.hurtT = 0; }
+  revive() { this.dead = false; this.stun = 0; }
+  // のけぞっている・倒れている間: 操作を受け付けず、飛ばされた勢いだけで動く
+  updateHurt(dt) {
+    this.stun -= dt; this.hurtT += dt; this.armedT += dt;
+    this.vel.multiplyScalar(Math.exp(-6 * dt));
+    this.moveBody(dt);
+    this.stair = 0;
+    this.show(dt, 0, this.dead ? { type: 'down', s: Math.min(1, this.hurtT / 0.5) } : { type: 'hurt', s: Math.min(1, this.hurtT / 0.35) });
+  }
+  // 他の人へ送る自分の状態 (並びは server/room.js の先頭の説明)
+  netState() {
+    const r = (v) => Math.round(v * 100) / 100, a = this.lastAct;
+    const d = [r(this.pos.x), r(this.pos.y), r(this.pos.z), r(Math.atan2(Math.sin(this.facing), Math.cos(this.facing))), r(this.lastSp),
+      (this.onGround ? 1 : 0) | (this.armed ? 2 : 0), r(this.vy), r(this.stair || 0), r(this.spin), 0, 0, 0, 0, this.atkN];
+    if (a) {
+      d[9] = ACT_ID[a.type] || 0;
+      if (a.type === 'atk') { d[10] = a.step; d[11] = a.ph; d[12] = r(a.t); }
+      else { d[10] = r(a.s); d[11] = r(a.ly || 0); d[12] = r(a.lz || 0); }
+    }
+    return d;
+  }
+
   get armed() { return !!this.atk || this.armedT < SWORD_IDLE; }
 
   // 攻撃の 1 手順を始める。動かしている向きがあればそちらへ向き直る
   startStep(step, dir) {
     if (dir) this.facing = Math.atan2(dir[0], dir[1]);
     this.atk = { step, ph: 0, t: 0, queued: false, v0: 0 };
+    this.atkN++;
     this.armedT = 0;
     this.comboGrace = 0;
     if (step === 5) {
@@ -255,6 +296,7 @@ export class Player {
   }
 
   show(dt, sp, act = null) {
+    this.lastAct = act; this.lastSp = this.poseSpeed ?? sp;
     this.model.root.position.copy(this.pos);
     this.model.root.rotation.y = this.facing + this.spin;
     this.model.update(dt, this.poseSpeed ?? sp, this.onGround, this.vy, this.stair || 0, act, this.armed); // poseSpeed: 撮影用 (?shot&pose=5.5 でその場で歩き・走りの姿勢)

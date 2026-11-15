@@ -1,0 +1,13 @@
+{
+  "name": "totsuka-mp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "local": "node local.js",
+    "test": "node test.js",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0"
+  }
+}

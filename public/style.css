@@ -69,3 +69,31 @@ body.touch #overlay h1 { font-size: 36px; }
 #stick-knob { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(255,255,255,.7); }
 #map-touch { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 10px; z-index: 11; }
 #map-touch .tbtn { min-width: 76px; height: 44px; background: rgba(10,20,35,.85); }
+
+/* マルチプレイ */
+#mp { position: fixed; left: 24px; top: 112px; z-index: 6; font-size: 13px; text-shadow: 0 1px 3px #000; pointer-events: none; min-width: 190px; }
+#mp-head { display: flex; align-items: center; gap: 8px; }
+#mp-count { pointer-events: auto; cursor: pointer; }
+#mp-pvp { pointer-events: auto; font: inherit; font-size: 12px; color: #fff; background: rgba(10,20,35,.7); border: 1px solid rgba(255,255,255,.45); border-radius: 4px; padding: 2px 10px; cursor: pointer; }
+#mp-pvp.on { background: rgba(200,40,50,.85); border-color: #ffb3b3; }
+#mp-pvp:disabled { opacity: .4; }
+#mp-hp { margin-top: 6px; width: 190px; height: 8px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.6); border-radius: 4px; overflow: hidden; }
+#mp-hp i { display: block; height: 100%; background: linear-gradient(90deg, #ff6b6b, #ffd166); transition: width .15s; }
+#mp-list { margin-top: 6px; background: rgba(10,20,35,.6); border-radius: 4px; padding: 4px 8px; font-size: 12px; line-height: 1.5; }
+#mp-list .pvp { color: #ffb3b3; }
+#mp-feed { margin-top: 6px; font-size: 12px; line-height: 1.5; }
+#mp-feed div { transition: opacity 1s; }
+#mp-feed div.out { opacity: 0; }
+#mp-hurt { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; box-shadow: inset 0 0 90px 6px rgba(255,30,40,.55); }
+#mp-hurt.on { animation: mp-hurt .45s ease-out; }
+@keyframes mp-hurt { from { opacity: 1; } to { opacity: 0; } }
+#mp-down { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 7; font-size: 26px; font-weight: 700; text-shadow: 0 2px 8px #000; pointer-events: none; }
+.pname { font-size: 12px; color: #fff; text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; text-align: center; }
+.pname .hp { display: none; width: 56px; height: 5px; margin: 2px auto 0; background: rgba(0,0,0,.6); border: 1px solid rgba(255,255,255,.7); border-radius: 3px; overflow: hidden; }
+.pname .hp i { display: block; height: 100%; background: #ff6b6b; }
+.pname.pvp { color: #ffb3b3; }
+.pname.pvp .hp { display: block; }
+body.touch #mp { left: calc(12px + env(safe-area-inset-left)); top: 126px; font-size: 12px; min-width: 150px; }
+body.touch #mp-pvp { padding: 6px 12px; }
+body.touch #mp-hp { width: 150px; }
+body.touch #mp-down { font-size: 20px; }
