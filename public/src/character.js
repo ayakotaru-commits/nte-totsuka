@@ -131,7 +131,69 @@ export function makeCharacter() {
   const st = {
     t: 0, phase: 0, gw: 0, airW: 0, land: 0, lastVy: 0, wasAir: false, prevSpeed: 0, lastHipsY: IDLE_EXT + HIP_DROP,
     lastYaw: 0, roll: 0, stair: 0, a1: 0.35, v1: 0, a2: 0.15, v2: 0,
+    actW: 0, actPose: null, anchor: null,
   };
+
+  // ---- パルクール (player.js が渡す act = { type, s, ly, lz }) ----
+  //   s: 進み具合 0〜1、ly: 足元から見た縁の高さ、lz: 体の中心から縁までの前方向の距離 (越えた後は負)
+  // 腕は、肩から縁へ届くように 2 本の骨の角度を計算で決める (体の前後の面の中だけ)。
+  // 残った高さのずれは、手が縁の高さに来るよう腰の高さを動かして合わせる (st.anchor → applyAnchor)
+  let SH_UP = 0.42, ARM_A = 0.27, ARM_B = 0.26; // 腰から肩までの高さ、上腕・前腕の長さ (VRM を読み込んだら、そのモデルの寸法に置き換える)
+  // 肩から (前 dz, 上 dy) にある点へ手を伸ばす。pitch = 胴の前傾。返り値は [上腕の x 回転, 肘の x 回転]
+  function reach(dz, dy, pitch) {
+    const d = clamp(Math.hypot(dz, dy), 0.14, ARM_A + ARM_B - 0.004);
+    const dirA = Math.atan2(dz, -dy); // 0 = 真下、π/2 = 前、π = 真上
+    const beta = Math.acos(clamp((ARM_A * ARM_A + d * d - ARM_B * ARM_B) / (2 * ARM_A * d), -1, 1));
+    const gamma = Math.acos(clamp((ARM_A * ARM_A + ARM_B * ARM_B - d * d) / (2 * ARM_A * ARM_B), -1, 1));
+    return [-(dirA - beta) - pitch, -(PI - gamma)];
+  }
+  function actPose(act, Aa) {
+    const X = pose();
+    const s = act.s, hy = IDLE_EXT + HIP_DROP;
+    const leg = (th, kn, ft, h, k, side) => { X[th] = [-h, 0, side * 0.03]; X[kn] = [k, 0, 0]; X[ft] = [0.35, 0, 0]; };
+    if (act.type === 'climb') {
+      // 0〜0.18 縁をつかむ → 〜0.62 体を引き上げる (足は壁をかく) → 〜1 片膝を縁にかけて立つ
+      const pu = sstep(0.18, 0.62, s), up = sstep(0.6, 0.95, s);
+      const P = 0.06 + 0.5 * sstep(0.35, 0.66, s) * (1 - sstep(0.76, 1, s)); // 胴の前傾 (縁の上へ上体をかぶせる)
+      X.hips[0] = P * 0.55; X.spine[0] = P * 0.2; X.chest[0] = P * 0.25;
+      X.neck[0] = -0.08 * (1 - pu) - P * 0.2; X.head[0] = -0.12 * (1 - pu) - P * 0.25; // はじめは縁を少し見上げる (反らしすぎると壁・軒にめり込む)
+      const scr = sstep(0.08, 0.22, s) * (1 - up), kick = Math.sin(s * 22);
+      let hL = 0.3 + 0.4 * kick * scr, kL = 0.65 + 0.45 * kick * scr, hR = 0.3 - 0.4 * kick * scr, kR = 0.65 - 0.45 * kick * scr;
+      const inL = sstep(0, 0.4, up), outL = 1 - sstep(0.5, 1, up), inR = sstep(0.25, 0.65, up), outR = 1 - sstep(0.7, 1, up);
+      hL = mix(hL, 1.75, inL) * outL; kL = mix(kL, 2.05, inL) * outL;
+      hR = mix(hR, 1.0, inR) * outR; kR = mix(kR, 1.7, inR) * outR;
+      leg('thL', 'knL', 'ftL', hL, kL, 1); leg('thR', 'knR', 'ftR', hR, kR, -1);
+      const w = sstep(0, 0.1, s) * (1 - sstep(0.74, 0.92, s));
+      const [sx, ex] = reach(act.lz + 0.06 - SH_UP * Math.sin(P), act.ly + 0.05 - (hy + SH_UP * Math.cos(P)), P);
+      for (const [sh, el, ha, side] of [['shL', 'elL', 'haL', 1], ['shR', 'elR', 'haR', -1]]) {
+        X[sh] = [mix(Aa[sh][0], sx, w), 0, mix(Aa[sh][2], side * 0.12, w)];
+        X[el] = [mix(Aa[el][0], ex, w), 0, 0];
+        X[ha] = [0, 0, side * 0.2];
+      }
+      // 腰の高さ合わせは、腕が上がりきってから効かせる (早いと、腕の代わりに体が持ち上がって跳ねる)
+      st.anchor = { w: sstep(0.14, 0.3, s) * (1 - sstep(0.74, 0.92, s)), y: act.ly + 0.05, hands: ['haL', 'haR'], lim: 0.25 };
+    } else { // vault: 左手を柵につき、上体を左へ倒して、そろえた脚を右へ流して越える
+      const m = sstep(0.04, 0.4, s) * (1 - sstep(0.6, 0.96, s));
+      const tilt = 1.0 * m;
+      X.hips = [0.12 * m, -0.3 * m, -tilt];
+      X.spine[2] = 0.1 * m; X.chest[2] = 0.15 * m; X.neck[2] = 0.25 * m; X.head[2] = 0.25 * m; // 頭は起こしたまま
+      X.head[1] = 0.15 * m;
+      leg('thL', 'knL', 'ftL', 0.25 + 1.0 * m, 0.3 + 0.8 * m, 1); leg('thR', 'knR', 'ftR', 0.2 + 1.0 * m, 0.3 + 0.7 * m, -1);
+      const fw = clamp(Math.atan2(act.lz, Math.max(0.2, hy + SH_UP * 0.6 - act.ly)), -1.1, 1.1); // 手をついた点へ腕を向ける (前 → 真下 → 後ろ)
+      X.shL = [mix(-0.5, -fw, sstep(0.05, 0.3, s)), 0, 0.08 + 0.72 * m]; X.elL = [-0.12, 0, 0]; X.haL = [0, 0, 0.3];
+      X.shR = [-0.5 * m + 0.2, 0, -(0.35 + 0.95 * m)]; X.elR = [-0.5, 0, 0]; X.haR = [0, 0, -0.4];
+      st.anchor = { w: sstep(0.1, 0.36, s) * (1 - sstep(0.6, 0.85, s)), y: act.ly + 0.06, hands: ['haL'], lim: 0.7 };
+    }
+    return X;
+  }
+  // 手が縁の高さに来るよう、腰の高さをずらす量 (handY = 手の骨の、足元から見た高さを返す関数)
+  function anchorShift(handY) {
+    const a = st.anchor;
+    if (!a || a.w < 0.01) return 0;
+    let y = 0;
+    for (const n of a.hands) y += handY(n) / a.hands.length;
+    return clamp(a.y - y, -a.lim, a.lim) * a.w;
+  }
 
   // 片脚の角度 (p = 歩行周期の位相。0 で踵が着く直前、π で爪先が離れる)
   // h: 太ももを前へ振る量, k: 膝の曲げ, fp: 足の地面に対する傾き (+ = 爪先が下)
@@ -147,12 +209,12 @@ export function makeCharacter() {
     return { h, k, fp: fp * g.gw, swing };
   }
 
-  function update(dt, speed, onGround, vy, stair = 0) {
-    updateInner(dt, speed, onGround, vy, stair);
+  function update(dt, speed, onGround, vy, stair = 0, act = null) {
+    updateInner(dt, speed, onGround, vy, stair, act);
     if (vrmRig) applyVRM(dt);
   }
 
-  function updateInner(dt, speed, onGround, vy, stair) {
+  function updateInner(dt, speed, onGround, vy, stair, act) {
     dt = Math.max(1e-4, Math.min(dt, 0.1));
     const sdt = Math.min(dt, 1 / 30); // ばね用 (大きすぎる dt で暴れないように)
     const sp = speed;
@@ -242,14 +304,24 @@ export function makeCharacter() {
     Aa.elL = [-0.5, 0, 0]; Aa.elR = [-0.5, 0, 0];
     Aa.haL = [0, 0, 0.5]; Aa.haR = [0, 0, -0.5];
 
+    // --- パルクールの姿勢 (終わった後は、最後の姿勢からふつうの姿勢へ戻す) ---
+    st.anchor = null;
+    if (act) st.actPose = actPose(act, Aa);
+    st.actW += ((act ? 1 : 0) - st.actW) * rate(act ? 30 : 10);
+    if (st.actW < 0.01 && !act) st.actPose = null;
+    const X = st.actPose, xw = X ? st.actW : 0;
+
     // --- 反映 ---
-    const k = rate(onGround ? 28 : 14);
+    const k = rate(act ? 40 : onGround ? 28 : 14);
     for (const n of NAMES) {
       const b = BONE[n].rotation;
       const tg = G[n], ta = Aa[n];
-      b.x += (mix(tg[0], ta[0], st.airW) - b.x) * k;
-      b.y += (mix(tg[1], ta[1], st.airW) - b.y) * k;
-      b.z += (mix(tg[2], ta[2], st.airW) - b.z) * k;
+      for (let i = 0; i < 3; i++) {
+        let v = mix(tg[i], ta[i], st.airW);
+        if (xw) v = mix(v, X[n][i], xw);
+        const c = i === 0 ? 'x' : i === 1 ? 'y' : 'z';
+        b[c] += (v - b[c]) * k;
+      }
     }
 
     // 腰の高さ: 着いている足が地面に届くように、脚の実際の角度から求める
@@ -262,6 +334,11 @@ export function makeCharacter() {
     const runFloat = runK * gw * 0.08 * Math.abs(Math.sin(st.phase)); // 走りの浮き
     const airY = IDLE_EXT + HIP_DROP;
     hips.position.y = mix(planted + runFloat + Math.sin(st.t * 1.6) * 0.003 * (1 - gw), airY, st.airW);
+    if (st.anchor && !vrmRig) { // 手を縁に合わせる (VRM のときは applyVRM が VRM の手で合わせる)
+      root.updateMatrixWorld(true);
+      const baseY = root.matrixWorld.elements[13];
+      hips.position.y += anchorShift((n) => BONE[n].getWorldPosition(tmpV).y - baseY);
+    }
 
     // 旋回で内側にかたむく
     const yaw = root.rotation.y;
@@ -328,6 +405,11 @@ export function makeCharacter() {
     const hy = nodes.hips.position.y;
     vrmRig.hy = vrmRig.hy === undefined ? hy : vrmRig.hy + (hy - vrmRig.hy) * (1 - Math.exp(-Math.min(dt, 0.1) * HIP_SMOOTH));
     nodes.hips.position.y = vrmRig.hy;
+    if (st.anchor && nodes.haL && nodes.haR) { // パルクール: 手が縁の高さに来るよう腰を動かす
+      root.updateMatrixWorld(true);
+      const baseY = root.matrixWorld.elements[13];
+      nodes.hips.position.y += anchorShift((n) => nodes[n].getWorldPosition(tmpV).y - baseY) / scale;
+    }
     // まばたき (約 4 秒おきに 0.15 秒)
     const bt = st.t % 4;
     vrm.expressionManager?.setValue('blink', bt < 0.15 ? Math.sin(bt / 0.15 * PI) : 0);
@@ -378,6 +460,13 @@ export function makeCharacter() {
         .filter(Boolean).map((node) => ({ node, off: node.getWorldPosition(new THREE.Vector3()).y - minY }));
       const scale = (IDLE_EXT + HIP_DROP) / (restHips - minY);
       vrm.scene.scale.setScalar(scale);
+      // パルクールで腕を縁へ伸ばす計算に使う寸法 (腕が短いモデルで、体が浮いたり手が届かなかったりしないように)
+      const wp = (n) => nodes[n].getWorldPosition(new THREE.Vector3());
+      if (nodes.haL) {
+        SH_UP = (wp('shL').y - wp('hips').y) * scale;
+        ARM_A = wp('shL').distanceTo(wp('elL')) * scale; ARM_B = wp('elL').distanceTo(wp('haL')) * scale;
+        console.info(`VRM の寸法: 腰→肩 ${SH_UP.toFixed(2)} m、上腕 ${ARM_A.toFixed(2)} m、前腕 ${ARM_B.toFixed(2)} m`);
+      }
       vrmRig = { vrm, scale, nodes, minY, soles, fingers, flip: vrm.meta?.metaVersion === '0' }; // 腰の高さは、以後 applyVRM が毎フレーム決める
       body.visible = false;
       root.add(vrm.scene);
