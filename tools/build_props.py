@@ -977,13 +977,40 @@ def js_signed_area(r):
     return a / 2
 
 
+FACADES = pathlib.Path(__file__).resolve().parent.parent / "data" / "facades.json"
+
+
+def load_facades():
+    """路上写真を見て付けた壁ごとのベランダの有無 (tools/facades.py)。[(x, z, nx, nz, kind)]、kind = b (あり) / w (なし)"""
+    if not FACADES.exists():
+        return []
+    return [(r["x"], r["z"], r["nx"], r["nz"], r["kind"]) for r in json.loads(FACADES.read_text(encoding="utf-8"))["walls"]]
+
+
+def facade_of(labels, a, c, nx, nz):
+    """壁 a→c (外向き nx, nz) に当てはまる判定。判定の中点が壁の線から 2.5 m 以内・壁の範囲内で、向きがそろうもの"""
+    dx, dz = c[0] - a[0], c[1] - a[1]
+    L2 = dx * dx + dz * dz
+    if L2 < 1e-6:
+        return None
+    for x, z, lx, lz, kind in labels:
+        if lx * nx + lz * nz < 0.9:
+            continue
+        t = ((x - a[0]) * dx + (z - a[1]) * dz) / L2
+        if -0.1 <= t <= 1.1 and abs((x - a[0]) * dz - (z - a[1]) * dx) / math.sqrt(L2) < 2.5:
+            return kind
+    return None
+
+
 def build_shapes(city, world, cx, cz, R):
     inR = lambda x, z: (x - cx) ** 2 + (z - cz) ** 2 <= R * R
 
     # ---------- 集合住宅のベランダ (南寄りの長い壁。balcony=all なら全ての長い壁) ----------
+    # 路上写真で判定した壁 (data/facades.json) は、その判定に従う (b = 向き・建物の種類によらず置く、w = 置かない)
     # 1 つの壁ごと: 壁の始点 (x, z)、壁の向き (dx, dz)、外向き (nx, nz)、壁の長さ len。
     # 2 階から最上階まで、床の高さ y + k * floorH (k = 1 から floors-1) に、奥行き 1.1m・手すり壁 1.1m のベランダ (両端 0.4m は空ける)
     balconies, apts = [], 0
+    labels = load_facades()
     for b in city["buildings"]:
         if b.get("minH"):
             continue
@@ -999,9 +1026,18 @@ def build_shapes(city, world, cx, cz, R):
             is_apt = b["style"] == "apartment"
         else:
             is_apt = not is_house and not b.get("name") and kind not in NOT_APT and 7 <= b["h"] <= 45 and area < 1500
-        if not is_apt:
-            continue
         s = 1 if sa > 0 else -1
+        seen = {}
+        if labels:
+            for i in range(len(o)):
+                a, c = o[i], o[(i + 1) % len(o)]
+                L = math.hypot(c[0] - a[0], c[1] - a[1])
+                if L >= 1e-6:
+                    k = facade_of(labels, a, c, (c[1] - a[1]) / L * s, -(c[0] - a[0]) / L * s)
+                    if k:
+                        seen[i] = k
+        if not is_apt and "b" not in seen.values():
+            continue
         floors = b.get("floors") or math.floor(b["h"] / 3.0)
         if floors < 2:
             continue
@@ -1011,10 +1047,12 @@ def build_shapes(city, world, cx, cz, R):
             a, c = o[i], o[(i + 1) % len(o)]
             dx, dz = c[0] - a[0], c[1] - a[1]
             L = math.hypot(dx, dz)
-            if L < 7:
+            if L < (5 if seen.get(i) == "b" else 7):
                 continue
             nx, nz = dz / L * s, -dx / L * s
-            if b.get("balcony") != "all" and nz < 0.55:
+            if seen.get(i) == "w" or (seen.get(i) == "b" and L < 5):
+                continue
+            if seen.get(i) != "b" and (not is_apt or (b.get("balcony") != "all" and nz < 0.55)):
                 continue
             balconies.append({"b": b["id"], "x": a[0], "z": a[1], "dx": round(dx / L, 4), "dz": round(dz / L, 4), "nx": round(nx, 4), "nz": round(nz, 4),
                               "len": r3(L), "y": b.get("y") or 0, "floorH": round(fh, 4), "floors": floors, **({"dark": True} if b.get("railing") else {}),
