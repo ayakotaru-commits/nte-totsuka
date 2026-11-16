@@ -1069,28 +1069,55 @@ def build_shapes(city, world, cx, cz, R):
             if b["look"] not in main or abs(js_signed_area(b["outer"])) > abs(js_signed_area(main[b["look"]]["outer"])):
                 main[b["look"]] = b
     for b in main.values():
-        sg = (looks.get(b.get("look")) or {}).get("sign")
-        if not sg:
-            continue
-        L0 = looks[b["look"]]
-        o = b["outer"]
-        s = 1 if js_signed_area(o) > 0 else -1
-        best = {}
-        for i in range(len(o)):
-            a, c = o[i], o[(i + 1) % len(o)]
-            dx, dz = c[0] - a[0], c[1] - a[1]
-            L = math.hypot(dx, dz)
-            if L < sg.get("min_len", 25):
-                continue
-            nx, nz = dz / L * s, -dx / L * s
-            q = ("e" if nx > 0 else "w") if abs(nx) > abs(nz) else ("s" if nz > 0 else "n")
-            if q not in best or L > best[q][0]:
-                best[q] = (L, a, c, nx, nz)
-        for q in sorted(best):
-            L, a, c, nx, nz = best[q]
-            w = min(L * 0.5, sg.get("max_w", 24))
-            big.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(L0["y0"] + sg["floor"] * L0["floor_h"]),
-                        "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * sg.get("ratio", 0.12)), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"], **({"mark": sg["mark"]} if sg.get("mark") else {})})
+        L0 = looks.get(b.get("look")) or {}
+        sgs = L0.get("sign")
+        sgs = sgs if isinstance(sgs, list) else [sgs] if sgs else []
+        for sg in sgs:
+            ys = L0["y0"] + sg["floor"] * L0["floor_h"]
+            if sg.get("at"):
+                # at: その地点にいちばん近い壁 (看板の高さに壁がある段から選ぶ) に 1 枚
+                ax, az = sg["at"]
+                cand = None
+                for p in city["buildings"]:
+                    if p.get("look") != b["look"]:
+                        continue
+                    lo = (p.get("y") or 0) + (p.get("minH") or 0)
+                    if not (lo <= ys <= (p.get("y") or 0) + p["h"]):
+                        continue
+                    o = p["outer"]
+                    s = 1 if js_signed_area(o) > 0 else -1
+                    for i in range(len(o)):
+                        a, c = o[i], o[(i + 1) % len(o)]
+                        dx, dz = c[0] - a[0], c[1] - a[1]
+                        L = math.hypot(dx, dz)
+                        if L < sg.get("min_len", 4):
+                            continue
+                        t = max(0, min(1, ((ax - a[0]) * dx + (az - a[1]) * dz) / (L * L)))
+                        d = math.hypot(a[0] + dx * t - ax, a[1] + dz * t - az)
+                        if cand is None or d < cand[0]:
+                            cand = (d, L, a, c, dz / L * s, -dx / L * s, t)
+                best = {"at": cand[1:6]} if cand else {}
+                tat = cand[6] if cand else 0.5
+            else:
+                o = b["outer"]
+                s = 1 if js_signed_area(o) > 0 else -1
+                best = {}
+                for i in range(len(o)):
+                    a, c = o[i], o[(i + 1) % len(o)]
+                    dx, dz = c[0] - a[0], c[1] - a[1]
+                    L = math.hypot(dx, dz)
+                    if L < sg.get("min_len", 25):
+                        continue
+                    nx, nz = dz / L * s, -dx / L * s
+                    q = ("e" if nx > 0 else "w") if abs(nx) > abs(nz) else ("s" if nz > 0 else "n")
+                    if q not in best or L > best[q][0]:
+                        best[q] = (L, a, c, nx, nz)
+            for q in sorted(best):
+                L, a, c, nx, nz = best[q]
+                w = min(L * 0.5, sg.get("max_w", 24)) if q != "at" else sg.get("w") or min(L * 0.9, sg.get("max_w", 24))
+                f = 0.5 if q != "at" else max(w / 2 / L, min(1 - w / 2 / L, tat))  # at: 地点に近い所 (壁からはみ出さない範囲)
+                big.append({"b": b["id"], "x": r2(a[0] + (c[0] - a[0]) * f), "z": r2(a[1] + (c[1] - a[1]) * f), "y": r2(ys),
+                            "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * sg.get("ratio", 0.12)), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"], **({"mark": sg["mark"]} if sg.get("mark") else {})})
     print(f"balcony walls={len(balconies)} (apartments={apts}) shop signs={len(signs)} big signs={len(big)}")
     return {"balconies": balconies, "signs": signs, "bigSigns": big}
 

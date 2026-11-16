@@ -141,23 +141,36 @@ function facadeTextures(type) {
 
 // ---- ランドマークの外壁 (city.json の looks。tools/landmarks.py が設定) ----
 // テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
-const LOOK_ROWS = { shop: 0, panel: 1, screen: 2, parking: 3, glass: 4, plain: 5, ribbon: 6, screen2: 7, open: 8, shutter: 9, band: 10, louver: 11, fins: 12, curtain: 13, curtain2: 14, terrace: 15, maroon: 16, slits: 17, palette: 18 };
-const LOOK_NR = 20, LOOK_NB = 8, LOOK_BAY = 6; // 段の数 (テクスチャは縦長)、横のベイ数、1 ベイの幅 (m)
+// 段は外観ごとに、使う柄だけを並べる (lookRows。テクスチャを小さく保つため)
+const LOOK_KINDS = ['shop', 'panel', 'screen', 'parking', 'glass', 'plain', 'ribbon', 'screen2', 'open', 'shutter', 'band', 'louver', 'fins', 'curtain', 'curtain2',
+  'terrace', 'maroon', 'slits', 'slats', 'slats2', 'grid', 'tenants', 'store2', 'base', 'palette'];
+const LOOK_NB = 8, LOOK_BAY = 6, LOOK_RH = 128; // 横のベイ数、1 ベイの幅 (m)、1 段の高さ (px)
+function lookRows(L) {
+  if (L._ri) return L._ri;
+  const used = new Set(['plain', 'palette', ...L.floors]);
+  for (const f of Object.values(L.faces || {})) for (const k of f.floors || []) used.add(k);
+  for (const z of L.zones || []) for (const k of z.floors || []) used.add(k);
+  if (L.glass_floors) used.add(L.door_kind || 'glass');
+  if (used.has('screen')) used.add('screen2');
+  const idx = {};
+  LOOK_KINDS.filter(k => used.has(k)).forEach((k, i) => { idx[k] = i; });
+  return (L._ri = { idx, nr: Object.keys(idx).length });
+}
 function lookTextures(L) {
-  const S = 1024, SH = 2560, cw = S / LOOK_NB, rh = SH / LOOK_NR;
+  const RI = lookRows(L), S = 1024, rh = LOOK_RH, SH = RI.nr * rh, cw = S / LOOK_NB;
   const cv = document.createElement('canvas'); cv.width = S; cv.height = SH;
   const ev = document.createElement('canvas'); ev.width = S; ev.height = SH;
   const g = cv.getContext('2d'), e = ev.getContext('2d');
   const rnd = hash('look-' + L.wall + L.accent);
   g.fillStyle = L.wall; g.fillRect(0, 0, S, SH);
   e.fillStyle = '#000'; e.fillRect(0, 0, S, SH);
-  const top = (r) => SH - (r + 1) * rh; // 段 r の上端 (テクスチャの v は下から上)
+  const top = (k) => RI.idx[k] == null ? -1e5 : SH - (RI.idx[k] + 1) * rh; // 柄 k の段の上端 (テクスチャの v は下から上)。使わない柄は描かない所へ
   const lit = (x, y, w, h, color, a) => { e.fillStyle = color; e.globalAlpha = a; e.fillRect(x, y, w, h); e.globalAlpha = 1; };
   const glass = (x, y, w, h, c0, c1) => { const gr = g.createLinearGradient(x, y, x, y + h); gr.addColorStop(0, c0); gr.addColorStop(1, c1); g.fillStyle = gr; g.fillRect(x, y, w, h); };
   for (let bx = 0; bx < LOOK_NB; bx++) {
     const x0 = bx * cw;
     // 1 階の店: 柱の間にガラス、上にアクセント色の帯
-    let y = top(LOOK_ROWS.shop);
+    let y = top('shop');
     glass(x0 + 8, y + 26, cw - 16, rh - 34, '#a4b8c6', '#5f7486');
     g.fillStyle = '#33373c';
     g.fillRect(x0 + 8, y + 26, cw - 16, 3);
@@ -168,7 +181,7 @@ function lookTextures(L) {
     // 白いパネルの壁に、こげ茶の縦の帯 (細い窓入り)。段ごとに帯の位置を半ベイずらす (千鳥)
     // (奇数階は壁を貼るときに半ベイずらす)
     {
-      y = top(LOOK_ROWS.panel);
+      y = top('panel');
       g.fillStyle = 'rgba(0,0,0,.10)';
       g.fillRect(x0, y, 1.5, rh); g.fillRect(x0 + cw / 2, y, 1, rh); g.fillRect(x0, y + rh - 2, cw, 2); g.fillRect(x0, y + rh / 2, cw, 1);
       const fx = x0 + 14, fw = 36;
@@ -178,7 +191,7 @@ function lookTextures(L) {
     }
     // アクセント色の壁に、白い縦の棒を互い違いに並べた目隠し (screen / screen2 を階ごとに交互に使う)。
     // 8 ベイのうち 2 ベイは白い壁で、アクセント色の太い帯と灰色のルーバーの帯が上下に通る
-    for (const [r, xs] of [[LOOK_ROWS.screen, [12, 58, 98]], [LOOK_ROWS.screen2, [34, 78, 116]]]) {
+    for (const [r, xs] of [['screen', [12, 58, 98]], ['screen2', [34, 78, 116]]]) {
       y = top(r);
       if (bx === 0) {
         g.fillStyle = L.accent; g.fillRect(x0 + 24, y, 58, rh);
@@ -197,7 +210,7 @@ function lookTextures(L) {
       }
     }
     // 駐車場の階: 腰壁の上が暗い開口、柱と横のルーバー
-    y = top(LOOK_ROWS.parking);
+    y = top('parking');
     glass(x0, y + 20, cw, rh - 62, '#1d1f22', '#34373b');
     g.fillStyle = 'rgba(236,235,230,.5)';
     for (let k = 0; k < 3; k++) g.fillRect(x0, y + 30 + k * 18, cw, 3);
@@ -205,7 +218,7 @@ function lookTextures(L) {
     g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x0, y + rh - 42, cw, 2); g.fillRect(x0, y + rh - 2, cw, 2);
     lit(x0 + 12, y + 20, cw - 12, rh - 62, '#fff2cc', 0.16);
     // 入口まわりのガラス面
-    y = top(LOOK_ROWS.glass);
+    y = top('glass');
     glass(x0, y, cw, rh, '#aec4d2', '#6f8698');
     g.fillStyle = '#55697a'; g.fillRect(x0, y + rh - 16, cw, 16);
     g.fillStyle = 'rgba(240,244,246,.9)';
@@ -213,7 +226,7 @@ function lookTextures(L) {
     g.fillRect(x0, y + rh * 0.45, cw, 2);
     for (let k = 0; k < 4; k++) if (rnd() < 0.6) lit(x0 + k * cw / 4 + 2, y, cw / 4 - 2, rh - 16, rnd() < 0.7 ? '#ffe2b0' : '#d8ecff', 0.4 + rnd() * 0.4);
     // 横に続く窓の帯 (駅舎など): 下に腰壁、上にアクセント色の細い線
-    y = top(LOOK_ROWS.ribbon);
+    y = top('ribbon');
     glass(x0, y + 26, cw, rh - 66, '#9db3c2', '#5d7385');
     g.fillStyle = 'rgba(240,244,246,.9)';
     for (let k = 0; k < 4; k++) g.fillRect(x0 + k * cw / 4, y + 26, 2, rh - 66);
@@ -221,7 +234,7 @@ function lookTextures(L) {
     g.fillStyle = 'rgba(0,0,0,.10)'; g.fillRect(x0, y + rh - 2, cw, 2); g.fillRect(x0, y, 1.5, 26); g.fillRect(x0, y + rh - 40, 1.5, 40);
     for (let k = 0; k < 4; k++) if (rnd() < 0.75) lit(x0 + k * cw / 4 + 2, y + 26, cw / 4 - 2, rh - 66, '#fff0cf', 0.5 + rnd() * 0.35);
     // 開いた入口 (駅の自由通路など): 上に白い梁、奥は暗く、天井の明かりが並ぶ
-    y = top(LOOK_ROWS.open);
+    y = top('open');
     glass(x0, y + 30, cw, rh - 30, '#2b2e31', '#15171a');
     g.fillStyle = '#f3e9c4'; for (let k = 0; k < 3; k++) g.fillRect(x0 + 14 + k * 40, y + 44, 22, 4);
     g.fillStyle = L.wall; g.fillRect(x0, y + 30, 10, rh - 30);
@@ -229,7 +242,7 @@ function lookTextures(L) {
     lit(x0 + 10, y + 30, cw - 10, rh - 30, '#fff0cf', 0.55);
     // 付属棟 (グランシティの道路側): クリーム色の壁に横の目地、上に濃い茶の縁。shutter は灰色のシャッター 2 枚
     for (const kind of ['band', 'shutter']) {
-      y = top(LOOK_ROWS[kind]);
+      y = top(kind);
       g.fillStyle = 'rgba(0,0,0,.10)';
       for (let k = 1; k < 6; k++) g.fillRect(x0, y + 14 + k * (rh - 14) / 6, cw, 1.5);
       g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(x0, y + 14, cw, rh - 14);
@@ -244,7 +257,7 @@ function lookTextures(L) {
       }
     }
     // 立体駐車場: 灰緑の金属パネルを横に張った面と、柱の見える暗い開口を上下に重ねる
-    y = top(LOOK_ROWS.louver);
+    y = top('louver');
     g.fillStyle = L.accent; g.fillRect(x0, y, cw, rh);
     glass(x0, y + 8, cw, rh * 0.34, '#2a2d31', '#454a50');
     g.fillStyle = '#7e8387'; g.fillRect(x0 + cw / 2 - 3, y + 8, 6, rh * 0.34);
@@ -252,7 +265,7 @@ function lookTextures(L) {
     g.fillStyle = 'rgba(0,0,0,.18)'; for (let k = 0; k < 3; k++) g.fillRect(x0, y + rh * 0.42 + 18 + k * (rh * 0.58 - 24) / 3, cw, 1.5);
     g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0, y, 2, rh); g.fillRect(x0, y + rh * 0.42 + 6, cw, 3);
     // 白い縦のフィン (戸塚区総合庁舎の上の階): 3 m ごとに太い白い柱 (片側に影)、間に細い縦長の窓と灰色の腰パネル
-    y = top(LOOK_ROWS.fins);
+    y = top('fins');
     for (let m = 0; m < 2; m++) {
       const mx = x0 + m * cw / 2, mw = cw / 2, fw = mw * 0.56, sx = mx + fw, sw = mw - fw;
       glass(sx, y, sw, rh * 0.62, '#7d8c98', '#4d5a66');
@@ -267,7 +280,7 @@ function lookTextures(L) {
     }
     // 2 層のガラスの壁 (カーテンウォール)。curtain = 下の階 (下に白い腰壁)、curtain2 = 上の階 (上に張り出した庇の帯)
     for (const kind of ['curtain', 'curtain2']) {
-      y = top(LOOK_ROWS[kind]);
+      y = top(kind);
       const gy = kind === 'curtain' ? y + rh * 0.34 : y + rh * 0.2, gh = (kind === 'curtain' ? y + rh : y + rh) - gy;
       glass(x0, gy, cw, gh, kind === 'curtain' ? '#9fb8c0' : '#b4c8cc', kind === 'curtain' ? '#7c98a6' : '#8eaab4');
       g.fillStyle = 'rgba(255,255,255,.16)'; for (let k = 0; k < 4; k++) g.fillRect(x0 + k * cw / 4 + 6, gy, 10, gh);
@@ -284,7 +297,7 @@ function lookTextures(L) {
     }
     // 奥まった壁のテラス (区役所の北の 2〜3 階): 上に庇の影、えんじ色の壁に大きなガラス戸 (手すりと床の縁は立体の relief)
     const a2 = L.accent2 || '#6b2a2c';
-    y = top(LOOK_ROWS.terrace);
+    y = top('terrace');
     g.fillStyle = a2; g.fillRect(x0, y, cw, rh);
     if (bx % 3 !== 1) {
       glass(x0 + 12, y + 30, cw - 24, rh - 40, '#5d6a72', '#2e363c');
@@ -294,7 +307,7 @@ function lookTextures(L) {
     g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(x0, y, cw, 18);
     g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x0, y + rh - 10, cw, 10);
     // えんじ色の 1 階 (ところどころガラスの入口)
-    y = top(LOOK_ROWS.maroon);
+    y = top('maroon');
     g.fillStyle = a2; g.fillRect(x0, y, cw, rh);
     g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x0 + cw / 2, y, 1.5, rh); g.fillRect(x0, y + rh * 0.5, cw, 1.5);
     if (bx === 1 || bx === 5) {
@@ -304,18 +317,71 @@ function lookTextures(L) {
     }
     g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x0, y, cw, 12);
     // 大きな白いパネルの壁に、細い縦のスリット (区役所の北の面)。8 ベイのうち 0〜1 は 5 本ずつ、4 は 1 本
-    y = top(LOOK_ROWS.slits);
+    y = top('slits');
     g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(x0 + cw / 2, y, 1.5, rh); g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2); g.fillRect(x0, y + rh / 2, cw, 1);
     const sl = bx <= 1 ? [12, 37, 62, 87, 112] : bx === 4 ? [60] : [];
     for (const q of sl) {
       glass(x0 + q, y, 6, rh, '#7f878c', '#5f676c');
       if (rnd() < 0.4) lit(x0 + q, y, 6, rh, '#eef5ff', 0.6);
     }
+    // 駐車場の白い縦格子 (サクラスの波形の面): 暗い開口の前に白い縦の板が並び、5 本に 1 本はアクセント色
+    for (const kind of ['slats', 'slats2']) {
+      y = top(kind);
+      const grey = kind === 'slats2';
+      if (grey) { g.fillStyle = '#7c8186'; g.fillRect(x0, y, cw, rh); }
+      glass(x0, y + rh * 0.16, cw, rh * 0.68, '#2a2d31', '#3c4045');
+      g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x0, y + rh * 0.84, cw, 2);
+      const step = grey ? 21.33 : 16;
+      for (let q = 0, j = 0; q < cw - 1; q += step, j++) {
+        g.fillStyle = !grey && (bx * 8 + j) % 5 === 2 ? L.accent : '#f2f2ef';
+        g.fillRect(x0 + q + 3, y, grey ? 6 : 7, rh);
+        g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0 + q + (grey ? 9 : 10), y + rh * 0.16, 2, rh * 0.68);
+      }
+      if (rnd() < 0.3) lit(x0, y + rh * 0.2, cw, rh * 0.5, '#fff6dd', 0.25);
+    }
+    // ガラスの格子 (クリニックの階など): 1.5 m ごとの縦枠、上 3 割の所に横枠、窓に色の付いた表示が少し
+    y = top('grid');
+    glass(x0, y + 8, cw, rh - 8, '#9fb2bd', '#6c8190');
+    g.fillStyle = '#e9ecec'; g.fillRect(x0, y, cw, 8);
+    for (let k = 0; k < 4; k++) g.fillRect(x0 + k * cw / 4, y, 3, rh);
+    g.fillRect(x0, y + rh * 0.32, cw, 3);
+    for (let k = 0; k < 4; k++) {
+      if (rnd() < 0.35) { g.fillStyle = ['#e889ad', '#7cc59a', '#f1d36b', '#ffffff'][Math.floor(rnd() * 4)]; g.fillRect(x0 + k * cw / 4 + 6, y + rh * 0.36, cw / 4 - 12, 10); }
+      if (rnd() < 0.6) lit(x0 + k * cw / 4 + 3, y + 8, cw / 4 - 3, rh - 8, '#f3f8ff', 0.5 + rnd() * 0.3);
+    }
+    // 2 階の店のガラス面: 上に白い帯、中は明るい売り場
+    y = top('store2');
+    glass(x0, y + rh * 0.22, cw, rh * 0.78, '#b7c4c8', '#7d8d94');
+    g.fillStyle = 'rgba(255,240,215,.35)'; g.fillRect(x0, y + rh * 0.55, cw, rh * 0.45);
+    g.fillStyle = '#dfe2e1'; for (let k = 0; k < 3; k++) g.fillRect(x0 + k * cw / 3, y + rh * 0.22, 3, rh * 0.78);
+    g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x0, y + rh * 0.22 - 2, cw, 2);
+    lit(x0, y + rh * 0.22, cw, rh * 0.78, '#fff0cf', 0.7);
+    // 1 階の白い壁: ところどころ店の入口 (暗いガラス)
+    y = top('base');
+    g.fillStyle = 'rgba(0,0,0,.07)'; for (let k = 1; k < 4; k++) g.fillRect(x0, y + k * rh / 4, cw, 1.5);
+    if (bx % 3 === 0 || bx === 7) {
+      glass(x0 + 14, y + 44, cw - 28, rh - 44, '#55656f', '#2f383e');
+      g.fillStyle = '#c9ccca'; g.fillRect(x0 + cw / 2 - 1, y + 44, 2, rh - 44);
+      lit(x0 + 14, y + 44, cw - 28, rh - 44, '#ffe2b0', 0.75);
+    }
+    // テナントの看板 (色の四角に名前。実物のロゴではない)。ベイ b = 地面から b 階目 (L.tenants[b] = [[文字, 地の色, 文字の色], 2 つ])
+    y = top('tenants');
+    for (const [j, t] of ((L.tenants || {})[bx] || []).entries()) {
+      const tx = x0 + 3 + j * 61, tw = 59, ty = y + 4, th = rh - 8;
+      g.fillStyle = '#f4f4f2'; g.fillRect(tx - 1, ty - 1, tw + 2, th + 2);
+      g.fillStyle = t[1]; g.fillRect(tx, ty, tw, th);
+      g.fillStyle = t[2]; g.textAlign = 'center'; g.textBaseline = 'middle';
+      const lines = String(t[0]).split('\n');
+      const fs = Math.min(26, Math.floor(tw * 1.6 / Math.max(...lines.map(l => l.length + 1))));
+      g.font = `bold ${fs}px sans-serif`;
+      lines.forEach((l, i) => g.fillText(l, tx + tw / 2, ty + th / 2 + (i - (lines.length - 1) / 2) * fs * 1.15, tw - 4));
+      lit(tx, ty, tw, th, t[1], 0.55);
+    }
     // 単色の見本 (立体の飾り relief の色): 0 壁、1 アクセント、2 ガラスの手すり、3 えんじ色、4 白い床の縁
-    y = top(LOOK_ROWS.palette);
+    y = top('palette');
     g.fillStyle = [L.wall, L.accent, '#bcd0cf', a2, '#eef0ef', L.wall, L.wall, L.wall][bx]; g.fillRect(x0, y, cw, rh);
     // 窓のない壁 (屋上の塔屋など)
-    y = top(LOOK_ROWS.plain);
+    y = top('plain');
     g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
   }
   const mk = (c) => { const t = new THREE.CanvasTexture(c); t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8; t.colorSpace = THREE.SRGBColorSpace; return releaseCanvasAfterUpload(t); };
@@ -324,7 +390,7 @@ function lookTextures(L) {
 
 // 輪郭 1 周の壁を、階ごと・入口の前後で切って貼る。y0〜y1 = この建物データ (段) の壁の下端〜上端
 function addLookWalls(gb, b, L, y0, y1) {
-  const fh = L.floor_h, base = L.y0, U = LOOK_BAY * LOOK_NB, W = [1, 1, 1], eps = 0.004;
+  const fh = L.floor_h, base = L.y0, U = LOOK_BAY * LOOK_NB, W = [1, 1, 1], eps = 0.004, RI = lookRows(L);
   const rings = [[b.outer, false], ...(b.holes || []).map(h => [h, true])];
   for (const [ring, isHole] of rings) {
     const s = (signedArea(ring) > 0 ? 1 : -1) * (isHole ? -1 : 1);
@@ -342,22 +408,45 @@ function addLookWalls(gb, b, L, y0, y1) {
         const t = (d[0] - a[0]) * ux + (d[1] - a[1]) * uz, off = Math.abs((d[0] - a[0]) * uz - (d[1] - a[1]) * ux);
         if (off <= (L.door_off || 8) && t > -4 && t < len + 4) iv.push([Math.max(0, t - dw), Math.min(len, t + dw)]);
       }
-      const cuts = [...new Set([0, len, ...iv.flat()])].sort((p, q) => p - q);
+      // 区間 (zones): from〜to の線から w 以内の壁は、その区間の柄にする (面の途中で柄を変える)
+      const zv = [];
+      if (!isHole) for (const z of L.zones || []) {
+        const zl = Math.hypot(z.to[0] - z.from[0], z.to[1] - z.from[1]), zx = (z.to[0] - z.from[0]) / zl, zz = (z.to[1] - z.from[1]) / zl, w = z.w || 4;
+        // 壁の上の点 a + u t の、区間の軸上の位置 sa + sb t と、軸からの距離 da + db t
+        const sa = (a[0] - z.from[0]) * zx + (a[1] - z.from[1]) * zz, sb = ux * zx + uz * zz;
+        const da = (a[0] - z.from[0]) * zz - (a[1] - z.from[1]) * zx, db = ux * zz - uz * zx;
+        let lo = 0, hi = len;
+        const clip = (c0, c1, mn, mx) => { // mn <= c0 + c1 t <= mx
+          if (Math.abs(c1) < 1e-9) { if (c0 < mn || c0 > mx) hi = -1; return; }
+          let t0 = (mn - c0) / c1, t1 = (mx - c0) / c1;
+          if (t0 > t1) [t0, t1] = [t1, t0];
+          lo = Math.max(lo, t0); hi = Math.min(hi, t1);
+        };
+        clip(sa, sb, 0, zl); clip(da, db, -w, w);
+        if (hi - lo > 0.05) zv.push([lo, hi, z]);
+      }
+      const cuts = [...new Set([0, len, ...iv.flat(), ...zv.flatMap(v => [v[0], v[1]])])].sort((p, q) => p - q);
       for (let j = 0; j + 1 < cuts.length; j++) {
         const t0 = cuts[j], t1 = cuts[j + 1];
         if (t1 - t0 < 0.01) continue;
         const isGlass = iv.some(([p, q]) => t0 >= p - 1e-6 && t1 <= q + 1e-6);
-        const u0 = (per + t0) / U, u1 = (per + t1) / U;
+        const zone = zv.find(([p, q]) => t0 >= p - 1e-6 && t1 <= q + 1e-6);
+        const zf = zone ? zone[2].floors : floors;
+        // align: 外から見て区間の左端に k 番目のベイ (k = 階) が来るようにする (テナントの看板など、文字を含み 1 回だけ見せる柄)。
+        // 外から見た右向きは、輪郭の向き s > 0 のとき辺の逆向き
+        const al = zone && zone[2].align;
+        let u0 = (per + t0) / U, u1 = (per + t1) / U;
+        if (al) [u0, u1] = s > 0 ? [(zone[1] - t0) / U, (zone[1] - t1) / U] : [(t0 - zone[0]) / U, (t1 - zone[0]) / U];
         const P = (t, y) => [a[0] + ux * t, y, a[1] + uz * t];
         for (let k = Math.floor((y0 - base) / fh + 1e-6); base + k * fh < y1 - 1e-6; k++) {
           const yf = base + k * fh, ya = Math.max(y0, yf), yb = Math.min(y1, yf + fh);
-          let kind = (k >= 0 && floors[k]) || 'plain';
-          let ush = 0;
+          let kind = (k >= 0 && zf[k]) || 'plain';
+          let ush = al ? k / LOOK_NB : 0;
           if (isGlass && k >= 0 && k < (L.glass_floors || 0)) kind = L.door_kind || 'glass';
           else if (kind === 'panel' && k % 2) ush = 0.5 / LOOK_NB; // 千鳥: 奇数階は半ベイずらす
           else if (kind === 'screen' && k % 2) kind = 'screen2';
-          const row = LOOK_ROWS[kind];
-          const va = (row + Math.max(eps, (ya - yf) / fh)) / LOOK_NR, vb = (row + Math.min(1 - eps, (yb - yf) / fh)) / LOOK_NR;
+          const row = RI.idx[kind] ?? RI.idx.plain;
+          const va = (row + Math.max(eps, (ya - yf) / fh)) / RI.nr, vb = (row + Math.min(1 - eps, (yb - yf) / fh)) / RI.nr;
           gb.tri(P(t0, ya), P(t1, ya), P(t1, yb), n, [u0 + ush, va], [u1 + ush, va], [u1 + ush, vb], W);
           gb.tri(P(t0, ya), P(t1, yb), P(t0, yb), n, [u0 + ush, va], [u1 + ush, vb], [u0 + ush, vb], W);
         }
@@ -370,7 +459,7 @@ function addLookWalls(gb, b, L, y0, y1) {
 // ランドマークの壁の立体の飾り (looks の relief)。壁の柄と同じテクスチャの単色の所を使う
 //   fins: 柄が fins の階に、柄の白い柱と同じ位置 (3 m ごと) に張り出した縦の柱 {w: 幅, d: 張り出し}
 //   eaves: [{floor, depth, h, color, faces, rail}] = floor 階の上端 (地面からの階数) に、壁から depth 張り出す厚さ h の庇。color: palette の色の名前 (wall / accent / accent2 / slab)、faces: 付ける面 ['n', 'e', ...]、rail: 先端にガラスの手すり (高さ m)
-const RELIEF_UV = Object.fromEntries(['wall', 'accent', 'rail', 'accent2', 'slab'].map((k, i) => [k, [(i + 0.5) / LOOK_NB, (LOOK_ROWS.palette + 0.5) / LOOK_NR]]));
+const reliefUV = (L, k) => { const RI = lookRows(L); return [(['wall', 'accent', 'rail', 'accent2', 'slab'].indexOf(k) + 0.5) / LOOK_NB, (RI.idx.palette + 0.5) / RI.nr]; };
 // 壁の向き (外向きの法線) から、東西南北の面ごとの設定 (looks の faces.e / w / s / n)。無ければ {}
 function faceOf(nx, nz) { return Math.abs(nx) > Math.abs(nz) ? (nx > 0 ? 'e' : 'w') : (nz > 0 ? 's' : 'n'); }
 function lookFace(L, nx, nz) { return (L.faces && L.faces[faceOf(nx, nz)]) || {}; }
@@ -417,7 +506,7 @@ function addLookRelief(gb, b, L, y0, y1) {
           const P = [];
           for (const y of [fa, fb]) for (const [e, o] of [[-fw / 2, fd], [fw / 2, fd], [fw / 2, -0.05], [-fw / 2, -0.05]])
             P.push([a[0] + ux * (t + e) + nx * o, y, a[1] + uz * (t + e) + nz * o]);
-          box(P, RELIEF_UV.wall);
+          box(P, reliefUV(L, 'wall'));
         }
         per += len;
       }
@@ -427,7 +516,7 @@ function addLookRelief(gb, b, L, y0, y1) {
   for (const e of R.eaves || []) {
     const yt = base + e.floor * fh, yb = yt - (e.h || 0.4);
     if (!(yb > y0 - 0.01 && yt <= y1 + 0.01)) continue;
-    const r = simplifyRing(ring, 0.8), n = r.length, d = e.depth || 1.2, uv = RELIEF_UV[e.color || 'wall'];
+    const r = simplifyRing(ring, 0.8), n = r.length, d = e.depth || 1.2, uv = reliefUV(L, e.color || 'wall');
     const nr = r.map((p, i) => { const c = r[(i + 1) % n], l = Math.hypot(c[0] - p[0], c[1] - p[1]) || 1; return [(c[1] - p[1]) / l * s, -(c[0] - p[0]) / l * s]; });
     const off = r.map((p, i) => {
       const n1 = nr[(i - 1 + n) % n], n2 = nr[i];
@@ -444,7 +533,7 @@ function addLookRelief(gb, b, L, y0, y1) {
         const t = 0.06 / d, F = (P, Q) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
         const A3 = F(A2, A), B3 = F(B2, B);
         box([[A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B3[0], yt, B3[1]], [A3[0], yt, A3[1]],
-             [A2[0], yt + e.rail, A2[1]], [B2[0], yt + e.rail, B2[1]], [B3[0], yt + e.rail, B3[1]], [A3[0], yt + e.rail, A3[1]]], RELIEF_UV.rail);
+             [A2[0], yt + e.rail, A2[1]], [B2[0], yt + e.rail, B2[1]], [B3[0], yt + e.rail, B3[1]], [A3[0], yt + e.rail, A3[1]]], reliefUV(L, 'rail'));
       }
       box([[A2[0], yb, A2[1]], [B2[0], yb, B2[1]], [B[0], yb, B[1]], [A[0], yb, A[1]],
            [A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B[0], yt, B[1]], [A[0], yt, A[1]]], uv);
