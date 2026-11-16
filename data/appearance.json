@@ -179,8 +179,10 @@
     "door_kind": "open",
     "door_w": 9
    }
-  }
- ],
+  },
+    {"name": "グランシティ 付属棟 (道路側)", "key": "grancity_annex", "at": [-274, 1398], "source": "路上写真 (持ち主提供、2025-05) の観察: 低い箱形で窓が無く、クリーム色の壁に横の目地、屋根の縁は濃い茶色の帯。灰色のシャッターが 2 枚並ぶ。シャッターの面 (敷地の駐車場側) の位置は写真の見え方からの推定", "look": {"facade": "mall", "wall": "#d9c59c", "accent": "#4a3b2e", "floor_h": 3.5, "floors": ["band"], "glass_floors": 1, "door_kind": "shutter", "door_w": 3.4, "door_off": 1.6}, "entrances": [[-273.5, 1395.1]]},
+    {"name": "グランシティ 立体駐車場", "key": "grancity_parking", "at": [-230, 1400], "source": "路上写真 (持ち主提供、2025-05) の観察: 3 層、灰緑の金属パネルを横に張った面と、柱・筋交いの見える暗い開口が交互に重なる。敷地の門 (黒い鉄のアーチ) の隣。柱の間隔・開口の高さは推定", "look": {"facade": "mall", "wall": "#9fa59d", "accent": "#3e4246", "floor_h": 2.67, "floors": ["louver", "louver", "louver"], "glass_floors": 0}}
+  ],
  "_note_deck_levels": "deck_levels: 歩道橋・デッキの高さを点群から読めなかった所の補正 (tools/deck_heights.py)。(x, z) から r m 以内のデッキの高さを y にする",
  "deck_levels": [
   {

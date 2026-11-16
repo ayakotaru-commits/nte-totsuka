@@ -964,7 +964,9 @@ def build_shapes(city, world, cx, cz, R):
             if b.get("balcony") != "all" and nz < 0.55:
                 continue
             balconies.append({"b": b["id"], "x": a[0], "z": a[1], "dx": round(dx / L, 4), "dz": round(dz / L, 4), "nx": round(nx, 4), "nz": round(nz, 4),
-                              "len": r3(L), "y": b.get("y") or 0, "floorH": round(fh, 4), "floors": floors, **({"dark": True} if b.get("railing") else {})})
+                              "len": r3(L), "y": b.get("y") or 0, "floorH": round(fh, 4), "floors": floors, **({"dark": True} if b.get("railing") else {}),
+                              # 川側 (東向き) の長い壁は、横に連続した廊下状のバルコニー (グランシティの写真より)
+                              **({"corr": True} if b.get("railing") and nx > 0.7 and L > 20 else {})})
             made = True
         if made:
             apts += 1

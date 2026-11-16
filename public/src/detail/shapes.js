@@ -9,18 +9,19 @@ export function buildShapes(props) {
   const emissive = [];
 
   // ---------- ベランダ (壁ごと。2 階から上の各階に床スラブと手すり壁) ----------
-  const slabB = new Builder(), railB = new Builder(), darkRailB = new Builder();
+  const slabB = new Builder(), railB = new Builder(), darkRailB = new Builder(), creamB = new Builder();
   for (const w of props.balconies) {
     const { x, z, dx: ux, dz: uz, nx, nz, len } = w;
-    const RB = w.dark ? darkRailB : railB;
-    const inset = 0.4, D = 1.1;
+    // dark = 敷地 (グランシティ) の壁。クリーム色の厚いスラブ + 薄い灰色の格子の手すり。corr = 川側の横に連続した廊下状 (白い縦格子)
+    const RB = w.corr ? railB : w.dark ? darkRailB : railB, SB = w.dark ? creamB : slabB, T = w.dark ? 0.4 : 0.15;
+    const inset = w.corr ? 0.1 : 0.4, D = w.corr ? 1.6 : w.dark ? 1.5 : 1.1;
     const Q = (t, d, y) => [x + ux * t + nx * d, y, z + uz * t + nz * d];
     for (let k = 1; k < w.floors; k++) {
       const y = w.y + k * w.floorH;
       // 床スラブ
-      slabB.quad(Q(inset, 0, y), Q(len - inset, 0, y), Q(len - inset, D, y), Q(inset, D, y), [0, 1, 0]);
-      slabB.quad(Q(inset, 0, y - 0.15), Q(len - inset, 0, y - 0.15), Q(len - inset, D, y - 0.15), Q(inset, D, y - 0.15), [0, -1, 0]);
-      slabB.quad(Q(inset, D, y - 0.15), Q(len - inset, D, y - 0.15), Q(len - inset, D, y), Q(inset, D, y), [nx, 0, nz]);
+      SB.quad(Q(inset, 0, y), Q(len - inset, 0, y), Q(len - inset, D, y), Q(inset, D, y), [0, 1, 0]);
+      SB.quad(Q(inset, 0, y - T), Q(len - inset, 0, y - T), Q(len - inset, D, y - T), Q(inset, D, y - T), [0, -1, 0]);
+      SB.quad(Q(inset, D, y - T), Q(len - inset, D, y - T), Q(len - inset, D, y), Q(inset, D, y), [nx, 0, nz]);
       // 手すり壁 (前面 + 両端)
       RB.quad(Q(inset, D, y), Q(len - inset, D, y), Q(len - inset, D, y + 1.1), Q(inset, D, y + 1.1), [nx, 0, nz]);
       for (const t of [inset, len - inset]) RB.quad(Q(t, 0, y), Q(t, D, y), Q(t, D, y + 1.1), Q(t, 0, y + 1.1), [ux, 0, uz]);
@@ -28,11 +29,13 @@ export function buildShapes(props) {
   }
   const slabs = new THREE.Mesh(slabB.geometry(), new THREE.MeshStandardMaterial({ color: '#d9d6cf', roughness: 0.9 }));
   slabs.castShadow = slabs.receiveShadow = true; slabs.name = 'balcony_slabs';
-  const darkRails = new THREE.Mesh(darkRailB.geometry(), new THREE.MeshStandardMaterial({ color: '#3b4148', roughness: 0.4, metalness: 0.5, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
+  const creams = new THREE.Mesh(creamB.geometry(), new THREE.MeshStandardMaterial({ color: '#e0d0aa', roughness: 0.9 }));
+  creams.castShadow = creams.receiveShadow = true; creams.name = 'balcony_slabs_cream';
+  const darkRails = new THREE.Mesh(darkRailB.geometry(), new THREE.MeshStandardMaterial({ color: '#8d959b', roughness: 0.4, metalness: 0.4, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
   darkRails.castShadow = true; darkRails.name = 'balcony_rails_dark';
   const rails = new THREE.Mesh(railB.geometry(), new THREE.MeshStandardMaterial({ color: '#eef0f0', roughness: 0.6, transparent: true, opacity: 0.88, side: THREE.DoubleSide }));
   rails.castShadow = true; rails.name = 'balcony_rails';
-  group.add(darkRails, slabs, rails);
+  group.add(darkRails, slabs, creams, rails);
 
   // ---------- 店の看板と日よけ ----------
   for (const p of props.signs) {
