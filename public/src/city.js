@@ -334,6 +334,80 @@ function addLookWalls(gb, b, L, y0, y1) {
   }
 }
 
+// ランドマークの壁の立体の飾り (looks の relief)。壁の柄と同じテクスチャの単色の所を使う
+//   fins: 柄が fins の階に、柄の白い柱と同じ位置 (3 m ごと) に張り出した縦の柱 {w: 幅, d: 張り出し}
+//   eaves: [{floor, depth, h, color}] = floor 階の上端 (地面からの階数) に、壁から depth 張り出す厚さ h の庇。color: 'accent' で帯の色
+const RELIEF_UV = { wall: [0.5 / LOOK_NB, (LOOK_ROWS.plain + 0.5) / LOOK_NR], accent: [0.5 / LOOK_NB, (LOOK_ROWS.shop + 1 - 0.05) / LOOK_NR] };
+function simplifyRing(ring, tol) { // Douglas-Peucker (閉じた輪)
+  if (ring.length < 4) return ring;
+  let far = 0, fd = -1;
+  for (let i = 1; i < ring.length; i++) { const d = Math.hypot(ring[i][0] - ring[0][0], ring[i][1] - ring[0][1]); if (d > fd) { fd = d; far = i; } }
+  const dp = (pts) => {
+    const a = pts[0], b = pts[pts.length - 1], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1e-9;
+    let k = -1, m = tol;
+    for (let i = 1; i < pts.length - 1; i++) { const d = Math.abs((pts[i][0] - a[0]) * dz - (pts[i][1] - a[1]) * dx) / L; if (d > m) { m = d; k = i; } }
+    return k < 0 ? [a, b] : [...dp(pts.slice(0, k + 1)).slice(0, -1), ...dp(pts.slice(k))];
+  };
+  const h1 = dp(ring.slice(0, far + 1)), h2 = dp([...ring.slice(far), ring[0]]);
+  return [...h1.slice(0, -1), ...h2.slice(0, -1)];
+}
+function addLookRelief(gb, b, L, y0, y1) {
+  const R = L.relief;
+  if (!R) return;
+  const fh = L.floor_h, base = L.y0, W = [1, 1, 1];
+  const ring = b.outer, s = signedArea(ring) > 0 ? 1 : -1;
+  const box = (P, uv) => { // P = 8 頂点 [下4 (前左, 前右, 後右, 後左), 上4]
+    const q = (a, c, d, e, n) => { gb.tri(P[a], P[c], P[d], n, uv, uv, uv, W); gb.tri(P[a], P[d], P[e], n, uv, uv, uv, W); };
+    const nrm = (a, c) => { const dx = P[c][0] - P[a][0], dz = P[c][2] - P[a][2], l = Math.hypot(dx, dz) || 1; return [dz / l * s, 0, -dx / l * s]; };
+    q(0, 1, 5, 4, nrm(0, 1)); q(1, 2, 6, 5, nrm(1, 2)); q(3, 0, 4, 7, nrm(3, 0)); q(4, 5, 6, 7, UP); q(0, 1, 2, 3, DOWN);
+  };
+  // 縦の柱: 柄の fins の階の範囲 (この段の壁の中だけ)
+  if (R.fins) {
+    const ks = L.floors.map((k, i) => k === 'fins' ? i : -1).filter(i => i >= 0);
+    const fa = Math.max(y0, base + Math.min(...ks) * fh), fb = Math.min(y1, base + (Math.max(...ks) + 1) * fh);
+    const fw = R.fins.w || 0.9, fd = R.fins.d || 0.45, M = LOOK_BAY / 2, c0 = M * 0.28; // 柄の柱の中心 (1 区画 3 m の 28%)
+    if (ks.length && fb - fa > 0.3) {
+      const dir = (i) => { const a = ring[i], c = ring[(i + 1) % ring.length], l = Math.hypot(c[0] - a[0], c[1] - a[1]); return l < 1e-6 ? [0, 0, 0] : [(c[0] - a[0]) / l, (c[1] - a[1]) / l, l]; };
+      let per = 0;
+      for (let i = 0; i < ring.length; i++) {
+        const [ux, uz, len] = dir(i);
+        if (len < 0.01) continue;
+        const straight = (j) => { const [vx, vz, l2] = dir((j + ring.length) % ring.length); return l2 > 0.01 && ux * vx + uz * vz > 0.99; };
+        const lo = straight(i - 1) ? 0 : fw / 2 + 0.15, hi = straight(i + 1) ? len : len - fw / 2 - 0.15;
+        const nx = uz * s, nz = -ux * s, a = ring[i];
+        for (let t = Math.ceil((per - c0) / M) * M + c0 - per; t < len; t += M) {
+          if (t < lo || t > hi) continue;
+          const P = [];
+          for (const y of [fa, fb]) for (const [e, o] of [[-fw / 2, fd], [fw / 2, fd], [fw / 2, -0.05], [-fw / 2, -0.05]])
+            P.push([a[0] + ux * (t + e) + nx * o, y, a[1] + uz * (t + e) + nz * o]);
+          box(P, RELIEF_UV.wall);
+        }
+        per += len;
+      }
+    }
+  }
+  // 庇: 輪郭をならして、外へ depth ずらした板
+  for (const e of R.eaves || []) {
+    const yt = base + e.floor * fh, yb = yt - (e.h || 0.4);
+    if (!(yb > y0 - 0.01 && yt <= y1 + 0.01)) continue;
+    const r = simplifyRing(ring, 0.8), n = r.length, d = e.depth || 1.2, uv = RELIEF_UV[e.color === 'accent' ? 'accent' : 'wall'];
+    const nr = r.map((p, i) => { const c = r[(i + 1) % n], l = Math.hypot(c[0] - p[0], c[1] - p[1]) || 1; return [(c[1] - p[1]) / l * s, -(c[0] - p[0]) / l * s]; });
+    const off = r.map((p, i) => {
+      const n1 = nr[(i - 1 + n) % n], n2 = nr[i];
+      let mx = n1[0] + n2[0], mz = n1[1] + n2[1];
+      const ml = Math.hypot(mx, mz);
+      if (ml < 1e-3) { mx = n2[0]; mz = n2[1]; } else { mx /= ml; mz /= ml; }
+      const k = Math.min(2.5 * d, d / Math.max(0.2, mx * n2[0] + mz * n2[1]));
+      return [p[0] + mx * k, p[1] + mz * k];
+    });
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, A = r[i], B = r[j], A2 = off[i], B2 = off[j];
+      box([[A2[0], yb, A2[1]], [B2[0], yb, B2[1]], [B[0], yb, B[1]], [A[0], yb, A[1]],
+           [A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B[0], yt, B[1]], [A[0], yt, A[1]]], uv);
+    }
+  }
+}
+
 const OFFICE_WALL = ['#d9d6cf', '#c9c4ba', '#e6e2da', '#b8bcc2', '#d2c7b4', '#a9aeb5', '#efece6', '#c4b9a8'];
 const HOUSE_WALL = ['#f2ede3', '#e8dcc8', '#d9cdb8', '#f5f2ea', '#c8b8a0', '#e0e0dc', '#d6d0c4'];
 const OFFICE_ROOF = ['#8a8d90', '#9a9a95', '#7d8184', '#a3a29c'];
@@ -414,7 +488,11 @@ function buildBuildings(buildings, looks = {}, platforms = []) {
     const U = F.bay * TILE, V = F.floor * TILE;
 
     const look = b.look && looks[b.look];
-    if (look) addLookWalls(lookGB[b.look] || (lookGB[b.look] = new GB()), b, look, y0, y1);
+    if (look) {
+      const gb = lookGB[b.look] || (lookGB[b.look] = new GB());
+      addLookWalls(gb, b, look, y0, y1);
+      addLookRelief(gb, b, look, y0, y1);
+    }
     const rings = look ? [] : [[b.outer, false], ...(b.holes || []).map(h => [h, true])];
     for (const [ring, isHole] of rings) {
       const s = (signedArea(ring) > 0 ? 1 : -1) * (isHole ? -1 : 1);
