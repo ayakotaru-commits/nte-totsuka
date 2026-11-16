@@ -14,6 +14,7 @@ build_city.py から apply() が呼ばれる (高さ格子があるときだけ)
 標準ライブラリのみ。
 """
 import array
+import copy
 import json
 import math
 import pathlib
@@ -149,7 +150,21 @@ def dissolve(pieces, p0, q0, cs):
                 lo, hi = (t0, t1) if net > 0 else (t1, t0)
                 a, b = ((c, lo), (c, hi)) if axis == 0 else ((lo, c), (hi, c))
                 edges.append((a, b))
-    key = lambda p: (round(p[0], 4), round(p[1], 4))
+    # 同じ角のはずの点が、交点の計算誤差 (ほぼ平行な辺と格子線の交点で 1e-4 m 以上ずれる) で別の点と数えられると、
+    # 辺がつながらず輪が閉じない (上の段が丸ごと消える)。1 mm 以内の点は同じ点とみなす
+    TOL = 1e-3
+    canon = {}
+
+    def key(p):
+        cx, cy = round(p[0] / TOL), round(p[1] / TOL)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                q = canon.get((cx + dx, cy + dy))
+                if q is not None and abs(q[0] - p[0]) < TOL and abs(q[1] - p[1]) < TOL:
+                    return q
+        q = canon[(cx, cy)] = (round(p[0], 4), round(p[1], 4))
+        return q
+
     out_e = {}
     for a, b in edges:
         if key(a) != key(b):
@@ -858,7 +873,94 @@ def apply(buildings, ref, floors_for=default_floors, dsm=None, only=None):
     return out
 
 
+def signature(b, parts):
+    """建物の形の要約 (本体の高さ・段の (下端, 上端) の並び)。repair で、今のデータと直し直した結果を比べる"""
+    return round(b["h"], 1), sorted((round(p.get("minH") or 0, 1), round(p["h"], 1)) for p in parts)
+
+
+def same_shape(a, b, tol=0.3):
+    return abs(a[0] - b[0]) <= tol and len(a[1]) == len(b[1]) and all(
+        abs(p - q) <= tol and abs(r - t) <= tol for (p, r), (q, t) in zip(a[1], b[1]))
+
+
+def repair(buildings, ref, dsm=None):
+    """段が抜けた建物だけを直す。形を直し済みのデータで、各建物をいったん元に戻して直し直し、本体の高さ・段の数と高さが
+    違うものだけ差し替える (違わないものには触らない = 無関係な建物の高さが 0.1 m 動くことがない)。
+    dissolve() の誤差の不具合 (輪が閉じず、上の段が丸ごと消えた) の修正用。戻り値 (建物のリスト, 直した建物の一覧)"""
+    dsm = dsm or DSM()
+    kids = {}
+    for b in buildings:
+        if b.get("part"):
+            kids.setdefault(b["part"], []).append(b)
+    out, fixed = [], []
+    gone = set()
+    for b in buildings:
+        if b.get("part"):
+            continue
+        if (b.get("minH") or b.get("style") in SKIP_STYLES or b.get("facade") or b.get("src") == "appearance"
+                or b.get("fixed") or not b.get("lidar")):
+            continue
+        r = restore([copy.deepcopy(b)])[0]
+        f0 = r.get("floors")
+        try:
+            new = shape_building(r, dsm, ref)
+        except Exception:  # noqa: BLE001
+            continue
+        if new is None:
+            continue
+        if f0 is not None:
+            r["lidar"]["floors0"] = f0
+        old_sig, new_sig = signature(b, kids.get(b["id"], [])), signature(r, new)
+        if same_shape(old_sig, new_sig):
+            continue
+        fixed.append((b["id"], old_sig, new_sig))
+        gone.add(b["id"])
+        b["_new"] = (r, new)
+    for b in buildings:
+        if b.get("part"):
+            if b["part"] in gone:
+                continue  # 直した建物の古い段は捨てる
+            out.append(b)
+            continue
+        new = b.pop("_new", None)
+        if new:
+            r, kids_new = new
+            if ORTHO_BIN.exists():
+                apply_colors([r] + kids_new)
+            out.append(r)
+            out.extend(kids_new)
+        else:
+            out.append(b)
+    return out, fixed
+
+
+def main_repair():
+    import landmarks
+    city = json.loads(CITY.read_text(encoding="utf-8"))
+    landmarks.undo(city["buildings"], city.get("pois"))
+    try:
+        import mapillary_walls
+    except ImportError:
+        mapillary_walls = None
+    if mapillary_walls:
+        mapillary_walls.undo(city["buildings"])
+    ref = json.loads(TERRAIN.read_text(encoding="utf-8"))["ref"] if TERRAIN.exists() else 0.0
+    city["buildings"], fixed = repair(city["buildings"], ref)
+    for bid, o, n in fixed:
+        print(f"  repair: {bid} 本体 {o[0]} m・段 {o[1]} → 本体 {n[0]} m・段 {n[1]}")
+    print(f"repair: 直した建物 {len(fixed)}")
+    city["looks"] = landmarks.apply(city["buildings"], city.get("roads"), city.get("pois"))
+    if mapillary_walls and mapillary_walls.PLAN.exists():
+        mapillary_walls.apply(city)
+    CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"-> {CITY} ({CITY.stat().st_size // 1024} KB, buildings={len(city['buildings'])})")
+    import build_props
+    build_props.main()
+
+
 def main():
+    if "--repair" in sys.argv:
+        return main_repair()
     import landmarks  # ランドマークの外観は上の段にも付くので、いったん外して最後に付け直す
     city = json.loads(CITY.read_text(encoding="utf-8"))
     landmarks.undo(city["buildings"], city.get("pois"))
