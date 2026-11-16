@@ -120,29 +120,32 @@ def apply(buildings, roads=None, pois=None, conf=None):
             print(f"landmarks: building not found at {ats}: {lm['name']}")
             continue
         host, ids = hosts[0], {h["id"] for h in hosts}
-        key, look, extra = lm["key"], dict(lm["look"]), lm.get("set", {})
-        # 壁の柄の基準の高さ。本体を高架にする (set.minH) ときは、その床から数える
-        look["y0"] = round((host.get("y") or 0) + extra.get("minH", 0), 2)
-        look["doors"] = find_doors(hosts, roads, lm.get("entrances", []))
-        looks[key] = look
+        key, extra = lm["key"], lm.get("set", {})
+        # look を省くと、壁の柄は付けず、color・set・fill_gaps・rename だけを設定する (写真が少なく、色と形だけ直せるとき)
+        look = dict(lm["look"]) if lm.get("look") else None
+        if look:
+            # 壁の柄の基準の高さ。本体を高架にする (set.minH) ときは、その床から数える
+            look["y0"] = round((host.get("y") or 0) + extra.get("minH", 0), 2)
+            look["doors"] = find_doors(hosts, roads, lm.get("entrances", []))
+            looks[key] = look
         fill = gap_fill(buildings, ids) if lm.get("fill_gaps") else {}
         n = 0
         for b in buildings:
             if b["id"] not in ids and b.get("part") not in ids:
                 continue
-            new = {"color": look["wall"], **(extra if b is host else {}), **({"minH": fill[b["id"]]} if b["id"] in fill else {})}
+            new = {"color": look["wall"] if look else lm["color"], **(extra if b is host else {}), **({"minH": fill[b["id"]]} if b["id"] in fill else {})}
             if b is host and lm.get("rename"):
                 new["name"] = lm["rename"]
             b["look0"] = {k: b.get(k) for k in new}
             b.update(new)
-            b["look"] = key
+            b["look"] = key if look else None   # None = 柄なし (描画は ふつうの建物と同じ)
             n += 1
         if lm.get("rename"):
             old = host["look0"].get("name")
             for p in pois or []:
                 if old and p.get("cat") == "building" and p.get("name") == old:
                     p["name"] = lm["rename"]
-        print(f"landmarks: {lm['name']}: {n} parts, doors {len(look['doors'])}")
+        print(f"landmarks: {lm['name']}: {n} parts" + (f", doors {len(look['doors'])}" if look else ", (柄なし)") + (f", すき間 {len(fill)} 段" if fill else ""))
     return looks
 
 

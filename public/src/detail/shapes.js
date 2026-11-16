@@ -21,7 +21,8 @@ export function buildShapes(props) {
     const stag = w.dark && !w.corr;
     const BAY = 7.2, nseg = stag ? Math.max(1, Math.round((len - 2 * inset) / BAY)) : 1;
     const DEPTHS = [1.3, 2.4, 3.3, 1.9, 2.8];
-    for (let k = 1; k < w.floors; k++) {
+    // k0: 段状の建物の上の段は、その段の最初の階から (無ければ 2 階から)
+    for (let k = Math.max(1, w.k0 || 1); k < w.floors; k++) {
       const y = w.y + k * w.floorH;
       for (let i = 0; i < nseg; i++) {
         const t0 = inset + (len - 2 * inset) * i / nseg + (stag ? 0.5 : 0), t1 = inset + (len - 2 * inset) * (i + 1) / nseg - (stag ? 0.5 : 0);

@@ -1011,6 +1011,10 @@ def build_shapes(city, world, cx, cz, R):
     # 2 階から最上階まで、床の高さ y + k * floorH (k = 1 から floors-1) に、奥行き 1.1m・手すり壁 1.1m のベランダ (両端 0.4m は空ける)
     balconies, apts = [], 0
     labels = load_facades()
+    parts_of = {}
+    for p in city["buildings"]:
+        if p.get("part"):
+            parts_of.setdefault(p["part"], []).append(p)
     for b in city["buildings"]:
         if b.get("minH"):
             continue
@@ -1038,27 +1042,47 @@ def build_shapes(city, world, cx, cz, R):
                         seen[i] = k
         if not is_apt and "b" not in seen.values():
             continue
-        floors = b.get("floors") or math.floor(b["h"] / 3.0)
+        # balcony_tiers: 段 (点群から作った上の段) の輪郭にも、その高さの範囲でベランダを付ける。
+        # 段の高さは建物全体の高さ ÷ 階数で決める (本体だけの高さで割らない)
+        tiers = [(o, b["h"], 0.0)]
+        if b.get("balcony_tiers") and parts_of.get(b["id"]):
+            ht = max([b["h"]] + [p["h"] for p in parts_of[b["id"]]])
+            floors = b.get("floors") or math.floor(ht / 3.0)
+            fh = ht / max(floors, 1)
+            tiers += [(p["outer"], p["h"], p.get("minH") or 0.0) for p in parts_of[b["id"]]]
+        else:
+            floors = b.get("floors") or math.floor(b["h"] / 3.0)
+            fh = b["h"] / max(floors, 1)
+            ht = b["h"]
         if floors < 2:
             continue
-        fh = b["h"] / floors
         made = False
-        for i in range(len(o)):
-            a, c = o[i], o[(i + 1) % len(o)]
-            dx, dz = c[0] - a[0], c[1] - a[1]
-            L = math.hypot(dx, dz)
-            if L < (5 if seen.get(i) == "b" else 7):
+        for ti, (ring, top_h, min_h) in enumerate(tiers):
+            tier = b.get("balcony_tiers") and len(tiers) > 1
+            rs = 1 if js_signed_area(ring) > 0 else -1
+            # 段の高さの範囲に床がある階: k0 〜 (屋根の 0.1 m 下までの階)
+            k0 = max(1, math.ceil(min_h / fh - 0.01)) if tier else 1
+            nfl = (int((top_h - 0.1) / fh) + 1) if tier else floors
+            if tier and k0 >= nfl:
                 continue
-            nx, nz = dz / L * s, -dx / L * s
-            if seen.get(i) == "w" or (seen.get(i) == "b" and L < 5):
-                continue
-            if seen.get(i) != "b" and (not is_apt or (b.get("balcony") != "all" and nz < 0.55)):
-                continue
-            balconies.append({"b": b["id"], "x": a[0], "z": a[1], "dx": round(dx / L, 4), "dz": round(dz / L, 4), "nx": round(nx, 4), "nz": round(nz, 4),
-                              "len": r3(L), "y": b.get("y") or 0, "floorH": round(fh, 4), "floors": floors, **({"dark": True} if b.get("railing") else {}),
-                              # 川側 (東向き) の長い壁は、横に連続した廊下状のバルコニー (グランシティの写真より)
-                              **({"corr": True} if b.get("railing") and nx > 0.7 and L > 20 else {})})
-            made = True
+            for i in range(len(ring)):
+                a, c = ring[i], ring[(i + 1) % len(ring)]
+                dx, dz = c[0] - a[0], c[1] - a[1]
+                L = math.hypot(dx, dz)
+                sn = seen.get(i) if ti == 0 else None
+                if L < (5 if sn == "b" else 7):
+                    continue
+                nx, nz = dz / L * rs, -dx / L * rs
+                if sn == "w":
+                    continue
+                if sn != "b" and (not is_apt or (b.get("balcony") != "all" and nz < 0.55)):
+                    continue
+                balconies.append({"b": b["id"], "x": a[0], "z": a[1], "dx": round(dx / L, 4), "dz": round(dz / L, 4), "nx": round(nx, 4), "nz": round(nz, 4),
+                                  "len": r3(L), "y": b.get("y") or 0, "floorH": round(fh, 4), "floors": nfl, **({"k0": k0} if k0 > 1 else {}),
+                                  **({"dark": True} if b.get("railing") else {}),
+                                  # 川側 (東向き) の長い壁は、横に連続した廊下状のバルコニー (グランシティの写真より)
+                                  **({"corr": True} if b.get("railing") and nx > 0.7 and L > 20 else {})})
+                made = True
         if made:
             apts += 1
 
