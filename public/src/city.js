@@ -141,7 +141,7 @@ function facadeTextures(type) {
 
 // ---- ランドマークの外壁 (city.json の looks。tools/landmarks.py が設定) ----
 // テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
-const LOOK_ROWS = { shop: 0, panel: 1, screen: 2, parking: 3, glass: 4, plain: 5, ribbon: 6, screen2: 7, open: 8, shutter: 9, band: 10, louver: 11 };
+const LOOK_ROWS = { shop: 0, panel: 1, screen: 2, parking: 3, glass: 4, plain: 5, ribbon: 6, screen2: 7, open: 8, shutter: 9, band: 10, louver: 11, fins: 12, curtain: 13, curtain2: 14 };
 const LOOK_NR = 16, LOOK_NB = 8, LOOK_BAY = 6; // 段の数 (テクスチャは縦長)、横のベイ数、1 ベイの幅 (m)
 function lookTextures(L) {
   const S = 1024, SH = 2048, cw = S / LOOK_NB, rh = SH / LOOK_NR;
@@ -251,6 +251,37 @@ function lookTextures(L) {
     g.fillStyle = L.wall; g.fillRect(x0, y + rh * 0.42 + 8, cw, rh * 0.58 - 8);
     g.fillStyle = 'rgba(0,0,0,.18)'; for (let k = 0; k < 3; k++) g.fillRect(x0, y + rh * 0.42 + 18 + k * (rh * 0.58 - 24) / 3, cw, 1.5);
     g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0, y, 2, rh); g.fillRect(x0, y + rh * 0.42 + 6, cw, 3);
+    // 白い縦のフィン (戸塚区総合庁舎の上の階): 3 m ごとに太い白い柱 (片側に影)、間に細い縦長の窓と灰色の腰パネル
+    y = top(LOOK_ROWS.fins);
+    for (let m = 0; m < 2; m++) {
+      const mx = x0 + m * cw / 2, mw = cw / 2, fw = mw * 0.56, sx = mx + fw, sw = mw - fw;
+      glass(sx, y, sw, rh * 0.62, '#7d8c98', '#4d5a66');
+      g.fillStyle = '#a7aeb3'; g.fillRect(sx, y + rh * 0.62, sw, rh * 0.38);
+      g.fillStyle = 'rgba(0,0,0,.18)'; for (let k = 1; k < 5; k++) g.fillRect(sx, y + rh * 0.62 + k * rh * 0.076, sw, 1.2);
+      g.fillStyle = 'rgba(240,244,246,.8)'; g.fillRect(sx + sw / 2 - 1, y, 2, rh * 0.62);
+      g.fillStyle = 'rgba(0,0,0,.30)'; g.fillRect(sx, y, 4, rh);                 // 柱の影
+      g.fillStyle = 'rgba(255,255,255,.25)'; g.fillRect(mx, y, 3, rh);          // 柱の明るい縁
+      g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(mx + fw * 0.5, y, 1, rh);     // 柱の面の折れ目
+      g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(sx, y + rh - 2, sw, 2);
+      if (rnd() < 0.55) lit(sx + 4, y + 2, sw - 6, rh * 0.6, rnd() < 0.8 ? '#eef5ff' : '#ffe2b0', 0.45 + rnd() * 0.35);
+    }
+    // 2 層のガラスの壁 (カーテンウォール)。curtain = 下の階 (下に白い腰壁)、curtain2 = 上の階 (上に張り出した庇の帯)
+    for (const kind of ['curtain', 'curtain2']) {
+      y = top(LOOK_ROWS[kind]);
+      const gy = kind === 'curtain' ? y + rh * 0.34 : y + rh * 0.2, gh = (kind === 'curtain' ? y + rh : y + rh) - gy;
+      glass(x0, gy, cw, gh, kind === 'curtain' ? '#9fb8c0' : '#b4c8cc', kind === 'curtain' ? '#7c98a6' : '#8eaab4');
+      g.fillStyle = 'rgba(255,255,255,.16)'; for (let k = 0; k < 4; k++) g.fillRect(x0 + k * cw / 4 + 6, gy, 10, gh);
+      g.fillStyle = '#d8dcdc'; for (let k = 0; k < 4; k++) g.fillRect(x0 + k * cw / 4, gy, 2.5, gh);
+      g.fillRect(x0, gy + gh * 0.5, cw, 2);
+      if (kind === 'curtain') {
+        g.fillStyle = 'rgba(0,0,0,.10)'; g.fillRect(x0, gy - 3, cw, 3);
+      } else {
+        g.fillStyle = '#c9cdcf'; g.fillRect(x0, y, cw, rh * 0.2);
+        g.fillStyle = 'rgba(255,255,255,.45)'; g.fillRect(x0, y, cw, 3);
+        g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x0, y + rh * 0.2, cw, 6); // 庇の下の影
+      }
+      for (let k = 0; k < 4; k++) if (rnd() < 0.7) lit(x0 + k * cw / 4 + 3, gy + 2, cw / 4 - 4, gh - 4, rnd() < 0.7 ? '#fff0cf' : '#e6f1ff', 0.45 + rnd() * 0.35);
+    }
     // 窓のない壁 (屋上の塔屋など)
     y = top(LOOK_ROWS.plain);
     g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
