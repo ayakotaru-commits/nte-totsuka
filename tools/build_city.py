@@ -671,6 +671,8 @@ def apply_appearance(buildings, areas):
             host = next((b for b in buildings if point_in(gt["at"], b["outer"])), None)
             if host:
                 ux, uz = gt["axis"]
+                nrm = math.hypot(ux, uz)   # 単位ベクトルにしてから使う (でないと座標変換でずれる)
+                ux, uz = ux / nrm, uz / nrm
                 ss = [x * ux + z * uz for x, z in host["outer"]]
                 ts = [-x * uz + z * ux for x, z in host["outer"]]
                 s0, s1, t0, t1 = min(ss), max(ss), min(ts), max(ts)

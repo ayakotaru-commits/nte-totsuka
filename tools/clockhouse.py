@@ -27,7 +27,12 @@ def main():
             print("clockhouse: site/gate not found")
             continue
         sg = site["gate"]
+        if sg.get("clockhouse") and sg.get("wide") == gt["wide"] and sg.get("passage") == gt["passage"] and sg.get("clear_h") == gt["clear_h"]:
+            print("clockhouse: すでに適用済み")   # 丸めの誤差 (1 cm) が重ならないように、2 回目以降は何もしない
+            continue
         ux, uz = sg["axis"]
+        nrm = (ux * ux + uz * uz) ** 0.5   # 軸が単位ベクトルでないと、座標変換のたびに数十 cm ずれる (座標が 1,400 m 付近のため)
+        ux, uz = ux / nrm, uz / nrm
         bm = {b["id"]: b for b in city["buildings"]}
         ids = [i for i in site["buildings"] if bm.get(i, {}).get("style") == "gate"]
         parts = {i.rsplit("_", 1)[1]: bm[i] for i in ids}
