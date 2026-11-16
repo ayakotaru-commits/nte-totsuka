@@ -16,15 +16,26 @@ export function buildShapes(props) {
     const RB = w.corr ? railB : w.dark ? darkRailB : railB, SB = w.dark ? creamB : slabB, T = w.dark ? 0.4 : 0.15;
     const inset = w.corr ? 0.1 : 0.4, D = w.corr ? 1.6 : w.dark ? 1.5 : 1.1;
     const Q = (t, d, y) => [x + ux * t + nx * d, y, z + uz * t + nz * d];
+    // 敷地の壁 (corr 以外) は、写真のように張り出しの深さを部屋ごと・階ごとにずらす (段々になる)。
+    // それ以外は壁全体で 1 枚
+    const stag = w.dark && !w.corr;
+    const BAY = 7.2, nseg = stag ? Math.max(1, Math.round((len - 2 * inset) / BAY)) : 1;
+    const DEPTHS = [1.3, 2.4, 3.3, 1.9, 2.8];
     for (let k = 1; k < w.floors; k++) {
       const y = w.y + k * w.floorH;
-      // 床スラブ
-      SB.quad(Q(inset, 0, y), Q(len - inset, 0, y), Q(len - inset, D, y), Q(inset, D, y), [0, 1, 0]);
-      SB.quad(Q(inset, 0, y - T), Q(len - inset, 0, y - T), Q(len - inset, D, y - T), Q(inset, D, y - T), [0, -1, 0]);
-      SB.quad(Q(inset, D, y - T), Q(len - inset, D, y - T), Q(len - inset, D, y), Q(inset, D, y), [nx, 0, nz]);
-      // 手すり壁 (前面 + 両端)
-      RB.quad(Q(inset, D, y), Q(len - inset, D, y), Q(len - inset, D, y + 1.1), Q(inset, D, y + 1.1), [nx, 0, nz]);
-      for (const t of [inset, len - inset]) RB.quad(Q(t, 0, y), Q(t, D, y), Q(t, D, y + 1.1), Q(t, 0, y + 1.1), [ux, 0, uz]);
+      for (let i = 0; i < nseg; i++) {
+        const t0 = inset + (len - 2 * inset) * i / nseg + (stag ? 0.5 : 0), t1 = inset + (len - 2 * inset) * (i + 1) / nseg - (stag ? 0.5 : 0);
+        const D2 = stag ? DEPTHS[(((k * 2 + i * 3 + Math.round(w.x + w.z)) % DEPTHS.length) + DEPTHS.length) % DEPTHS.length] : D;
+        const Q2 = (t, d, yy) => [x + ux * t + nx * d, yy, z + uz * t + nz * d];
+        // 床スラブ
+        SB.quad(Q2(t0, 0, y), Q2(t1, 0, y), Q2(t1, D2, y), Q2(t0, D2, y), [0, 1, 0]);
+        SB.quad(Q2(t0, 0, y - T), Q2(t1, 0, y - T), Q2(t1, D2, y - T), Q2(t0, D2, y - T), [0, -1, 0]);
+        SB.quad(Q2(t0, D2, y - T), Q2(t1, D2, y - T), Q2(t1, D2, y), Q2(t0, D2, y), [nx, 0, nz]);
+        if (stag) for (const t of [t0, t1]) SB.quad(Q2(t, 0, y - T), Q2(t, D2, y - T), Q2(t, D2, y), Q2(t, 0, y), [ux, 0, uz]);
+        // 手すり壁 (前面 + 両端)
+        RB.quad(Q2(t0, D2, y), Q2(t1, D2, y), Q2(t1, D2, y + 1.1), Q2(t0, D2, y + 1.1), [nx, 0, nz]);
+        for (const t of [t0, t1]) RB.quad(Q2(t, 0, y), Q2(t, D2, y), Q2(t, D2, y + 1.1), Q2(t, 0, y + 1.1), [ux, 0, uz]);
+      }
     }
   }
   const slabs = new THREE.Mesh(slabB.geometry(), new THREE.MeshStandardMaterial({ color: '#d9d6cf', roughness: 0.9 }));
