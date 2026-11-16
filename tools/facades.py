@@ -7,7 +7,9 @@
   3. build_props.py が data/facades.json を読み、判定のある壁はそれに従ってベランダを置く (無い壁は今までの決まり)
 
 使い方:
-  python tools/facades.py sheet [x0,z0,x1,z1] [--max 60]   一覧画像を data/raw/mapillary/sheets/ に作る (壁の一覧は walls.json)
+  python tools/facades.py sheet [x0,z0,x1,z1] [--not x0,z0,x1,z1] [--max 60]
+                                                           一覧画像を data/raw/mapillary/sheets/ に作る (壁の一覧は walls.json)。
+                                                           判定済みの壁と --not の範囲 (前に見た範囲など) は除く
   python tools/facades.py label "0:b 1:w 2:? ..."            一覧の番号に判定を付けて data/facades.json に足す (同じ壁は上書き)
 写真は data/raw/mapillary/ (mapillary_walls.py fetch で取る) にあるものだけを使う。numpy と Pillow が必要。
 """
@@ -30,7 +32,7 @@ TILE = (320, 240)
 PER_SHEET = 12
 
 
-def candidates(city, area):
+def candidates(city, area, skip=None):
     for b in city["buildings"]:
         if b.get("part") or b.get("look") or b.get("style") not in STYLES or b.get("src") == "appearance":
             continue
@@ -39,6 +41,8 @@ def candidates(city, area):
         xs, zs = [q[0] for q in b["outer"]], [q[1] for q in b["outer"]]
         cx, cz = sum(xs) / len(xs), sum(zs) / len(zs)
         if area and not (area[0] <= cx <= area[2] and area[1] <= cz <= area[3]):
+            continue
+        if skip and skip[0] <= cx <= skip[2] and skip[1] <= cz <= skip[3]:
             continue
         yield b, (min(xs), min(zs), max(xs), max(zs))
 
@@ -65,7 +69,7 @@ def wall_grid(b, i, step=0.5):
     return P, edge, (nx, nz), L, (x1 + ux * L / 2, z1 + uz * L / 2)
 
 
-def sheet(area, limit):
+def sheet(area, limit, skip=None):
     from PIL import Image, ImageDraw
     city = json.loads(M.CITY.read_text(encoding="utf-8"))
     plan = json.loads(M.PLAN.read_text())
@@ -74,7 +78,8 @@ def sheet(area, limit):
     surf = M.Surface() if M.DSM_BIN.exists() else None
     occ = M.Occluders(city["buildings"], json.loads(M.PROPS.read_text()).get("trees", []), H, surf)
     walls, n_b = [], 0
-    for b, box in candidates(city, area):
+    done = json.loads(LABELS.read_text(encoding="utf-8"))["walls"] if LABELS.exists() else []
+    for b, box in candidates(city, area, skip):
         if b["id"] not in plan:
             continue
         got = False
@@ -82,6 +87,8 @@ def sheet(area, limit):
             P, edge, (nx, nz), L, mid = wall_grid(b, i)
             if L < MIN_LEN or not len(P):
                 continue
+            if any(math.hypot(r["x"] - mid[0], r["z"] - mid[1]) < 1.5 and r["nx"] * nx + r["nz"] * nz > 0.9 for r in done):
+                continue  # 判定済み
             if surf is not None:  # その高さに建物があること
                 inner = surf(P[:, 0] - nx * 0.9, P[:, 2] - nz * 0.9)
                 P = P[np.nan_to_num(inner, nan=-1e9) >= P[:, 1] - 0.6]
@@ -168,9 +175,11 @@ def label(spec):
 def main():
     a = sys.argv[1:]
     if a[:1] == ["sheet"]:
-        area = next((tuple(float(v) for v in x.split(",")) for x in a[1:] if x.count(",") == 3), None)
+        box = lambda x: tuple(float(v) for v in x.split(","))
+        skip = box(a[a.index("--not") + 1]) if "--not" in a else None
+        area = next((box(x) for i, x in enumerate(a[1:], 1) if x.count(",") == 3 and a[i - 1] != "--not"), None)
         limit = int(a[a.index("--max") + 1]) if "--max" in a else 60
-        sheet(area, limit)
+        sheet(area, limit, skip)
     elif a[:1] == ["label"]:
         label(" ".join(a[1:]))
     else:
