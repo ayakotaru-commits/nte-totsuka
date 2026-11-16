@@ -67,34 +67,46 @@ export function buildSiteExtras({ site, group }) {
     group.add(disc, f);
   }
 
-  // ---------- エントランス棟の正面 (アーチ窓・赤い扉・上のバルコニー手すり) ----------
+  // ---------- エントランス棟の正面 (路上写真 2025-05 より: 白い石の柱の間に高いアーチ窓が 4 つと中央のアーチ扉、
+  //            黒いガラスの庇、屋根の上の円形の時計、紺灰色のスレート屋根とアーチ形のドーマー窓) ----------
   const hl = site.hall;
   if (hl) {
     const L = hl.width, H = hl.height, nx = Math.sin(hl.yaw), nz = Math.cos(hl.yaw);
-    const draw = (lit) => canvasTexture(512, Math.round(512 * H / L), (g, W, Hh) => {
+    const draw = (lit) => canvasTexture(1024, Math.round(1024 * H / L), (g, W, Hh) => {
       g.fillStyle = lit ? '#000' : hl.color; g.fillRect(0, 0, W, Hh);
-      const px = W / L, floorY = Hh * (1 - 4.2 / H);
-      if (!lit) {
-        g.fillStyle = '#f4efe6'; g.fillRect(0, floorY - 10, W, 12);          // 2階の床の帯
-        g.fillStyle = '#3b4148';                                          // 2階テラスの手すり
-        for (let x = 6; x < W; x += 9) g.fillRect(x, floorY - 46, 2, 36);
-        g.fillRect(0, floorY - 48, W, 4);
-      }
-      // 1階: アーチ窓 x2 + 中央のアーチの扉
-      const unit = [L * 0.2, L * 0.5, L * 0.8];
-      unit.forEach((ux0, k) => {
-        const cx = ux0 * px, ww = (k === 1 ? 2.4 : 2.0) * px, top = Hh - 3.6 * Hh / H, bottom = Hh - (k === 1 ? 0 : 0.6 * Hh / H);
-        g.beginPath();
-        g.moveTo(cx - ww / 2, bottom); g.lineTo(cx - ww / 2, top + ww / 2);
+      const px = W / L, my = Hh / H;                     // 1 m あたりの画素
+      const arch = (cx, ww, top, bottom, fill, rim) => {
+        g.beginPath(); g.moveTo(cx - ww / 2, bottom); g.lineTo(cx - ww / 2, top + ww / 2);
         g.arc(cx, top + ww / 2, ww / 2, Math.PI, 0); g.lineTo(cx + ww / 2, bottom); g.closePath();
-        if (lit) { g.fillStyle = '#ffd9a0'; g.fill(); return; }
-        g.fillStyle = '#f7f3ec'; g.lineWidth = 8; g.strokeStyle = '#f7f3ec'; g.stroke();
-        g.fillStyle = k === 1 ? '#6b2620' : '#5f7282'; g.fill();
-        if (k === 1) { g.fillStyle = '#c9a75a'; g.fillRect(cx - 3, top + ww * 0.9, 6, 30); g.fillRect(cx - 1, top + ww / 2, 2, bottom - top - ww / 2); }
-        else { g.strokeStyle = '#e8e2d6'; g.lineWidth = 3; g.beginPath(); g.moveTo(cx, top); g.lineTo(cx, bottom); g.stroke(); }
+        if (rim) { g.lineWidth = 0.22 * px; g.strokeStyle = rim; g.stroke(); }
+        g.fillStyle = fill; g.fill();
+      };
+      const xs = [0.1, 0.3, 0.5, 0.7, 0.9].map(u => u * L * px);
+      const top = Hh - 4.4 * my, bottom = Hh, ww = 1.7 * px;
+      if (!lit) {
+        // 上の帯: 軒のまわりの濃い線と小窓 (2 階)
+        g.fillStyle = '#4b4137'; g.fillRect(0, Hh * 0.22, W, 0.18 * my);
+        g.fillStyle = '#f1ead9'; g.fillRect(0, Hh * 0.22 + 0.18 * my, W, 0.3 * my);
+        g.fillStyle = '#4b4137'; g.fillRect(0, Hh - 5.2 * my, W, 0.14 * my);
+        // 白い石の柱 (アーチ窓の間と両端)
+        g.fillStyle = '#f2ecdf';
+        for (const u of [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]) g.fillRect(u * L * px - 0.4 * px, Hh - 5.0 * my, 0.8 * px, 5.0 * my);
+        g.fillStyle = 'rgba(0,0,0,.10)'; for (const u of [0.2, 0.4, 0.6, 0.8]) g.fillRect(u * L * px + 0.28 * px, Hh - 5.0 * my, 3, 5.0 * my);
+      }
+      xs.forEach((cx, k) => {
+        if (lit) { arch(cx, ww, top, bottom, '#ffd9a0'); return; }
+        const door = k === 2;
+        arch(cx, door ? 2.0 * px : ww, top, bottom, door ? '#5b2a22' : '#2f3a43', '#f4eee1');
+        // 窓の桟 (縦と、アーチの下の横)
+        g.strokeStyle = door ? '#c9a75a' : '#7d8a94'; g.lineWidth = 3;
+        g.beginPath(); g.moveTo(cx, top + ww * 0.4); g.lineTo(cx, bottom); g.stroke();
+        g.beginPath(); g.moveTo(cx - ww / 2, top + ww / 2 + 0.2 * my); g.lineTo(cx + ww / 2, top + ww / 2 + 0.2 * my); g.stroke();
+        if (!door) { g.fillStyle = 'rgba(180,200,215,.18)'; g.fillRect(cx - ww / 2 + 3, top + ww / 2, ww - 6, bottom - top - ww / 2); }
+        // アーチの上の飾り (小さな持ち送り)
+        g.fillStyle = '#d9c9a6'; g.fillRect(cx - 0.18 * px, top - 0.55 * my, 0.36 * px, 0.4 * my);
       });
-      // 2階: 小さな窓
-      if (!lit) for (const ux0 of unit) { g.fillStyle = '#6d8090'; g.fillRect(ux0 * px - 0.6 * px, Hh * (1 - 6.3 / H), 1.2 * px, 1.4 * Hh / H); }
+      // 壁灯
+      if (!lit) { g.fillStyle = '#26282b'; for (const u of [0.2, 0.4, 0.6, 0.8]) g.fillRect(u * L * px - 0.1 * px, Hh - 3.3 * my, 0.2 * px, 1.0 * my); }
     });
     const tex = draw(false), lit = draw(true);
     const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: lit, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.8 });
@@ -104,11 +116,79 @@ export function buildSiteExtras({ site, group }) {
     plane.receiveShadow = true;
     group.add(plane);
     group.userData.emissive = (group.userData.emissive || []).concat(m);
-    // 庇 (入口の上の小さな屋根)
-    const canopy = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.18, 1.6), stone);
-    canopy.position.set(hl.x + nx * 0.8, hl.y + 3.9, hl.z + nz * 0.8);
-    canopy.rotation.y = hl.yaw;
-    group.add(shadow(canopy));
+    const here = new THREE.Group();                       // 正面の中心を原点に、+z が外向き
+    here.position.set(hl.x, hl.y, hl.z);
+    here.rotation.y = hl.yaw;
+    group.add(here);
+    // 黒いガラスの庇 (入口の上。前に傾けて、細い腕で吊る)
+    const glassM = new THREE.MeshStandardMaterial({ color: '#1c2227', roughness: 0.25, metalness: 0.6, transparent: true, opacity: 0.88 });
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.1, 2.0), glassM);
+    canopy.position.set(0, 4.15, 1.0); canopy.rotation.x = 0.16;
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.16, 0.12), new THREE.MeshStandardMaterial({ color: '#15181b', roughness: 0.5 }));
+    rim.position.set(0, 3.9, 2.0);
+    here.add(shadow(canopy), rim);
+    for (const sx of [-2.1, 2.1]) {
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 2.0), new THREE.MeshStandardMaterial({ color: '#15181b' }));
+      arm.position.set(sx, 4.5, 1.0); arm.rotation.x = 0.22; here.add(arm);
+    }
+    // 紺灰色のスレート屋根 (手前に傾いた面) と、アーチ形のドーマー窓
+    const slate = new THREE.MeshStandardMaterial({ color: '#4d535c', roughness: 0.7, side: THREE.DoubleSide });
+    const roofP = new THREE.Mesh(new THREE.PlaneGeometry(L + 0.8, 3.0), slate);
+    roofP.position.set(0, H + 1.05, 0.25); roofP.rotation.x = -0.9; roofP.castShadow = true;
+    here.add(roofP);
+    for (const u of [0.18, 0.34, 0.66, 0.82]) {
+      const dm = new THREE.Group(); dm.position.set((u - 0.5) * L, H + 0.35, 0.35);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.1, 0.7), new THREE.MeshStandardMaterial({ color: '#e0d0ac', roughness: 0.85 }));
+      box.position.y = 0.55;
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.8), new THREE.MeshStandardMaterial({ map: canvasTexture(64, 72, (g, W, Hh) => {
+        g.fillStyle = '#2f3a43'; g.beginPath(); g.moveTo(8, Hh); g.lineTo(8, 24); g.arc(W / 2, 24, W / 2 - 8, Math.PI, 0); g.lineTo(W - 8, Hh); g.fill(); }), transparent: true }));
+      win.position.set(0, 0.55, 0.36);
+      dm.add(shadow(box), win); here.add(dm);
+    }
+    // 屋根の上の円形の時計 (クリーム色の半円の枠 + 黒い文字盤)
+    const clockBack = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.6, 32).rotateX(Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#e3d3ae', roughness: 0.85 }));
+    clockBack.position.set(0, H + 2.6, -0.3);
+    const clockBase = new THREE.Mesh(new THREE.BoxGeometry(4.0, 2.4, 0.6), new THREE.MeshStandardMaterial({ color: '#e3d3ae', roughness: 0.85 }));
+    clockBase.position.set(0, H + 1.2, -0.3);
+    const dial = new THREE.Mesh(new THREE.CircleGeometry(1.45, 32), new THREE.MeshStandardMaterial({ map: canvasTexture(256, 256, (g, W) => {
+      g.fillStyle = '#1b1e22'; g.beginPath(); g.arc(W / 2, W / 2, W / 2, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = '#d9d3c4'; g.lineWidth = 6;
+      for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; g.beginPath(); g.moveTo(W / 2 + Math.sin(a) * W * 0.4, W / 2 - Math.cos(a) * W * 0.4); g.lineTo(W / 2 + Math.sin(a) * W * 0.46, W / 2 - Math.cos(a) * W * 0.46); g.stroke(); }
+      g.lineWidth = 9; g.beginPath(); g.moveTo(W / 2, W / 2); g.lineTo(W / 2 + W * 0.2, W / 2 + W * 0.05); g.stroke();
+      g.lineWidth = 6; g.beginPath(); g.moveTo(W / 2, W / 2); g.lineTo(W / 2 - W * 0.05, W / 2 - W * 0.34); g.stroke();
+    }), roughness: 0.5 }));
+    dial.position.set(0, H + 2.6, 0.02);
+    here.add(shadow(clockBack), shadow(clockBase), dial);
+  }
+
+  // ---------- 正面の車寄せ: レンガ色のタイル・丸い石の車止め・白い彫像 ----------
+  const ct = site.court;
+  if (ct) {
+    const tile = canvasTexture(256, 256, (g, W) => {
+      g.fillStyle = '#c99d86'; g.fillRect(0, 0, W, W);
+      for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+        const off = r % 2 ? W / 16 : 0;
+        g.fillStyle = (r * 3 + c * 5) % 7 < 2 ? '#bb8e78' : '#d3a994';
+        g.fillRect(c * W / 8 + off + 1, r * W / 8 + 1, W / 8 - 2, W / 8 - 2);
+      }
+    });
+    tile.wrapS = tile.wrapT = THREE.RepeatWrapping; tile.repeat.set(ct.w / 3, ct.d / 3);
+    const geo = new THREE.PlaneGeometry(ct.w, ct.d, Math.ceil(ct.w / 2), Math.ceil(ct.d / 2)).rotateX(-Math.PI / 2);
+    geo.rotateY(ct.yaw); geo.translate(ct.x, 0.08, ct.z);
+    const pave = new THREE.Mesh(drape(geo, 1.0), new THREE.MeshStandardMaterial({ map: tile, roughness: 0.85 }));
+    pave.receiveShadow = true;
+    group.add(pave);
+    const ball = new THREE.SphereGeometry(0.34, 14, 10);
+    const ballM = new THREE.MeshStandardMaterial({ color: '#c9c3b6', roughness: 0.8 });
+    for (const [bx, bz, by] of ct.bollards) { const m = shadow(new THREE.Mesh(ball, ballM)); m.position.set(bx, by + 0.3, bz); m.scale.y = 0.85; group.add(m); }
+    const st = ct.statue, sg = new THREE.Group();
+    sg.position.set(st.x, st.y, st.z);
+    const white = new THREE.MeshStandardMaterial({ color: '#ece9e1', roughness: 0.75 });
+    sg.add(shadow(new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 1.8).translate(0, 0.25, 0), stone)));
+    sg.add(shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 0.7, 12).translate(0, 0.85, 0), stone)));
+    sg.add(shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.38, 1.3, 12).translate(0, 1.85, 0), white)));
+    sg.add(shadow(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10).translate(0, 2.65, 0), white)));
+    group.add(sg);
   }
 
   // ---------- 屋上の塔 (八角形の胴 + グレーのドーム + 尖塔) ----------

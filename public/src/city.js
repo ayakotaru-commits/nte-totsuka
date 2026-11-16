@@ -141,7 +141,7 @@ function facadeTextures(type) {
 
 // ---- ランドマークの外壁 (city.json の looks。tools/landmarks.py が設定) ----
 // テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
-const LOOK_ROWS = { shop: 0, panel: 1, screen: 2, parking: 3, glass: 4, plain: 5, ribbon: 6, screen2: 7, open: 8 };
+const LOOK_ROWS = { shop: 0, panel: 1, screen: 2, parking: 3, glass: 4, plain: 5, ribbon: 6, screen2: 7, open: 8, shutter: 9, band: 10, louver: 11 };
 const LOOK_NR = 16, LOOK_NB = 8, LOOK_BAY = 6; // 段の数 (テクスチャは縦長)、横のベイ数、1 ベイの幅 (m)
 function lookTextures(L) {
   const S = 1024, SH = 2048, cw = S / LOOK_NB, rh = SH / LOOK_NR;
@@ -227,6 +227,30 @@ function lookTextures(L) {
     g.fillStyle = L.wall; g.fillRect(x0, y + 30, 10, rh - 30);
     g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x0, y + 28, cw, 2);
     lit(x0 + 10, y + 30, cw - 10, rh - 30, '#fff0cf', 0.55);
+    // 付属棟 (グランシティの道路側): クリーム色の壁に横の目地、上に濃い茶の縁。shutter は灰色のシャッター 2 枚
+    for (const kind of ['band', 'shutter']) {
+      y = top(LOOK_ROWS[kind]);
+      g.fillStyle = 'rgba(0,0,0,.10)';
+      for (let k = 1; k < 6; k++) g.fillRect(x0, y + 14 + k * (rh - 14) / 6, cw, 1.5);
+      g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(x0, y + 14, cw, rh - 14);
+      g.fillStyle = L.accent; g.fillRect(x0, y, cw, 12);
+      g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(x0, y + 12, cw, 2);
+      if (kind === 'shutter') {
+        for (const sx of [6, 66]) {
+          g.fillStyle = '#6d7276'; g.fillRect(x0 + sx, y + 30, 56, rh - 30);
+          g.fillStyle = 'rgba(0,0,0,.28)'; for (let k = 0; k < rh - 30; k += 6) g.fillRect(x0 + sx, y + 30 + k, 56, 1.5);
+          g.fillStyle = '#4c5256'; g.fillRect(x0 + sx - 3, y + 26, 62, 5);
+        }
+      }
+    }
+    // 立体駐車場: 灰緑の金属パネルを横に張った面と、柱の見える暗い開口を上下に重ねる
+    y = top(LOOK_ROWS.louver);
+    g.fillStyle = L.accent; g.fillRect(x0, y, cw, rh);
+    glass(x0, y + 8, cw, rh * 0.34, '#2a2d31', '#454a50');
+    g.fillStyle = '#7e8387'; g.fillRect(x0 + cw / 2 - 3, y + 8, 6, rh * 0.34);
+    g.fillStyle = L.wall; g.fillRect(x0, y + rh * 0.42 + 8, cw, rh * 0.58 - 8);
+    g.fillStyle = 'rgba(0,0,0,.18)'; for (let k = 0; k < 3; k++) g.fillRect(x0, y + rh * 0.42 + 18 + k * (rh * 0.58 - 24) / 3, cw, 1.5);
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0, y, 2, rh); g.fillRect(x0, y + rh * 0.42 + 6, cw, 3);
     // 窓のない壁 (屋上の塔屋など)
     y = top(LOOK_ROWS.plain);
     g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
@@ -252,7 +276,7 @@ function addLookWalls(gb, b, L, y0, y1) {
       const iv = [];
       if (!isHole) for (const d of L.doors || []) {
         const t = (d[0] - a[0]) * ux + (d[1] - a[1]) * uz, off = Math.abs((d[0] - a[0]) * uz - (d[1] - a[1]) * ux);
-        if (off <= 8 && t > -4 && t < len + 4) iv.push([Math.max(0, t - dw), Math.min(len, t + dw)]);
+        if (off <= (L.door_off || 8) && t > -4 && t < len + 4) iv.push([Math.max(0, t - dw), Math.min(len, t + dw)]);
       }
       const cuts = [...new Set([0, len, ...iv.flat()])].sort((p, q) => p - q);
       for (let j = 0; j + 1 < cuts.length; j++) {
