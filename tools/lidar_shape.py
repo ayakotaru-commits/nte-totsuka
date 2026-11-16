@@ -862,6 +862,12 @@ def main():
     import landmarks  # ランドマークの外観は上の段にも付くので、いったん外して最後に付け直す
     city = json.loads(CITY.read_text(encoding="utf-8"))
     landmarks.undo(city["buildings"], city.get("pois"))
+    try:  # 路上写真の壁の色 (mapillary_walls.py) も上の段に付くので、外して最後に付け直す
+        import mapillary_walls
+    except ImportError:
+        mapillary_walls = None
+    if mapillary_walls:
+        mapillary_walls.undo(city["buildings"])
     city["buildings"] = restore(city["buildings"])
     if "--undo" in sys.argv:
         city["looks"] = landmarks.apply(city["buildings"], city.get("roads"), city.get("pois"))
@@ -876,6 +882,8 @@ def main():
         if note not in city.get("attribution", ""):
             city["attribution"] = city.get("attribution", "") + " / " + note
         city["looks"] = landmarks.apply(city["buildings"], city.get("roads"), city.get("pois"))
+    if mapillary_walls and mapillary_walls.PLAN.exists():
+        mapillary_walls.apply(city)
     CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"-> {CITY} ({CITY.stat().st_size // 1024} KB, buildings={len(city['buildings'])})")
     import build_props  # 建物の形が変わると小物の置ける場所も変わるので、props.json も作り直す

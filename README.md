@@ -95,6 +95,7 @@ python tools/fetch_gsi.py
 python tools/fetch_dem.py      # 地形 (標高)。build_city.py より先に実行
 python tools/fetch_lidar.py    # 点群 (建物の形)。build_city.py より先に実行
 python tools/fetch_ortho.py    # 航空写真 (屋根の色)。build_city.py より先に実行。Pillow が必要
+python tools/mapillary_walls.py fetch   # 路上写真 (壁の色)。任意。Mapillary のトークンと numpy・Pillow が必要 (約 10 分・約 420MB)
 python tools/build_city.py     # 点群と航空写真があれば lidar_cover.py も実行する。最後に build_props.py も実行する
 ```
 `python tools/lidar_shape.py`（`--undo` も）で `city.json` を書き換えたときも、続けて `build_props.py` が実行される。
@@ -127,6 +128,7 @@ python tools/lidar_shape.py     # (build_city.py を通さず) 今の city.json 
 - **高さ**: PLATEAU の値を点群の値で置き換える（元の値は `lidar.h0`）
 - 点群に写っていない建物（測量後の新築）、外観設定（`appearance.json`）の建物、修正モードで高さを変えた建物（`fixed`）、車庫は元のまま
 - **屋根の色**: 航空写真（同じ配布元のオルソ画像, 25cm）の、輪郭の中の画素から屋根の色を読んで `rc` に入れる（段ごと。上の段が載っている所は除く）。輪郭の線から 0.75m 以内と、影（暗い側 35%）・てかりや設備（明るい側 15%）を除いた中央値。家の屋根が緑のときは木がかぶさっているとみなして付けない。写真そのものはゲームに貼らない。ゲーム側（`city.js` の `roofColor`）で、白っぽく写る分を少し締めて使う
+- **壁の色**: Mapillary の路上写真（`tools/mapillary_walls.py`）。写真の位置・向き・画角から、壁の上の点（2 m より上、1.5 m × 1.2 m 間隔）が写真のどこに写るかを計算し、その色を読む。手前の建物・点群の木・地形（土手・擁壁）で隠れる点、35 m より遠い点、斜めすぎる面は使わない。建物ごとによく見える写真を 5 枚まで選び（2020 年以降を優先、同じ撮影から 2 枚まで）、暗い所（窓・影）・植木の緑・空を除いた明るめの所の平均を、写真どうしの中央値にする。2 枚以上・40 点以上でまとまった建物だけに付ける。写真は露出や日陰で暗く写るので、明るさは全建物の中の順位を外壁らしい範囲（HSL の明度 0.50〜0.93）に当てはめ直し、淡い青・緑・紫のかぶりは無彩色に寄せる（`calibrate`）。上の段も同じ色。ランドマーク・敷地の外観を設定した建物は対象外。`python tools/mapillary_walls.py`（`--undo` で戻す、`--debug <建物 id>` で写真に点を打った確認用の画像）。写真は `data/raw/mapillary/` に置くだけで、ゲームには貼らない
 - 標準ライブラリだけで動く（numpy があれば取得が速い）。航空写真の取得（`fetch_ortho.py`）だけは JPEG を読むため Pillow が必要
 
 ### 空き地を埋める（点群と航空写真から自動で）
@@ -396,3 +398,4 @@ python tools/terrain_bridges.py --undo   # 元に戻す
 - 建物の輪郭: 国土地理院ベクトルタイル／標高: 国土地理院 標高タイル
 - 建物データ: 国土交通省 Project PLATEAU 3D都市モデル 横浜市 (2024年度)
 - 建物の形・屋根の色: 神奈川県 令和3年度 横浜南部、湘南、横須賀三浦 3次元点群データ（点群・オルソ画像）(CC BY 4.0, G空間情報センター)
+- 壁の色: Mapillary の路上写真から読んだ値 (CC BY-SA 4.0)

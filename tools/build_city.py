@@ -1013,6 +1013,16 @@ def main():
     print(f"buildings={len(buildings)} roads={len(roads)} rails={len(rails)} water={len(waterways)} areas={len(areas)} pois={len(pois)} street_nodes={len(street_nodes)}")
     print(f"-> {DST} ({DST.stat().st_size // 1024} KB)")
 
+    # Mapillary の路上写真から読んだ壁の色 (mapillary_walls.py fetch で写真を取ってあるときだけ)
+    try:
+        import mapillary_walls
+        if mapillary_walls.PLAN.exists():
+            city = json.loads(DST.read_text(encoding="utf-8"))
+            mapillary_walls.apply(city)
+            DST.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    except ImportError:   # numpy・Pillow が無い
+        pass
+
     # 点群と航空写真があれば、地面の種類・木・駐車場・建物データに無い建物も作る (lidar_cover.py。最後に build_props.py も実行する)
     try:
         import lidar_cover
