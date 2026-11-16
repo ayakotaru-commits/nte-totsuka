@@ -60,7 +60,8 @@ export class Minimap {
     return [(dx * c - dz * s) * ZOOM, (dx * s + dz * c) * ZOOM];
   }
 
-  update(px, pz, yaw, facing) {
+  // others: ほかのプレイヤー ({ x, z, pvp } の並び。マルチプレイのときだけ)
+  update(px, pz, yaw, facing, others = null) {
     const c = this.ctx, W = this.canvas.width, H = this.canvas.height, R = W / 2, B = this.B;
     c.clearRect(0, 0, W, H);
     c.save();
@@ -83,6 +84,14 @@ export class Minimap {
       c.beginPath(); c.moveTo(0, -9); c.lineTo(7, 0); c.lineTo(0, 9); c.lineTo(-7, 0); c.closePath();
       c.fill(); c.stroke();
       c.restore();
+    }
+
+    // ほかのプレイヤー (戦闘オンの人は赤)
+    for (const o of others || []) {
+      const [sx, sy] = this.toScreen(o.x - px, o.z - pz, yaw);
+      if (Math.hypot(sx, sy) > R - 6) continue;
+      c.fillStyle = o.pvp ? '#e5484d' : '#2fbf71'; c.strokeStyle = '#fff'; c.lineWidth = 2;
+      c.beginPath(); c.arc(R + sx, R + sy, 5, 0, Math.PI * 2); c.fill(); c.stroke();
     }
 
     // プレイヤー矢印

@@ -25,12 +25,14 @@ function gradientMap() {
   return t;
 }
 
-export function makeCharacter() {
+// opt.vrm = false で VRM を読まない (ほかのプレイヤー用。軽い組み立て式のまま)。opt.colors = { jacket, accent, hair } で服の色を変える
+export function makeCharacter(opt = {}) {
   const gm = gradientMap();
   // 暗所でも見えるよう、色の一部を自己発光させる (アニメ調の見え方)
   const toon = (c) => new THREE.MeshToonMaterial({ color: c, gradientMap: gm, emissive: new THREE.Color(c).multiplyScalar(0.22) });
+  const COL = { hair: '#3a2a36', jacket: '#26324d', accent: '#5fd3ff', ...opt.colors };
   const M = {
-    skin: toon('#f6d9c6'), hair: toon('#3a2a36'), jacket: toon('#26324d'), accent: toon('#5fd3ff'),
+    skin: toon('#f6d9c6'), hair: toon(COL.hair), jacket: toon(COL.jacket), accent: toon(COL.accent),
     shirt: toon('#f2f2f2'), pants: toon('#23252c'), shoe: toon('#f4f4f4'), eye: toon('#3a2e5a'),
     white: toon('#ffffff'),
   };
@@ -289,6 +291,7 @@ export function makeCharacter() {
 
   function actPose(act, Aa) {
     if (act.type === 'atk') return atkPose(act);
+    if (act.type === 'hurt' || act.type === 'down') return hitPose(act);
     const X = pose();
     const s = act.s, hy = IDLE_EXT + HIP_DROP;
     const leg = (th, kn, ft, h, k, side) => { X[th] = [-h, 0, side * 0.03]; X[kn] = [k, 0, 0]; X[ft] = [0.35, 0, 0]; };
@@ -324,6 +327,29 @@ export function makeCharacter() {
       X.shL = [mix(-0.5, -fw, sstep(0.05, 0.3, s)), 0, 0.08 + 0.72 * m]; X.elL = [-0.12, 0, 0]; X.haL = [0, 0, 0.3];
       X.shR = [-0.5 * m + 0.2, 0, -(0.35 + 0.95 * m)]; X.elR = [-0.5, 0, 0]; X.haR = [0, 0, -0.4];
       st.anchor = { w: sstep(0.1, 0.36, s) * (1 - sstep(0.6, 0.85, s)), y: act.ly + 0.06, hands: ['haL'], lim: 0.7 };
+    }
+    return X;
+  }
+  // 攻撃を受けたとき (act = { type: 'hurt' | 'down', s: 0〜1 })。hurt = のけぞる、down = 膝をついてうなだれる (倒された)
+  function hitPose(act) {
+    const X = pose(), s = act.s;
+    const leg = (th, kn, ft, h, k, side) => { X[th] = [-h, 0, side * 0.04]; X[kn] = [k, 0, 0]; X[ft] = [h - k, 0, 0]; };
+    if (act.type === 'hurt') {
+      const m = 1 - sstep(0.45, 1, s);
+      X.spine[0] = -0.22 * m; X.chest[0] = -0.3 * m; X.neck[0] = -0.12 * m; X.head[0] = -0.28 * m;
+      X.chest[1] = 0.25 * m;
+      X.shL = [-0.35 * m, 0, 0.2 + 0.75 * m]; X.shR = [0.3 * m, 0, -(0.2 + 0.6 * m)];
+      X.elL = [-0.7 * m - 0.1, 0, 0]; X.elR = [-0.5 * m - 0.1, 0, 0];
+      X.haL = [0, 0, 0.4]; X.haR = [0, 0, -0.4];
+      leg('thL', 'knL', 'ftL', 0.3 * m, 0.25 * m + 0.05, 1); leg('thR', 'knR', 'ftR', -0.35 * m, 0.3 * m + 0.05, -1);
+    } else {
+      const w = sstep(0, 1, s);
+      X.hips[0] = 0.1 * w; X.spine[0] = 0.4 * w; X.chest[0] = 0.45 * w; X.neck[0] = 0.25 * w; X.head[0] = 0.35 * w;
+      X.shL = [-1.0 * w, 0, 0.12]; X.shR = [-1.0 * w, 0, -0.12];
+      X.elL = [-0.25 * w, 0, 0]; X.elR = [-0.25 * w, 0, 0];
+      X.haL = [0, 0, 0.3]; X.haR = [0, 0, -0.3];
+      leg('thL', 'knL', 'ftL', 0.55 * w, 2.2 * w, 1); leg('thR', 'knR', 'ftR', 0.45 * w, 2.1 * w, -1);
+      X.ftL[0] = X.ftR[0] = 0.5 * w; // つま先を伸ばして、すねを地面につける
     }
     return X;
   }
@@ -627,7 +653,15 @@ export function makeCharacter() {
       console.warn('VRM を読み込めなかったので、組み立て式のキャラのままにします:', e);
     }
   }
-  const ready = loadVRM(new URL('../models/player.vrm', import.meta.url).href); // VRM の読み込み (有無にかかわらず) が済むと解決する
+  const ready = opt.vrm === false ? Promise.resolve() : loadVRM(new URL('../models/player.vrm', import.meta.url).href); // VRM の読み込み (有無にかかわらず) が済むと解決する
 
-  return { root, update, ready, bones: BONE };
+  // 片づけ (ほかのプレイヤーが居なくなったとき)
+  const dispose = () => {
+    fx.removeFromParent(); root.removeFromParent();
+    root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    for (const t of trails) t.geo.dispose();
+    for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
+    gm.dispose();
+  };
+  return { root, update, ready, bones: BONE, dispose };
 }
