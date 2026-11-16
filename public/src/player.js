@@ -6,9 +6,10 @@ import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
 import { STEPS, LAUNCH, SPIN, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE } from './attack.js';
 
-const R = 0.35;
+export const R = 0.35; // 体の半径 (m)
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
 export const ACT_ID = { atk: 1, vault: 2, climb: 3, hurt: 4, down: 5 }; // 動きの種類の番号 (通信用)
+const PUSH_RATE = 10; // 押し合いで離れる速さ (1/秒。重なりの約 6 割を 0.1 秒で戻す)
 const GRAVITY = 24, JUMP_V = 8.2, JUMP2_V = 7.6;
 
 export class Player {
@@ -157,6 +158,28 @@ export class Player {
       else { d[10] = r(a.s); d[11] = r(a.ly || 0); d[12] = r(a.lz || 0); }
     }
     return d;
+  }
+
+  // ほかのプレイヤーとの押し合い (net/index.js から毎コマ呼ぶ)。others = [{ x, y, z }]。
+  // かたい壁にはせず、重なった分を少しずつ押し離す (相手の位置は通信の遅れで少し過去なので、急に押し戻すとカクッとなる)。
+  // 動かすのは自分だけで、相手は相手の画面で同じように離れる。建物にめり込まないよう、最後に当たり判定をかける。
+  // パルクールの「障害物」には人を入れない (人を飛び越えようとはしない)
+  separate(others, dt) {
+    if (this.act || this.dead) return;
+    const MIN = R * 2, k = 1 - Math.exp(-PUSH_RATE * dt);
+    let mx = 0, mz = 0;
+    for (const o of others) {
+      if (Math.abs(o.y - this.pos.y) > 1.6) continue; // 上下に離れている (デッキの上と下など)
+      let dx = this.pos.x - o.x, dz = this.pos.z - o.z, d = Math.hypot(dx, dz);
+      if (d >= MIN) continue;
+      if (d < 1e-3) { dx = Math.sin(this.facing + Math.PI / 2); dz = Math.cos(this.facing + Math.PI / 2); d = 1; } // ぴったり重なった: 横へ
+      else { dx /= d; dz /= d; }
+      const over = MIN - Math.min(d, MIN);
+      mx += dx * over; mz += dz * over;
+    }
+    if (!mx && !mz) return;
+    this.pos.x += mx * k; this.pos.z += mz * k;
+    this.world.resolve(this.pos, R);
   }
 
   get armed() { return !!this.atk || this.armedT < SWORD_IDLE; }

@@ -9,7 +9,7 @@ import { Remotes, Sparks } from './remote.js';
 
 const $ = (id) => document.getElementById(id);
 
-export function startMultiplayer({ scene, player, respawn }) {
+export function startMultiplayer({ scene, player, respawn, bigmapOpen = () => false }) {
   const Q = new URLSearchParams(location.search);
   const base = Q.has('mp') ? Q.get('mp') : (Q.has('shot') ? '' : SERVER);
   if (!base || base === '0' || !/^wss?:\/\//.test(base)) return null;
@@ -115,6 +115,16 @@ export function startMultiplayer({ scene, player, respawn }) {
   };
   const toggleJoin = () => (status === 'idle' ? join() : leave());
   for (const [el, fn] of [[ui.join, join], [ui.leave, leave]]) el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); fn(); });
+  // 押し合いの相手: 画面に出ている人のうち、倒れていない人
+  const near = [];
+  const nearby = () => {
+    near.length = 0;
+    for (const r of remotes.map.values()) {
+      const s = r.buf.length && r.buf[r.buf.length - 1].d;
+      if (r.shown && s && s[9] !== 5 && Math.abs(r.x - player.pos.x) < 3 && Math.abs(r.z - player.pos.z) < 3) near.push(r); // s[9] = 動きの種類 (5 = 倒れている)
+    }
+    return near;
+  };
   const togglePvp = () => { if (status === 'on' && !player.dead) net.send({ t: 'pvp', on: !me.pvp }); };
   ui.pvp.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); togglePvp(); });
   ui.count.addEventListener('pointerdown', (e) => { e.stopPropagation(); listOpen = !listOpen; draw(); });
@@ -132,6 +142,7 @@ export function startMultiplayer({ scene, player, respawn }) {
       const now = performance.now();
       net.sendState(player.netState(), now);
       remotes.update(dt, now / 1000, player.pos.x, player.pos.z);
+      if (!bigmapOpen()) player.separate(nearby(), dt); // ほかの人と押し合う (重なったら少しずつ離れる)
       sparks.update(dt);
       if (player.dead) ui.down.lastChild.textContent = Math.max(0, Math.ceil(3 - (now / 1000 - me.downAt)));
     },

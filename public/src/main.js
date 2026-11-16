@@ -128,7 +128,7 @@ async function main() {
   }
 
   // マルチプレイ (サーバーが設定されているときだけ。net/config.js)
-  const mp = startMultiplayer({ scene, player, respawn });
+  const mp = startMultiplayer({ scene, player, respawn, bigmapOpen: () => bigmap.open });
 
   // ---- UI ----
   const overlay = $('overlay');

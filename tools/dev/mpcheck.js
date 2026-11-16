@@ -74,6 +74,14 @@ const until = async (cond, ms = 20000) => { const t = Date.now(); while (Date.no
   await until(async () => { a2 = await info(A); return Math.hypot(a2.others[0].x - b2.x, a2.others[0].z - b2.z) < 0.5; });
   ok(Math.hypot(b2.x - b.x, b2.z - b.z) > 5 && Math.hypot(a2.others[0].x - b2.x, a2.others[0].z - b2.z) < 0.5, `B が走ると A の画面でも動く (B は ${Math.hypot(b2.x - b.x, b2.z - b.z).toFixed(1)} m 進んだ)`);
 
+  // 押し合い: 同じ所に重ねて置くと、少しずつ離れる (戦闘オフのまま)
+  await A.evaluate(() => { window.__g.player.teleport(-300, 1432); });
+  await B.evaluate(() => { window.__g.player.teleport(-300.1, 1432); });
+  const gap = async () => { const p = await info(A), q = await info(B); return Math.hypot(p.x - q.x, p.z - q.z); };
+  const sep = await until(async () => (await gap()) > 0.6, 30000);
+  const g1 = await gap();
+  ok(sep && g1 < 1.5, `重なると押し合って離れる (間隔 ${g1.toFixed(2)} m。体の太さ 2 人分 = 0.70 m)`);
+
   // 戦闘オフのまま斬っても当たらない
   const face = async () => { await B.evaluate(() => { const g = window.__g; g.player.teleport(-300, 1433.6); }); await A.evaluate(() => { const g = window.__g; g.player.teleport(-300, 1432); g.player.facing = 0; }); await sleep(800); };
   const slash = async (n) => { for (let i = 0; i < n; i++) { await A.evaluate(() => window.__g.input.press('KeyJ')); await sleep(450); } };
