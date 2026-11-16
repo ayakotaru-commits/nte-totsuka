@@ -115,13 +115,22 @@ export function buildSiteExtras({ site, group }) {
       }
       // 中央: 通り抜ける開口 (透明に抜く。まわりに白い枠と要石)、または開口が無いときは赤い扉のアーチ
       const cx0 = X(0);
-      if (op && !lit) {
+      if (op) {
+        // ガラス扉 (奥はロビー。外から中庭は見えない): 白い枠・要石、赤茶の枠のガラス扉 2 組、上に店名の銘板
         const oh = op.h * my, ot = Hh - oh;
-        arch(cx0, (P0 + 0.9) * px, ot - 0.45 * my, bottom, '#f4eee1');
-        g.fillStyle = '#d9c9a6'; g.fillRect(cx0 - 0.3 * px, ot - 1.15 * my, 0.6 * px, 0.7 * my);
-        g.globalCompositeOperation = 'destination-out';
-        arch(cx0, P0 * px, ot, bottom, '#000');
-        g.globalCompositeOperation = 'source-over';
+        if (!lit) {
+          arch(cx0, (P0 + 0.9) * px, ot - 0.45 * my, bottom, '#f4eee1');
+          g.fillStyle = '#d9c9a6'; g.fillRect(cx0 - 0.3 * px, ot - 1.15 * my, 0.6 * px, 0.7 * my);
+          arch(cx0, P0 * px, ot, bottom, '#26323b');
+          g.strokeStyle = '#7a3a2c'; g.lineWidth = 0.14 * px;
+          g.beginPath(); g.moveTo(cx0, ot + P0 * px * 0.3); g.lineTo(cx0, bottom); g.stroke();
+          for (const sx of [-1, 1]) { g.strokeRect(cx0 + sx * P0 * px * 0.25 - P0 * px * 0.22, ot + 0.9 * my, P0 * px * 0.44, oh - 1.0 * my); }
+          g.strokeStyle = 'rgba(122,58,44,.7)'; g.lineWidth = 0.05 * px;
+          for (let k = 1; k < 4; k++) { g.beginPath(); g.moveTo(cx0 - P0 * px * 0.47, ot + 0.9 * my + k * (oh - 1.0 * my) / 4); g.lineTo(cx0 + P0 * px * 0.47, ot + 0.9 * my + k * (oh - 1.0 * my) / 4); g.stroke(); }
+          g.fillStyle = 'rgba(255,214,150,.30)'; g.fillRect(cx0 - P0 * px * 0.47, ot + 0.9 * my, P0 * px * 0.94, oh - 1.0 * my);
+        } else {
+          arch(cx0, P0 * px, ot, bottom, '#ffd9a0');
+        }
       } else if (!op) {
         arch(cx0, 2.0 * px, top, bottom, lit ? '#ffd9a0' : '#5b2a22', lit ? null : '#f4eee1');
       }
@@ -129,7 +138,7 @@ export function buildSiteExtras({ site, group }) {
       if (!lit) { g.fillStyle = '#26282b'; for (const c of centers) if (c > 0) g.fillRect(X(c) - (centers.indexOf(c) % 2 ? 0 : 0) + 1.1 * px, Hh - 3.3 * my, 0.2 * px, 1.0 * my); }
     });
     const tex = draw(false), lit = draw(true);
-    const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: lit, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.8, alphaTest: op ? 0.5 : 0 });
+    const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: lit, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.8, alphaTest: 0 });
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(L, H), m);
     plane.position.set(hl.x + nx * 0.04, hl.y + H / 2, hl.z + nz * 0.04);
     plane.rotation.y = hl.yaw;

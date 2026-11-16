@@ -290,6 +290,10 @@ def build_street_props(city, world, H, cx, cz, R, col):
     def at_gate(x, z):
         for g in gates:
             dx, dz = x - g["center"][0], z - g["center"][1]
+            if g.get("clockhouse"):
+                if abs(-dx * g["axis"][1] + dz * g["axis"][0]) < g["wide"] / 2 + 2.0 and -24 < dx * g["axis"][0] + dz * g["axis"][1] < g["length"] / 2 + 3:
+                    return True
+                continue
             if abs(-dx * g["axis"][1] + dz * g["axis"][0]) < g["passage"] / 2 + 1.0 and abs(dx * g["axis"][0] + dz * g["axis"][1]) < g["length"] / 2 + 15:
                 return True
         return False
@@ -749,6 +753,8 @@ def build_sites(city, world, H, col):
                     return False
                 dx, dz = x - gt["center"][0], z - gt["center"][1]
                 al, ac = dx * gt["axis"][0] + dz * gt["axis"][1], -dx * gt["axis"][1] + dz * gt["axis"][0]
+                if gt.get("clockhouse"):   # 車寄せの幅 (左右の塀の外側まで)・道路ぎわまで
+                    return abs(ac) < gt["wide"] / 2 + 1.0 and -22 < al < gt["length"] / 2
                 return abs(ac) < gt["passage"] / 2 + 0.8 and abs(al) < gt["length"] / 2 + 12
             ring, posts = site["outer"], []
             for i in range(len(ring)):
@@ -790,7 +796,7 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
             # 敷地の内側の面は、これまでどおり石のアーチ
             road = faces.pop(0)
             o["hall"] = {"x": road["x"], "z": road["z"], "y": road["y"], "yaw": r3(math.atan2(-ux, -uz)), "width": gt["wide"],
-                         "height": gt["h"], "color": gt.get("color") or "#e3d2b0", "opening": {"w": gt["passage"], "h": gt["clear_h"]}}
+                         "height": gt["h"], "color": gt.get("color") or "#e3d2b0", "opening": {"w": gt["passage"], "h": gt["clear_h"], "doors": True}}
         o["gate"] = {"width": gt["passage"], "clear_h": gt["clear_h"], "color": gt.get("color") or "#dcc6a0", "faces": faces}
 
     # ---------- 噴水のある円形広場 ----------
@@ -800,19 +806,20 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
         o["plaza"] = {"x": pz["at"][0], "z": pz["at"][1], "y": r2(y), "r": pz["r"]}
         col.add_circle(pz["at"][0], pz["at"][1], 1.35, y, 0.52)
 
-    def make_court(hx, hz, yw, L):
-        # 正面の車寄せ (路上写真より: ピンクがかったレンガ色のタイル、丸い石の車止めが 1 列、右端に白い彫像)。(hx, hz) = 正面の中心、yw = 外向き
+    def make_court(hx, hz, yw, L, depth=9.0):
+        # 正面の車寄せ (路上写真より: ピンクがかったレンガ色のタイル、丸い石の車止めが 1 列、右手前に白い彫像)。
+        # (hx, hz) = 正面の中心、yw = 外向き (道路の側)、L = 正面の幅 (左右の塀の間)、depth = 道路側へののび
         fx, fz, tx, tz = math.sin(yw), math.cos(yw), math.cos(yw), -math.sin(yw)
         at = lambda t, d: (hx + tx * t + fx * d, hz + tz * t + fz * d)
         bol = []
         for k in range(6):
-            bx, bz = at(-6.0 + k * 2.4, 8.0 + (k * 0.35 if k > 3 else 0))
+            bx, bz = at(-(L / 2 - 1.3) + k * (L - 2.6) / 5, depth - 2.2 + (0.3 if k > 3 else 0))
             by = H(bx, bz)
             bol.append([r2(bx), r2(bz), r2(by)])
             col.add_circle(bx, bz, 0.35, by, 0.6)
-        sx, sz = at(L / 2 + 2.5, 3.0)
-        cx, cz = at(0, 5.0)
-        o["court"] = {"x": r2(cx), "z": r2(cz), "y": r2(H(cx, cz)), "yaw": yw, "w": r3(L + 5), "d": 10.0, "bollards": bol,
+        sx, sz = at(L / 2 - 1.6, 2.4)
+        cx, cz = at(0, depth / 2)
+        o["court"] = {"x": r2(cx), "z": r2(cz), "y": r2(H(cx, cz)), "yaw": yw, "w": r3(L - 0.8), "d": depth, "bollards": bol,
                       "statue": {"x": r2(sx), "z": r2(sz), "y": r2(H(sx, sz))}}
         col.add_circle(sx, sz, 0.8, H(sx, sz), 2.0)
 
@@ -834,11 +841,9 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
         o["hall"] = {"x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(hallB.get("y") or 0), "yaw": r3(math.atan2(nx, nz)),
                      "width": r3(L), "height": hallB["h"], "color": hallB.get("color") or "#e3d2b0"}
         make_court(o["hall"]["x"], o["hall"]["z"], o["hall"]["yaw"], L)
-    elif site.get("gate", {}).get("clockhouse") and site["gate"].get("center"):
-        # 時計のある門: 車寄せは門の内側 (敷地の奥の向き) に置く
-        g0 = site["gate"]
-        gux, guz = g0["axis"]
-        make_court(g0["center"][0] + gux * (g0["length"] / 2 + 0.03), g0["center"][1] + guz * (g0["length"] / 2 + 0.03), math.atan2(gux, guz), g0["wide"])
+    elif site.get("gate", {}).get("clockhouse") and o.get("hall"):
+        # 時計の棟: 車寄せは棟の正面 (道路側) に置く。左右は塀
+        make_court(o["hall"]["x"], o["hall"]["z"], o["hall"]["yaw"], o["hall"]["width"])
 
     # ---------- 屋上の塔 ----------
     turrets = []

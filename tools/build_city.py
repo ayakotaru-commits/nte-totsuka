@@ -669,7 +669,15 @@ def apply_appearance(buildings, areas):
         if "gate" in st:
             gt = st["gate"]
             host = next((b for b in buildings if point_in(gt["at"], b["outer"])), None)
-            if host:
+            if host and gt.get("clockhouse"):
+                # 時計の棟 + 車寄せを囲む塀 (配置は tools/clockhouse.py の説明)
+                import clockhouse
+                parts, info = clockhouse.make_parts(host["id"], gt)
+                buildings.remove(host)
+                buildings.extend(parts)
+                ids = [i for i in ids if i != host["id"]] + [q["id"] for q in parts]
+                gt.update(info)
+            elif host:
                 ux, uz = gt["axis"]
                 nrm = math.hypot(ux, uz)   # 単位ベクトルにしてから使う (でないと座標変換でずれる)
                 ux, uz = ux / nrm, uz / nrm
@@ -677,8 +685,6 @@ def apply_appearance(buildings, areas):
                 ts = [-x * uz + z * ux for x, z in host["outer"]]
                 s0, s1, t0, t1 = min(ss), max(ss), min(ts), max(ts)
                 tc, w = (t0 + t1) / 2, gt["passage"] / 2
-                if gt.get("wide"):   # clockhouse: 時計のある門の建物は、正面を広げる (写真では約 13 m)
-                    t0, t1 = tc - gt["wide"] / 2, tc + gt["wide"] / 2
                 def rect(a0, a1, b0, b1):
                     return [[round(sv * ux - tv * uz, 2), round(sv * uz + tv * ux, 2)] for sv, tv in ((a0, b0), (a1, b0), (a1, b1), (a0, b1))]
                 common = {"style": "gate", "facade": "euro", "color": gt.get("color", "#dcc6a0"), "floors": 2, "mansard": None}
@@ -692,7 +698,6 @@ def apply_appearance(buildings, areas):
                 ids = [i for i in ids if i != host["id"]] + [q["id"] for q in parts]
                 gt["center"] = [round((s0 + s1) / 2 * ux - tc * uz, 2), round((s0 + s1) / 2 * uz + tc * ux, 2)]
                 gt["length"], gt["h"] = round(s1 - s0, 2), host["h"]
-                gt["wide"] = round(t1 - t0, 2)
         # エントランス棟
         if "hall" in st:
             hl = st["hall"]
