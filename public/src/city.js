@@ -246,11 +246,11 @@ function lookTextures(L) {
     // 立体駐車場: 灰緑の金属パネルを横に張った面と、柱の見える暗い開口を上下に重ねる
     y = top(LOOK_ROWS.louver);
     g.fillStyle = L.accent; g.fillRect(x0, y, cw, rh);
-    glass(x0, y + 8, cw, rh * 0.42, '#15171a', '#2c2f33');
-    g.fillStyle = '#7e8387'; g.fillRect(x0 + cw / 2 - 3, y + 8, 6, rh * 0.42);
-    g.fillStyle = L.wall; g.fillRect(x0, y + rh * 0.5 + 8, cw, rh * 0.5 - 8);
-    g.fillStyle = 'rgba(0,0,0,.18)'; for (let k = 0; k < 3; k++) g.fillRect(x0, y + rh * 0.5 + 18 + k * (rh * 0.5 - 24) / 3, cw, 1.5);
-    g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0, y, 2, rh); g.fillRect(x0, y + rh * 0.5 + 6, cw, 3);
+    glass(x0, y + 8, cw, rh * 0.34, '#2a2d31', '#454a50');
+    g.fillStyle = '#7e8387'; g.fillRect(x0 + cw / 2 - 3, y + 8, 6, rh * 0.34);
+    g.fillStyle = L.wall; g.fillRect(x0, y + rh * 0.42 + 8, cw, rh * 0.58 - 8);
+    g.fillStyle = 'rgba(0,0,0,.18)'; for (let k = 0; k < 3; k++) g.fillRect(x0, y + rh * 0.42 + 18 + k * (rh * 0.58 - 24) / 3, cw, 1.5);
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0, y, 2, rh); g.fillRect(x0, y + rh * 0.42 + 6, cw, 3);
     // 窓のない壁 (屋上の塔屋など)
     y = top(LOOK_ROWS.plain);
     g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);

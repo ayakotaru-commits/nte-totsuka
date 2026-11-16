@@ -161,6 +161,36 @@ export function buildSiteExtras({ site, group }) {
     here.add(shadow(clockBack), shadow(clockBase), dial);
   }
 
+  // ---------- 正面の車寄せ: レンガ色のタイル・丸い石の車止め・白い彫像 ----------
+  const ct = site.court;
+  if (ct) {
+    const tile = canvasTexture(256, 256, (g, W) => {
+      g.fillStyle = '#c99d86'; g.fillRect(0, 0, W, W);
+      for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+        const off = r % 2 ? W / 16 : 0;
+        g.fillStyle = (r * 3 + c * 5) % 7 < 2 ? '#bb8e78' : '#d3a994';
+        g.fillRect(c * W / 8 + off + 1, r * W / 8 + 1, W / 8 - 2, W / 8 - 2);
+      }
+    });
+    tile.wrapS = tile.wrapT = THREE.RepeatWrapping; tile.repeat.set(ct.w / 3, ct.d / 3);
+    const geo = new THREE.PlaneGeometry(ct.w, ct.d, Math.ceil(ct.w / 2), Math.ceil(ct.d / 2)).rotateX(-Math.PI / 2);
+    geo.rotateY(ct.yaw); geo.translate(ct.x, 0.08, ct.z);
+    const pave = new THREE.Mesh(drape(geo, 1.0), new THREE.MeshStandardMaterial({ map: tile, roughness: 0.85 }));
+    pave.receiveShadow = true;
+    group.add(pave);
+    const ball = new THREE.SphereGeometry(0.34, 14, 10);
+    const ballM = new THREE.MeshStandardMaterial({ color: '#c9c3b6', roughness: 0.8 });
+    for (const [bx, bz, by] of ct.bollards) { const m = shadow(new THREE.Mesh(ball, ballM)); m.position.set(bx, by + 0.3, bz); m.scale.y = 0.85; group.add(m); }
+    const st = ct.statue, sg = new THREE.Group();
+    sg.position.set(st.x, st.y, st.z);
+    const white = new THREE.MeshStandardMaterial({ color: '#ece9e1', roughness: 0.75 });
+    sg.add(shadow(new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.5, 1.8).translate(0, 0.25, 0), stone)));
+    sg.add(shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 0.7, 12).translate(0, 0.85, 0), stone)));
+    sg.add(shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.38, 1.3, 12).translate(0, 1.85, 0), white)));
+    sg.add(shadow(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10).translate(0, 2.65, 0), white)));
+    group.add(sg);
+  }
+
   // ---------- 屋上の塔 (八角形の胴 + グレーのドーム + 尖塔) ----------
   for (const t of site.turrets || []) {
     const tw = new THREE.Group();

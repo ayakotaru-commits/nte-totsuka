@@ -811,6 +811,21 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
         _, a, c, L, nx, nz = best
         o["hall"] = {"x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(hallB.get("y") or 0), "yaw": r3(math.atan2(nx, nz)),
                      "width": r3(L), "height": hallB["h"], "color": hallB.get("color") or "#e3d2b0"}
+        # 正面の車寄せ (路上写真より: ピンクがかったレンガ色のタイル、丸い石の車止めが 1 列、右端に白い彫像)
+        hx, hz, yw = o["hall"]["x"], o["hall"]["z"], o["hall"]["yaw"]
+        fx, fz, tx, tz = math.sin(yw), math.cos(yw), math.cos(yw), -math.sin(yw)
+        at = lambda t, d: (hx + tx * t + fx * d, hz + tz * t + fz * d)
+        bol = []
+        for k in range(6):
+            bx, bz = at(-6.0 + k * 2.4, 8.0 + (k * 0.35 if k > 3 else 0))
+            by = H(bx, bz)
+            bol.append([r2(bx), r2(bz), r2(by)])
+            col.add_circle(bx, bz, 0.35, by, 0.6)
+        sx, sz = at(L / 2 + 2.5, 3.0)
+        cx, cz = at(0, 5.0)
+        o["court"] = {"x": r2(cx), "z": r2(cz), "y": r2(H(cx, cz)), "yaw": yw, "w": r3(L + 5), "d": 10.0, "bollards": bol,
+                      "statue": {"x": r2(sx), "z": r2(sz), "y": r2(H(sx, sz))}}
+        col.add_circle(sx, sz, 0.8, H(sx, sz), 2.0)
 
     # ---------- 屋上の塔 ----------
     turrets = []
@@ -849,6 +864,26 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
                 aw.append({"x": r2(a[0] + ux * t + nx * 0.45), "z": r2(a[1] + uz * t + nz * 0.45), "y": r2((main.get("y") or 0) + 2.55),
                            "yaw": r3(math.atan2(nx, nz))})
                 t += every
+        # 川側 (東向き) の長い壁の 1 階にも (柏尾川側の写真: 1 階の窓の上に青い日よけが並ぶ)
+        for b in city["buildings"]:
+            if b["id"] not in site["buildings"] or not b.get("railing"):
+                continue
+            ro, rn = b["outer"], len(b["outer"])
+            rs = 1 if sum(ro[i][0] * ro[(i + 1) % rn][1] - ro[(i + 1) % rn][0] * ro[i][1] for i in range(rn)) > 0 else -1
+            for i in range(rn):
+                a, c = ro[i], ro[(i + 1) % rn]
+                L = math.hypot(c[0] - a[0], c[1] - a[1])
+                if L < 20:
+                    continue
+                ux, uz = (c[0] - a[0]) / L, (c[1] - a[1]) / L
+                nx, nz = uz * rs, -ux * rs
+                if nx < 0.7:
+                    continue
+                t = every / 2 + 1.0
+                while t < L - 2:
+                    aw.append({"x": r2(a[0] + ux * t + nx * 0.45), "z": r2(a[1] + uz * t + nz * 0.45), "y": r2((b.get("y") or 0) + 2.55),
+                               "yaw": r3(math.atan2(nx, nz))})
+                    t += every
         o["awnings"] = {"color": site["awnings"]["color"], "items": aw}
 
     # ---------- 庭: 花壇・オベリスク・丸い天窓 ----------
