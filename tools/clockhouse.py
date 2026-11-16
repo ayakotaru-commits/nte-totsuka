@@ -6,6 +6,7 @@ data/appearance.json の sites[].gate (clockhouse: true) で決める:
   origin   道路ぎわの基準点 [x, z]、axis  敷地の奥へ向かう向き
   setback  基準点から棟の正面までの距離 (m)、depth  棟の奥行き、wide  棟の正面の幅
   passage / clear_h  棟の中央の通り抜け (ガラス扉の幅・高さ)、wall_from  塀の道路側の端 (基準点からの距離。負 = 道路側)、wall_h  塀の高さ
+  links    棟の横から隣の棟までつなぐ壁 [t0, t1, s0, s1] (t = 横方向、s = 奥行き方向。基準点からの m)
 座標は基準点・軸から毎回作り直すので、何度実行しても同じ結果になる (一度作った座標からは作らない)。
 
 build_city.py から make_parts() が呼ばれる。単体でも動く (build_city.py を通しで実行できない環境用):
@@ -43,10 +44,14 @@ def make_parts(base_id, gt):
     wh, w0, th = gt.get("wall_h", 4.6), gt.get("wall_from", -7.0), 0.6
     for tag, (b0, b1) in (("WL", (-W / 2 - th, -W / 2)), ("WR", (W / 2, W / 2 + th))):
         parts.append({"id": base_id + "_" + tag, "outer": rect(w0, s0, b0, b1), "style": "wall", "facade": "euro", "color": "#dccaa2", "floors": 1, "mansard": None, "h": wh})
+    # 棟の横から隣の棟までつなぐ壁 (links: [t0, t1, s0, s1] の並び。外から中庭が見えないように、すき間をふさぐ)
+    for k, (b0, b1, a0, a1) in enumerate(gt.get("links") or []):
+        parts.append({"id": base_id + "_K" + str(k + 1), "outer": rect(a0, a1, b0, b1), "style": "wall", "facade": "euro", "color": "#dccaa2", "floors": 1, "mansard": None, "h": wh})
     cs = s0 + D / 2
     info = {"center": [round(ox + cs * ux, 2), round(oz + cs * uz, 2)], "length": D, "h": h}
     # 塀の中央の点 (landmarks の at に書く)
-    info["wall_at"] = [[round(ox + (w0 + s0) / 2 * ux - t * uz, 2), round(oz + (w0 + s0) / 2 * uz + t * ux, 2)] for t in (-(W / 2 + th / 2), W / 2 + th / 2)]
+    mids = [((w0 + s0) / 2, -(W / 2 + th / 2)), ((w0 + s0) / 2, W / 2 + th / 2)] + [((a0 + a1) / 2, (b0 + b1) / 2) for b0, b1, a0, a1 in gt.get("links") or []]
+    info["wall_at"] = [[round(ox + sm * ux - tm * uz, 2), round(oz + sm * uz + tm * ux, 2)] for sm, tm in mids]
     return parts, info
 
 
