@@ -977,13 +977,40 @@ def js_signed_area(r):
     return a / 2
 
 
+FACADES = pathlib.Path(__file__).resolve().parent.parent / "data" / "facades.json"
+
+
+def load_facades():
+    """路上写真を見て付けた壁ごとのベランダの有無 (tools/facades.py)。[(x, z, nx, nz, kind)]、kind = b (あり) / w (なし)"""
+    if not FACADES.exists():
+        return []
+    return [(r["x"], r["z"], r["nx"], r["nz"], r["kind"]) for r in json.loads(FACADES.read_text(encoding="utf-8"))["walls"]]
+
+
+def facade_of(labels, a, c, nx, nz):
+    """壁 a→c (外向き nx, nz) に当てはまる判定。判定の中点が壁の線から 2.5 m 以内・壁の範囲内で、向きがそろうもの"""
+    dx, dz = c[0] - a[0], c[1] - a[1]
+    L2 = dx * dx + dz * dz
+    if L2 < 1e-6:
+        return None
+    for x, z, lx, lz, kind in labels:
+        if lx * nx + lz * nz < 0.9:
+            continue
+        t = ((x - a[0]) * dx + (z - a[1]) * dz) / L2
+        if -0.1 <= t <= 1.1 and abs((x - a[0]) * dz - (z - a[1]) * dx) / math.sqrt(L2) < 2.5:
+            return kind
+    return None
+
+
 def build_shapes(city, world, cx, cz, R):
     inR = lambda x, z: (x - cx) ** 2 + (z - cz) ** 2 <= R * R
 
     # ---------- 集合住宅のベランダ (南寄りの長い壁。balcony=all なら全ての長い壁) ----------
+    # 路上写真で判定した壁 (data/facades.json) は、その判定に従う (b = 向き・建物の種類によらず置く、w = 置かない)
     # 1 つの壁ごと: 壁の始点 (x, z)、壁の向き (dx, dz)、外向き (nx, nz)、壁の長さ len。
     # 2 階から最上階まで、床の高さ y + k * floorH (k = 1 から floors-1) に、奥行き 1.1m・手すり壁 1.1m のベランダ (両端 0.4m は空ける)
     balconies, apts = [], 0
+    labels = load_facades()
     for b in city["buildings"]:
         if b.get("minH"):
             continue
@@ -999,9 +1026,18 @@ def build_shapes(city, world, cx, cz, R):
             is_apt = b["style"] == "apartment"
         else:
             is_apt = not is_house and not b.get("name") and kind not in NOT_APT and 7 <= b["h"] <= 45 and area < 1500
-        if not is_apt:
-            continue
         s = 1 if sa > 0 else -1
+        seen = {}
+        if labels:
+            for i in range(len(o)):
+                a, c = o[i], o[(i + 1) % len(o)]
+                L = math.hypot(c[0] - a[0], c[1] - a[1])
+                if L >= 1e-6:
+                    k = facade_of(labels, a, c, (c[1] - a[1]) / L * s, -(c[0] - a[0]) / L * s)
+                    if k:
+                        seen[i] = k
+        if not is_apt and "b" not in seen.values():
+            continue
         floors = b.get("floors") or math.floor(b["h"] / 3.0)
         if floors < 2:
             continue
@@ -1011,10 +1047,12 @@ def build_shapes(city, world, cx, cz, R):
             a, c = o[i], o[(i + 1) % len(o)]
             dx, dz = c[0] - a[0], c[1] - a[1]
             L = math.hypot(dx, dz)
-            if L < 7:
+            if L < (5 if seen.get(i) == "b" else 7):
                 continue
             nx, nz = dz / L * s, -dx / L * s
-            if b.get("balcony") != "all" and nz < 0.55:
+            if seen.get(i) == "w" or (seen.get(i) == "b" and L < 5):
+                continue
+            if seen.get(i) != "b" and (not is_apt or (b.get("balcony") != "all" and nz < 0.55)):
                 continue
             balconies.append({"b": b["id"], "x": a[0], "z": a[1], "dx": round(dx / L, 4), "dz": round(dz / L, 4), "nx": round(nx, 4), "nz": round(nz, 4),
                               "len": r3(L), "y": b.get("y") or 0, "floorH": round(fh, 4), "floors": floors, **({"dark": True} if b.get("railing") else {}),
@@ -1069,28 +1107,55 @@ def build_shapes(city, world, cx, cz, R):
             if b["look"] not in main or abs(js_signed_area(b["outer"])) > abs(js_signed_area(main[b["look"]]["outer"])):
                 main[b["look"]] = b
     for b in main.values():
-        sg = (looks.get(b.get("look")) or {}).get("sign")
-        if not sg:
-            continue
-        L0 = looks[b["look"]]
-        o = b["outer"]
-        s = 1 if js_signed_area(o) > 0 else -1
-        best = {}
-        for i in range(len(o)):
-            a, c = o[i], o[(i + 1) % len(o)]
-            dx, dz = c[0] - a[0], c[1] - a[1]
-            L = math.hypot(dx, dz)
-            if L < sg.get("min_len", 25):
-                continue
-            nx, nz = dz / L * s, -dx / L * s
-            q = ("e" if nx > 0 else "w") if abs(nx) > abs(nz) else ("s" if nz > 0 else "n")
-            if q not in best or L > best[q][0]:
-                best[q] = (L, a, c, nx, nz)
-        for q in sorted(best):
-            L, a, c, nx, nz = best[q]
-            w = min(L * 0.5, sg.get("max_w", 24))
-            big.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(L0["y0"] + sg["floor"] * L0["floor_h"]),
-                        "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * sg.get("ratio", 0.12)), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"], **({"mark": sg["mark"]} if sg.get("mark") else {})})
+        L0 = looks.get(b.get("look")) or {}
+        sgs = L0.get("sign")
+        sgs = sgs if isinstance(sgs, list) else [sgs] if sgs else []
+        for sg in sgs:
+            ys = L0["y0"] + sg["floor"] * L0["floor_h"]
+            if sg.get("at"):
+                # at: その地点にいちばん近い壁 (看板の高さに壁がある段から選ぶ) に 1 枚
+                ax, az = sg["at"]
+                cand = None
+                for p in city["buildings"]:
+                    if p.get("look") != b["look"]:
+                        continue
+                    lo = (p.get("y") or 0) + (p.get("minH") or 0)
+                    if not (lo <= ys <= (p.get("y") or 0) + p["h"]):
+                        continue
+                    o = p["outer"]
+                    s = 1 if js_signed_area(o) > 0 else -1
+                    for i in range(len(o)):
+                        a, c = o[i], o[(i + 1) % len(o)]
+                        dx, dz = c[0] - a[0], c[1] - a[1]
+                        L = math.hypot(dx, dz)
+                        if L < sg.get("min_len", 4):
+                            continue
+                        t = max(0, min(1, ((ax - a[0]) * dx + (az - a[1]) * dz) / (L * L)))
+                        d = math.hypot(a[0] + dx * t - ax, a[1] + dz * t - az)
+                        if cand is None or d < cand[0]:
+                            cand = (d, L, a, c, dz / L * s, -dx / L * s, t)
+                best = {"at": cand[1:6]} if cand else {}
+                tat = cand[6] if cand else 0.5
+            else:
+                o = b["outer"]
+                s = 1 if js_signed_area(o) > 0 else -1
+                best = {}
+                for i in range(len(o)):
+                    a, c = o[i], o[(i + 1) % len(o)]
+                    dx, dz = c[0] - a[0], c[1] - a[1]
+                    L = math.hypot(dx, dz)
+                    if L < sg.get("min_len", 25):
+                        continue
+                    nx, nz = dz / L * s, -dx / L * s
+                    q = ("e" if nx > 0 else "w") if abs(nx) > abs(nz) else ("s" if nz > 0 else "n")
+                    if q not in best or L > best[q][0]:
+                        best[q] = (L, a, c, nx, nz)
+            for q in sorted(best):
+                L, a, c, nx, nz = best[q]
+                w = min(L * 0.5, sg.get("max_w", 24)) if q != "at" else sg.get("w") or min(L * 0.9, sg.get("max_w", 24))
+                f = 0.5 if q != "at" else max(w / 2 / L, min(1 - w / 2 / L, tat))  # at: 地点に近い所 (壁からはみ出さない範囲)
+                big.append({"b": b["id"], "x": r2(a[0] + (c[0] - a[0]) * f), "z": r2(a[1] + (c[1] - a[1]) * f), "y": r2(ys),
+                            "yaw": round(math.atan2(nx, nz), 4), "w": r3(w), "h": r3(w * sg.get("ratio", 0.12)), "text": sg["text"], "bg": sg["bg"], "fg": sg["fg"], **({"mark": sg["mark"]} if sg.get("mark") else {})})
     print(f"balcony walls={len(balconies)} (apartments={apts}) shop signs={len(signs)} big signs={len(big)}")
     return {"balconies": balconies, "signs": signs, "bigSigns": big}
 

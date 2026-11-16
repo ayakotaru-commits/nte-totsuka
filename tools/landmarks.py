@@ -82,6 +82,24 @@ def find_doors(hosts, roads, extra):
     return doors
 
 
+def gap_fill(buildings, ids):
+    """上の段の底と、その下の段の上端の間のすき間 (点群が格子越しに中を写した所など)。段の minH を下の段の上端まで下げる値 {id: minH}"""
+    parts = [b for b in buildings if b["id"] in ids or b.get("part") in ids]
+    out = {}
+    for b in parts:
+        lo = b.get("minH") or 0
+        if lo <= 0:
+            continue
+        o = b["outer"]
+        cx, cz = sum(p[0] for p in o) / len(o), sum(p[1] for p in o) / len(o)
+        pts = [(cx, cz)] + [tuple(p) for p in o[:: max(1, len(o) // 8)]]
+        below = [q["h"] for q in parts if q is not b and q["h"] <= lo + 0.01
+                 and any(point_in(p, q["outer"]) for p in pts)]
+        if below and lo - max(below) > 0.3:
+            out[b["id"]] = round(max(below), 2)
+    return out
+
+
 def apply(buildings, roads=None, pois=None, conf=None):
     """buildings に look を付け、looks (外観の中身) を返す。pois があれば建物名の変更を地名にも反映する"""
     undo(buildings, pois)
@@ -107,11 +125,12 @@ def apply(buildings, roads=None, pois=None, conf=None):
         look["y0"] = round((host.get("y") or 0) + extra.get("minH", 0), 2)
         look["doors"] = find_doors(hosts, roads, lm.get("entrances", []))
         looks[key] = look
+        fill = gap_fill(buildings, ids) if lm.get("fill_gaps") else {}
         n = 0
         for b in buildings:
             if b["id"] not in ids and b.get("part") not in ids:
                 continue
-            new = {"color": look["wall"], **(extra if b is host else {})}
+            new = {"color": look["wall"], **(extra if b is host else {}), **({"minH": fill[b["id"]]} if b["id"] in fill else {})}
             if b is host and lm.get("rename"):
                 new["name"] = lm["rename"]
             b["look0"] = {k: b.get(k) for k in new}
