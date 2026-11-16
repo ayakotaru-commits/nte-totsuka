@@ -3,9 +3,9 @@
 仕組み:
   1. 写真の位置・向き・画角 (Mapillary が写真どうしをつないで計算した値) から、建物の壁の上の点が写真のどこに写るかを計算する。
      手前の建物・点群の木・地形 (土手・擁壁) で隠れる点、斜めすぎる面、遠すぎる (35 m より先) 点は使わない。
-  2. 建物ごとに、壁がよく見える写真を最大 5 枚選び、点の所の色を読む。
-  3. 暗すぎる所 (窓・影)・緑 (植木)・空の色を除き、写真ごとに明るめの所の平均を取り、写真どうしの中央値にする。
-     2 枚以上の写真で 40 点以上読めて、写真どうしで色がまとまっている建物だけに設定する。
+  2. 建物ごとに、壁がよく見える写真を最大 8 枚選び、点の所の色を読む。
+  3. 暗すぎる所 (窓・影)・緑 (植木)・空 (点から画像の上端まで明るく平ら)・写真の下の方 (車のボンネットなど) を除き、写真ごとに明るめの所の平均を取り、写真どうしの中央値にする。
+     2 枚以上の写真で 30 点以上読めて、写真どうしで色がまとまっている建物だけに設定する (鮮やかな色は別々の撮影 2 回以上)。
   4. 写真は露出・日陰で暗く写るので、明るさは全建物の中の順位を外壁らしい明るさの範囲に当てはめ直す (calibrate)。
      日陰の青みがかった淡い色は無彩色に寄せる。
   屋根の色を航空写真から読むのと同じで、写真そのものはゲームに貼らない。数値 (色) だけを使う。
@@ -43,6 +43,8 @@ META = RAW / "meta.json"
 PLAN = RAW / "plan.json"
 THUMBS = RAW / "thumb"
 TOKEN = ROOT / "data" / "mapillary_token.txt"
+DSM_BIN = ROOT / "data" / "raw" / "lidar_dsm.bin"     # 点群の表面の高さ (fetch_lidar.py)。あれば隠れ・建物の有無の判定に使う
+DSM_META = ROOT / "data" / "raw" / "lidar_dsm.json"
 
 M_LAT = 110574.0
 M_LON = 111320.0 * math.cos(math.radians(C.ORIGIN_LAT))
@@ -53,9 +55,9 @@ CAM_H = 2.0        # カメラの地面からの高さ (m)。車の屋根・人�
 MAX_D = 35.0       # これより遠い壁の点は使わない (m)
 MIN_D = 2.0
 MIN_FACING = 0.3   # 壁の向きと写真の方向の cos。斜めすぎる面は使わない
-PER_BUILDING = 5   # 建物ごとに使う写真の数
+PER_BUILDING = 8   # 建物ごとに使う写真の数
 MIN_VIS = 10       # 写真 1 枚で見える点がこれ未満なら使わない
-MIN_PTS = 40       # 建物ごとに読めた点がこれ未満なら色を付けない
+MIN_PTS = 30       # 建物ごとに読めた点がこれ未満なら色を付けない
 SKIP_STYLES = {"carport", "wall", "gate"}
 
 
@@ -180,6 +182,23 @@ def load_terrain():
     return H
 
 
+class Surface:
+    """点群の表面の高さ (0.5 m 格子、ローカルの y)。建物・塀・防音壁・看板・擁壁がすべて入っている (令和 3 年度)"""
+
+    def __init__(self):
+        m = json.loads(DSM_META.read_text(encoding="utf-8"))
+        ref = json.loads(TERRAIN.read_text())["ref"]
+        self.res, self.x0, self.z0, self.nx, self.nz = m["res"], m["minX"], m["minZ"], m["nx"], m["nz"]
+        a = np.fromfile(DSM_BIN, dtype="<i2").reshape(self.nz, self.nx).astype(np.float32)
+        a[a == m["nodata"]] = np.nan
+        self.y = a / 100 - ref
+
+    def __call__(self, x, z):
+        i = np.clip(((np.asarray(x) - self.x0) / self.res).astype(int), 0, self.nx - 1)
+        j = np.clip(((np.asarray(z) - self.z0) / self.res).astype(int), 0, self.nz - 1)
+        return self.y[j, i]
+
+
 def signed_area(r):
     a = 0
     for i in range(len(r)):
@@ -193,8 +212,8 @@ class Occluders:
     """建物の壁 (線分 + 下端・上端の高さ) と木 (円柱) を 16 m の格子で引けるようにする"""
     CELL = 16.0
 
-    def __init__(self, buildings, trees, H):
-        self.H = H
+    def __init__(self, buildings, trees, H, surf=None):
+        self.H, self.surf = H, surf
         segs = []
         for b in buildings:
             yb = (b.get("y") or 0) + (b.get("minH") or 0)
@@ -246,6 +265,15 @@ class Occluders:
             gz = cam.z + dz[ok, None] * ss[None]
             yr = cam.y + ss[None] * (P[ok, 1:2] - cam.y)
             ok[ok] = ~(self.H(gx, gz) > yr + 0.3).any(1)
+        # 点群の表面 (塀・防音壁・看板・建物データに無い物): 壁の 2 m 手前までの線の上で、表面が線より 0.5 m 以上高ければ隠れている
+        if self.surf is not None and ok.any():
+            d = np.hypot(dx[ok], dz[ok])
+            ss = np.linspace(0, 1, 40)[None] * np.maximum(0.05, 1 - 2.0 / d)[:, None]
+            ss = np.maximum(ss, 1.0 / d[:, None])                # カメラのすぐ近く (車・人) は見ない
+            gx, gz = cam.x + dx[ok, None] * ss, cam.z + dz[ok, None] * ss
+            yr = cam.y + ss * (P[ok, 1:2] - cam.y)
+            sy = self.surf(gx, gz)
+            ok[ok] = ~np.nan_to_num(sy > yr + 0.5).any(1)
         T = self.tree[self.near(self.tg, x0, z0, x1, z1)]
         if len(T):
             L2 = np.maximum(dx ** 2 + dz ** 2, 1e-9)
@@ -297,13 +325,20 @@ def wall_points(b):
 def make_plan(city, cams):
     """建物ごとに、壁がよく見える写真と、その写真の中の点の位置"""
     trees = (json.loads(PROPS.read_text()) if PROPS.exists() else {}).get("trees", [])
-    occ = Occluders(city["buildings"], trees, load_terrain())
+    surf = Surface() if DSM_BIN.exists() else None
+    print("plan: 点群の表面で隠れ・建物の有無を判定" if surf is not None else "plan: 点群なし (建物データと木・地形だけで判定)")
+    occ = Occluders(city["buildings"], trees, load_terrain(), surf)
     cg = {}
     for c in cams:
         cg.setdefault((math.floor(c.x / 50), math.floor(c.z / 50)), []).append(c)
     plan, n_b = {}, 0
     for b in targets(city["buildings"]):
         P, N = wall_points(b)
+        if surf is not None and len(P):
+            # 建物が本当にあるか: 壁の 0.75 m 内側の点群の表面が、その点の高さ近くまであること (取り壊し・空き地を除く)
+            inner = surf(P[:, 0] - N[:, 0] * 0.9, P[:, 2] - N[:, 1] * 0.9)
+            keep = np.nan_to_num(inner, nan=-1e9) >= P[:, 1] - 0.5
+            P, N = P[keep], N[keep]
         if not len(P):
             continue
         xs, zs = [q[0] for q in b["outer"]], [q[1] for q in b["outer"]]
@@ -388,10 +423,13 @@ def fetch(refresh=False):
 
 
 # ---------------------------------------------------------------- 色を読む
+SEQ = {}  # 写真 id -> 撮影 (sequence)。apply() が入れる
+
+
 def wall_color(samples):
     """samples: [(写真 id, (n, 3) の色)]。写真での壁の色 (sRGB 0〜255) と点の数。読めない・写真どうしで食い違うときは None"""
-    per, cnt = [], 0
-    for _, c in samples:
+    per, cnt, seqs = [], 0, []
+    for iid, c in samples:
         r, g, b = c[:, 0], c[:, 1], c[:, 2]
         lum = 0.299 * r + 0.587 * g + 0.114 * b
         green = (g > r + 10) & (g > b + 6)              # 植木
@@ -400,22 +438,32 @@ def wall_color(samples):
         c = c[ok]
         if len(c) < 4:
             continue
-        # 写真ごとに、明るめ (55〜90%) の平均。窓・影・ひさしの下より、日の当たった壁の面を取る
+        # 写真ごとに、色味は明るさが中くらい (25〜75%) の所の平均 (ベランダの白い床の縁だけに引っぱられないように)、
+        # 明るさは明るめ (55〜90%) の所 (窓・影・ひさしの下より、日の当たった壁の面)
         lum = c @ [0.299, 0.587, 0.114]
-        lo, hi = np.percentile(lum, [55, 90])
-        sel = c[(lum >= lo) & (lum <= hi)]
-        per.append(sel.mean(0) if len(sel) else c.mean(0))
+        p25, p55, p75, p90 = np.percentile(lum, [25, 55, 75, 90])
+        mid = c[(lum >= p25) & (lum <= p75)]
+        br = lum[(lum >= p55) & (lum <= p90)]
+        per.append([*(mid.mean(0) if len(mid) else c.mean(0)), br.mean() if len(br) else lum.mean()])
+        seqs.append(SEQ.get(iid, iid))
         cnt += len(c)
     if len(per) < 2 or cnt < MIN_PTS:
         return None, 0
-    per = np.array(per)
+    per = np.array(per)                                  # [r, g, b, 明るさ]
     med = np.median(per, 0)
     # 写真どうしの食い違い: 中央値から遠い写真を外して、残りが 2 枚以上でまとまっていること
-    d = np.abs(per - med).max(1)
-    keep = per[d <= max(30, np.percentile(d, 50) * 1.5)]
-    if len(keep) < 2 or np.ptp(keep @ [0.299, 0.587, 0.114]) > 70:
+    d = np.abs(per[:, :3] - med[:3]).max(1)
+    good = d <= max(30, np.percentile(d, 50) * 1.5)
+    keep = per[good]
+    if len(keep) < 2 or np.ptp(keep[:, 3]) > 70:
         return None, 0
-    return np.median(keep, 0), cnt
+    col = np.median(keep, 0)
+    # 鮮やかな色は、別々の撮影 2 回以上でまとまること (前に停まった車・バスなど、その時だけの物を読まないように)
+    import colorsys
+    sat = colorsys.rgb_to_hls(*(np.clip(col[:3], 0, 255) / 255))[2]
+    if sat >= 0.15 and len({q for q, g in zip(seqs, good) if g}) < 2:
+        return None, 0
+    return col, cnt
 
 
 # 写真の明るさの順位を、外壁らしい明るさ (HSL の明度) に当てはめる: 一番暗い 0.50、中くらい 0.78、一番明るい 0.93
@@ -423,22 +471,26 @@ L_LO, L_MID, L_HI = 0.50, 0.78, 0.93
 
 
 def calibrate(raw):
-    """raw: {id: (r, g, b) 0〜255} -> {id: '#rrggbb'}。露出・日陰の暗さと、日陰の青みを直す"""
+    """raw: {id: (r, g, b, 明るさ) 0〜255} -> {id: '#rrggbb'}。露出・日陰の暗さと、日陰の青みを直す"""
     import colorsys
     ids = sorted(raw)
     if not ids:
         return {}
-    hls = {i: colorsys.rgb_to_hls(*(np.clip(raw[i], 0, 255) / 255)) for i in ids}
-    order = sorted(ids, key=lambda i: hls[i][1])
+    hls = {i: colorsys.rgb_to_hls(*(np.clip(raw[i][:3], 0, 255) / 255)) for i in ids}
+    order = sorted(ids, key=lambda i: raw[i][3])
     out = {}
     for k, i in enumerate(order):
         h, l, s = hls[i]
         q = (k + 0.5) / len(order)                       # 明るさの順位 (0〜1)
         L = L_LO + (L_MID - L_LO) * (q / 0.5) ** 0.8 if q < 0.5 else L_MID + (L_HI - L_MID) * ((q - 0.5) / 0.5)
+        if s > 0.2:                                      # 色のはっきりした壁 (レンガ・えんじ) は、持ち上げすぎない
+            L = min(L, l + 0.25)
         deg = h * 360
         if 160 <= deg <= 260 and s < 0.35:               # 青〜青緑で淡い = 日陰の色かぶり。ほぼ無彩色に
             s = min(s, 0.04)
-        elif (70 < deg < 160 or 260 < deg < 335) and s < 0.4:  # 緑・紫がかった淡い灰色 (植木・赤い舗装の照り返し) も無彩色に
+        elif (70 < deg < 160 or 260 < deg < 300) and s < 0.4:  # 緑・紫がかった淡い灰色 (植木・赤い舗装の照り返し) も無彩色に
+            s = min(s, 0.04)
+        elif 300 <= deg < 335 and s < 0.12:              # ごく淡い赤紫も。はっきりしたピンクの壁は残す
             s = min(s, 0.04)
         else:
             s = min(0.45, s * 1.15)                      # 暖色 (ベージュ・茶・レンガ) は少しだけ強める
@@ -477,6 +529,9 @@ def apply(city):
     for bid, lst in plan.items():
         for iid, u, v in lst:
             by_img.setdefault(iid, []).append((bid, u, v))
+    meta = json.loads(META.read_text()) if META.exists() else []
+    kinds = {m["id"]: m.get("camera_type") for m in meta}
+    SEQ.update({m["id"]: m.get("sequence") or m["id"] for m in meta})
     got = {}
     for iid, lst in by_img.items():
         f = THUMBS / f"{iid}.jpg"
@@ -484,11 +539,24 @@ def apply(city):
             continue
         im = np.asarray(Image.open(f).convert("RGB"), float)
         h, w = im.shape[:2]
+        lum_im = im @ [0.299, 0.587, 0.114]
+        pano = kinds.get(iid) in ("spherical", "equirectangular")
         for bid, u, v in lst:
-            px = np.clip((np.array(u) * w).astype(int), 1, w - 2)
-            py = np.clip((np.array(v) * h).astype(int), 1, h - 2)
+            u, v = np.array(u), np.array(v)
+            # 写真の下の方 (車のボンネット・ダッシュボード、全天球なら撮った人や車) は使わない
+            keep = v < (0.62 if pano else 0.75)
+            px = np.clip((u[keep] * w).astype(int), 1, w - 2)
+            py = np.clip((v[keep] * h).astype(int), 1, h - 2)
+            if not len(px):
+                continue
             c = sum(im[py + dy, px + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1)) / 9  # 3x3 の平均
-            got.setdefault(bid, []).append((iid, c))
+            # 空: その点から画像の上端まで、明るく平らな色が続く (曇り空は白っぽいので、色だけでは壁と区別できない)
+            steps = np.linspace(0, 1, 8)[None] * py[:, None]
+            col = lum_im[steps.astype(int), px[:, None]]
+            sky = (col.min(1) > 150) & (np.ptp(col, 1) < 40)
+            c = c[~sky]
+            if len(c):
+                got.setdefault(bid, []).append((iid, c))
     B = {b["id"]: b for b in city["buildings"]}
     parts = {}
     for b in city["buildings"]:
@@ -506,7 +574,7 @@ def apply(city):
         for b in [B[bid], *parts.get(bid, [])]:  # 上の段も同じ色にする
             if b.get("look"):
                 continue
-            b["mly"] = {"color0": b.get("color"), "n": cnt, "raw": "#%02x%02x%02x" % tuple(int(round(min(255, max(0, v)))) for v in raw[bid])} if b is B[bid] else {"color0": b.get("color")}
+            b["mly"] = {"color0": b.get("color"), "n": cnt, "raw": "#%02x%02x%02x" % tuple(int(round(min(255, max(0, v)))) for v in raw[bid][:3])} if b is B[bid] else {"color0": b.get("color")}
             b["color"] = hexc
         n += 1
     set_credit(city, n > 0)
