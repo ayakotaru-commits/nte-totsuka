@@ -355,7 +355,8 @@ python tools/terrain_bridges.py --undo   # 元に戻す
 - `look.faces`: 東西南北の面ごとの `floors`（`{"n": {"floors": [...]}}`。壁の外向きで決める）
 - `look.zones`: 面の途中で柄を変える区間。`from`〜`to` の線から `w` m 以内の壁をその `floors` にする。`align: true` で、外から見て区間の左端から柄を 1 回だけ貼る（`tenants` の看板用。階 k はベイ k）
 - `look.relief`: 立体の飾り。`fins`（柄が `fins` の階に、柄の柱と同じ位置へ張り出す縦の柱 `{w, d}`）、`eaves`（`[{floor, depth, h, color, faces, rail}]` = その階の上端に張り出す庇・床。`rail` で先端にガラスの手すり）
-- `fill_gaps: true`: 点群で作った段の間のすき間（格子越しに中を写した所など）を、下の段の上端まで埋める。それより上は窓のない壁
+- `fill_gaps: true`: 点群で作った段の間のすき間（格子越しに中を写した所など）を、下の段の上端まで埋める
+- `look` を省くと、壁の柄は付けず、`color`（壁の色）と `set`・`fill_gaps`・`rename` だけを設定する（写真が少なく、色と形だけ直せるとき。ライオンズステージ戸塚ルヴェールの丘）。`set.balcony_tiers: true` を付けると、ベランダを段（点群で作った上の段）の輪郭にも、その段の高さの範囲で付ける（段の高さは建物全体の高さ ÷ 階数。ふつうのベランダは本体の輪郭だけ）。`props.json` の `balconies` の `k0` = その段の最初の階。それより上は窓のない壁
 - `look.wall` / `accent`: 壁とアクセントの色。`floor_h`: 1 階分の高さ。`glass_floors`: 入口まわりをガラス面にする階数、`door_w`: その左右の幅（既定 7 m）、`door_kind`: `open` にするとガラスではなく開いた通路
 - 入口は、建物の壁に届いている高架の歩道（デッキ）の端から自動で決める（`entrances` に `[x, z]` を書けば追加できる）
 - `look.sign`: 壁面の大きな看板（文字だけ。実物のロゴではない）。東西南北それぞれいちばん長い壁の中央に 1 枚（`min_len` 壁の長さの下限、`max_w` 幅の上限、`ratio` 縦横比。配置は `build_props.py` → `props.json` の `bigSigns`）
