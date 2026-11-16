@@ -1259,7 +1259,7 @@ def build_walk(city, world, H, col):
         if r["kind"] not in WALK_PED:
             continue
         if r.get("ys"):
-            ways.append({"pts": r["pts"], "ys": [y + 0.05 for y in r["ys"]], "hw": (r.get("w") or 3) / 2, "ground": False, "steps": r["kind"] == "steps"})
+            ways.append({"pts": r["pts"], "ys": [y + 0.05 for y in r["ys"]], "hw": (r.get("w") or 3) / 2, "ground": False, "steps": r["kind"] == "steps", "edge": bool(r.get("edge"))})
         elif r["kind"] == "steps":
             ways.append({"pts": r["pts"], "ys": [H(q[0], q[1]) + 0.12 for q in r["pts"]], "hw": (r.get("w") or 2.5) / 2, "ground": True, "steps": True})
     n_walk = len(ways)
@@ -1357,7 +1357,7 @@ def build_walk(city, world, H, col):
             if cur:
                 emit(cur_kind, cur)
         # 宙で終わる端をふさぐ
-        if not w["ground"] and mine:
+        if not w["ground"] and mine and not w.get("edge"):  # 広場の縁の床 (edge) は、端をふさがない
             for k, end in ((mine[0], 0), (mine[-1], 1)):
                 s = segs[k]
                 q = s["b"] if end else s["a"]
