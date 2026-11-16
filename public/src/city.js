@@ -141,10 +141,10 @@ function facadeTextures(type) {
 
 // ---- ランドマークの外壁 (city.json の looks。tools/landmarks.py が設定) ----
 // テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
-const LOOK_ROWS = { shop: 0, panel: 1, screen: 2, parking: 3, glass: 4, plain: 5, ribbon: 6, screen2: 7, open: 8, shutter: 9, band: 10, louver: 11, fins: 12, curtain: 13, curtain2: 14 };
-const LOOK_NR = 16, LOOK_NB = 8, LOOK_BAY = 6; // 段の数 (テクスチャは縦長)、横のベイ数、1 ベイの幅 (m)
+const LOOK_ROWS = { shop: 0, panel: 1, screen: 2, parking: 3, glass: 4, plain: 5, ribbon: 6, screen2: 7, open: 8, shutter: 9, band: 10, louver: 11, fins: 12, curtain: 13, curtain2: 14, terrace: 15, maroon: 16, slits: 17, palette: 18 };
+const LOOK_NR = 20, LOOK_NB = 8, LOOK_BAY = 6; // 段の数 (テクスチャは縦長)、横のベイ数、1 ベイの幅 (m)
 function lookTextures(L) {
-  const S = 1024, SH = 2048, cw = S / LOOK_NB, rh = SH / LOOK_NR;
+  const S = 1024, SH = 2560, cw = S / LOOK_NB, rh = SH / LOOK_NR;
   const cv = document.createElement('canvas'); cv.width = S; cv.height = SH;
   const ev = document.createElement('canvas'); ev.width = S; ev.height = SH;
   const g = cv.getContext('2d'), e = ev.getContext('2d');
@@ -282,6 +282,38 @@ function lookTextures(L) {
       }
       for (let k = 0; k < 4; k++) if (rnd() < 0.7) lit(x0 + k * cw / 4 + 3, gy + 2, cw / 4 - 4, gh - 4, rnd() < 0.7 ? '#fff0cf' : '#e6f1ff', 0.45 + rnd() * 0.35);
     }
+    // 奥まった壁のテラス (区役所の北の 2〜3 階): 上に庇の影、えんじ色の壁に大きなガラス戸 (手すりと床の縁は立体の relief)
+    const a2 = L.accent2 || '#6b2a2c';
+    y = top(LOOK_ROWS.terrace);
+    g.fillStyle = a2; g.fillRect(x0, y, cw, rh);
+    if (bx % 3 !== 1) {
+      glass(x0 + 12, y + 30, cw - 24, rh - 40, '#5d6a72', '#2e363c');
+      g.fillStyle = 'rgba(220,224,226,.7)'; g.fillRect(x0 + cw / 2 - 1, y + 30, 2, rh - 40);
+      if (rnd() < 0.7) lit(x0 + 12, y + 30, cw - 24, rh - 40, '#ffe7c0', 0.5 + rnd() * 0.3);
+    }
+    g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(x0, y, cw, 18);
+    g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x0, y + rh - 10, cw, 10);
+    // えんじ色の 1 階 (ところどころガラスの入口)
+    y = top(LOOK_ROWS.maroon);
+    g.fillStyle = a2; g.fillRect(x0, y, cw, rh);
+    g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x0 + cw / 2, y, 1.5, rh); g.fillRect(x0, y + rh * 0.5, cw, 1.5);
+    if (bx === 1 || bx === 5) {
+      glass(x0 + 16, y + 34, cw - 32, rh - 34, '#8fa3ad', '#4e5d66');
+      g.fillStyle = '#3a3f43'; g.fillRect(x0 + cw / 2 - 1, y + 34, 2, rh - 34);
+      lit(x0 + 16, y + 34, cw - 32, rh - 34, '#ffe2b0', 0.8);
+    }
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(x0, y, cw, 12);
+    // 大きな白いパネルの壁に、細い縦のスリット (区役所の北の面)。8 ベイのうち 0〜1 は 5 本ずつ、4 は 1 本
+    y = top(LOOK_ROWS.slits);
+    g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(x0 + cw / 2, y, 1.5, rh); g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2); g.fillRect(x0, y + rh / 2, cw, 1);
+    const sl = bx <= 1 ? [12, 37, 62, 87, 112] : bx === 4 ? [60] : [];
+    for (const q of sl) {
+      glass(x0 + q, y, 6, rh, '#7f878c', '#5f676c');
+      if (rnd() < 0.4) lit(x0 + q, y, 6, rh, '#eef5ff', 0.6);
+    }
+    // 単色の見本 (立体の飾り relief の色): 0 壁、1 アクセント、2 ガラスの手すり、3 えんじ色、4 白い床の縁
+    y = top(LOOK_ROWS.palette);
+    g.fillStyle = [L.wall, L.accent, '#bcd0cf', a2, '#eef0ef', L.wall, L.wall, L.wall][bx]; g.fillRect(x0, y, cw, rh);
     // 窓のない壁 (屋上の塔屋など)
     y = top(LOOK_ROWS.plain);
     g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
@@ -302,6 +334,7 @@ function addLookWalls(gb, b, L, y0, y1) {
       const dx = c[0] - a[0], dz = c[1] - a[1], len = Math.hypot(dx, dz);
       if (len < 0.01) continue;
       const ux = dx / len, uz = dz / len, n = [uz * s, 0, -ux * s];
+      const floors = lookFace(L, n[0], n[2]).floors || L.floors;
       // 入口 (doors) の左右 door_w (既定 7 m) はガラス面 (door_kind で別の柄にできる)
       const dw = L.door_w || 7;
       const iv = [];
@@ -318,7 +351,7 @@ function addLookWalls(gb, b, L, y0, y1) {
         const P = (t, y) => [a[0] + ux * t, y, a[1] + uz * t];
         for (let k = Math.floor((y0 - base) / fh + 1e-6); base + k * fh < y1 - 1e-6; k++) {
           const yf = base + k * fh, ya = Math.max(y0, yf), yb = Math.min(y1, yf + fh);
-          let kind = (k >= 0 && L.floors[k]) || 'plain';
+          let kind = (k >= 0 && floors[k]) || 'plain';
           let ush = 0;
           if (isGlass && k >= 0 && k < (L.glass_floors || 0)) kind = L.door_kind || 'glass';
           else if (kind === 'panel' && k % 2) ush = 0.5 / LOOK_NB; // 千鳥: 奇数階は半ベイずらす
@@ -336,8 +369,11 @@ function addLookWalls(gb, b, L, y0, y1) {
 
 // ランドマークの壁の立体の飾り (looks の relief)。壁の柄と同じテクスチャの単色の所を使う
 //   fins: 柄が fins の階に、柄の白い柱と同じ位置 (3 m ごと) に張り出した縦の柱 {w: 幅, d: 張り出し}
-//   eaves: [{floor, depth, h, color}] = floor 階の上端 (地面からの階数) に、壁から depth 張り出す厚さ h の庇。color: 'accent' で帯の色
-const RELIEF_UV = { wall: [0.5 / LOOK_NB, (LOOK_ROWS.plain + 0.5) / LOOK_NR], accent: [0.5 / LOOK_NB, (LOOK_ROWS.shop + 1 - 0.05) / LOOK_NR] };
+//   eaves: [{floor, depth, h, color, faces, rail}] = floor 階の上端 (地面からの階数) に、壁から depth 張り出す厚さ h の庇。color: palette の色の名前 (wall / accent / accent2 / slab)、faces: 付ける面 ['n', 'e', ...]、rail: 先端にガラスの手すり (高さ m)
+const RELIEF_UV = Object.fromEntries(['wall', 'accent', 'rail', 'accent2', 'slab'].map((k, i) => [k, [(i + 0.5) / LOOK_NB, (LOOK_ROWS.palette + 0.5) / LOOK_NR]]));
+// 壁の向き (外向きの法線) から、東西南北の面ごとの設定 (looks の faces.e / w / s / n)。無ければ {}
+function faceOf(nx, nz) { return Math.abs(nx) > Math.abs(nz) ? (nx > 0 ? 'e' : 'w') : (nz > 0 ? 's' : 'n'); }
+function lookFace(L, nx, nz) { return (L.faces && L.faces[faceOf(nx, nz)]) || {}; }
 function simplifyRing(ring, tol) { // Douglas-Peucker (閉じた輪)
   if (ring.length < 4) return ring;
   let far = 0, fd = -1;
@@ -363,10 +399,8 @@ function addLookRelief(gb, b, L, y0, y1) {
   };
   // 縦の柱: 柄の fins の階の範囲 (この段の壁の中だけ)
   if (R.fins) {
-    const ks = L.floors.map((k, i) => k === 'fins' ? i : -1).filter(i => i >= 0);
-    const fa = Math.max(y0, base + Math.min(...ks) * fh), fb = Math.min(y1, base + (Math.max(...ks) + 1) * fh);
     const fw = R.fins.w || 0.9, fd = R.fins.d || 0.45, M = LOOK_BAY / 2, c0 = M * 0.28; // 柄の柱の中心 (1 区画 3 m の 28%)
-    if (ks.length && fb - fa > 0.3) {
+    {
       const dir = (i) => { const a = ring[i], c = ring[(i + 1) % ring.length], l = Math.hypot(c[0] - a[0], c[1] - a[1]); return l < 1e-6 ? [0, 0, 0] : [(c[0] - a[0]) / l, (c[1] - a[1]) / l, l]; };
       let per = 0;
       for (let i = 0; i < ring.length; i++) {
@@ -375,6 +409,9 @@ function addLookRelief(gb, b, L, y0, y1) {
         const straight = (j) => { const [vx, vz, l2] = dir((j + ring.length) % ring.length); return l2 > 0.01 && ux * vx + uz * vz > 0.99; };
         const lo = straight(i - 1) ? 0 : fw / 2 + 0.15, hi = straight(i + 1) ? len : len - fw / 2 - 0.15;
         const nx = uz * s, nz = -ux * s, a = ring[i];
+        const ks = (lookFace(L, nx, nz).floors || L.floors).map((k, j) => k === 'fins' ? j : -1).filter(j => j >= 0);
+        const fa = ks.length ? Math.max(y0, base + Math.min(...ks) * fh) : 0, fb = ks.length ? Math.min(y1, base + (Math.max(...ks) + 1) * fh) : 0;
+        if (fb - fa < 0.3) { per += len; continue; }
         for (let t = Math.ceil((per - c0) / M) * M + c0 - per; t < len; t += M) {
           if (t < lo || t > hi) continue;
           const P = [];
@@ -390,7 +427,7 @@ function addLookRelief(gb, b, L, y0, y1) {
   for (const e of R.eaves || []) {
     const yt = base + e.floor * fh, yb = yt - (e.h || 0.4);
     if (!(yb > y0 - 0.01 && yt <= y1 + 0.01)) continue;
-    const r = simplifyRing(ring, 0.8), n = r.length, d = e.depth || 1.2, uv = RELIEF_UV[e.color === 'accent' ? 'accent' : 'wall'];
+    const r = simplifyRing(ring, 0.8), n = r.length, d = e.depth || 1.2, uv = RELIEF_UV[e.color || 'wall'];
     const nr = r.map((p, i) => { const c = r[(i + 1) % n], l = Math.hypot(c[0] - p[0], c[1] - p[1]) || 1; return [(c[1] - p[1]) / l * s, -(c[0] - p[0]) / l * s]; });
     const off = r.map((p, i) => {
       const n1 = nr[(i - 1 + n) % n], n2 = nr[i];
@@ -402,6 +439,13 @@ function addLookRelief(gb, b, L, y0, y1) {
     });
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n, A = r[i], B = r[j], A2 = off[i], B2 = off[j];
+      if (e.faces && !e.faces.includes(faceOf(nr[i][0], nr[i][1]))) continue;
+      if (e.rail) { // 庇 (床) の先にガラスの手すり
+        const t = 0.06 / d, F = (P, Q) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
+        const A3 = F(A2, A), B3 = F(B2, B);
+        box([[A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B3[0], yt, B3[1]], [A3[0], yt, A3[1]],
+             [A2[0], yt + e.rail, A2[1]], [B2[0], yt + e.rail, B2[1]], [B3[0], yt + e.rail, B3[1]], [A3[0], yt + e.rail, A3[1]]], RELIEF_UV.rail);
+      }
       box([[A2[0], yb, A2[1]], [B2[0], yb, B2[1]], [B[0], yb, B[1]], [A[0], yb, A[1]],
            [A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B[0], yt, B[1]], [A[0], yt, A[1]]], uv);
     }
