@@ -968,6 +968,36 @@ def sign_colors(cat):
     return ["#3b3f46", "#ffffff", "#e0a43a"]
 
 
+# チェーン店の決まった配色 (店名から自動で付ける)。[地の色, 文字の色, 帯・日よけの色の並び]。ロゴは使わず、色と帯と店名の文字だけ。
+# 確認 = 路上写真 (Mapillary) で見て合わせたもの。それ以外は一般的な配色の推定 (実物と少し違うことがある)
+CHAINS = [
+    ("seven", r"セブン[-ー‐ー]?イレブン|7-?ELEVEN", ["#ffffff", "#00843d", ["#f47b20", "#00843d", "#e5262d"]], "確認"),
+    ("lawson", r"ローソン|LAWSON", ["#0072bc", "#ffffff", ["#ffffff", "#0072bc"]], "推定"),
+    ("familymart", r"ファミリーマート|FamilyMart", ["#ffffff", "#0068b7", ["#00a040", "#0068b7"]], "推定"),
+    ("mcdonalds", r"マクドナルド|McDonald", ["#db0007", "#ffc72c", ["#ffc72c", "#db0007"]], "確認"),
+    ("starbucks", r"スターバックス|Starbucks", ["#00704a", "#ffffff", ["#1e3932", "#00704a"]], "推定"),
+    ("yoshinoya", r"吉野家", ["#f08300", "#ffffff", ["#ffffff", "#f08300"]], "推定"),
+    ("matsuya", r"松屋", ["#f26b00", "#ffffff", ["#ffffff", "#f26b00"]], "推定"),
+    ("sukiya", r"すき家", ["#e60012", "#ffffff", ["#ffffff", "#e60012"]], "推定"),
+    ("gusto", r"ガスト", ["#e8380d", "#ffffff", ["#f6b73c", "#e8380d"]], "推定"),
+    ("saizeriya", r"サイゼリヤ", ["#00793a", "#ffffff", ["#d0021b", "#ffffff"]], "推定"),
+    ("doutor", r"ドトール", ["#5a3520", "#ffffff", ["#c8102e", "#5a3520"]], "推定"),
+    ("misterdonut", r"ミスタードーナツ|ミスド", ["#d6182f", "#ffffff", ["#f5a9b8", "#d6182f"]], "推定"),
+    ("daiso", r"ダイソー|DAISO", ["#e4002b", "#ffffff", ["#ffffff", "#e4002b"]], "推定"),
+    ("mufg", r"三菱UFJ銀行", ["#ffffff", "#d7000f", ["#d7000f", "#ffffff"]], "推定"),
+    ("smbc", r"三井住友銀行", ["#ffffff", "#006e3b", ["#006e3b", "#ffffff"]], "推定"),
+    ("resona", r"りそな銀行", ["#ffffff", "#00753a", ["#00753a", "#e60012"]], "推定"),
+]
+
+
+def chain_look(name):
+    """店名から、チェーンの配色 (colors, bands, key)。無ければ None"""
+    for key, pat, (bg, fg, bands), _ in CHAINS:
+        if re.search(pat, name or "", re.I):
+            return [bg, fg, bands[0]], bands, key
+    return None
+
+
 def js_signed_area(r):
     """city.js / shapes.js の signedArea (向きの符号がこちらの signed_area と逆)"""
     a, j = 0, len(r) - 1
@@ -1120,7 +1150,8 @@ def build_shapes(city, world, cx, cz, R):
         nx, nz = uz * s, -ux * s
         # (x, z) = 壁の中点、y = 建物の基準の高さ、正面 (yaw) = 壁の外向き。看板は y + 3.35、日よけは y + 2.6
         signs.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(b["base"]), "yaw": round(math.atan2(nx, nz), 4),
-                      "w": r3(min(L - 0.6, 7)), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"])})
+                      "w": r3(min(L - 0.6, 7)), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"]),
+                      **({"colors": ch[0], "bands": ch[1], "chain": ch[2]} if (ch := chain_look(p.get("name"))) else {})})
     # ---------- ランドマークの大きな壁面看板 (tools/landmarks.py の look に sign があるもの) ----------
     # 外向きの方角 (東西南北) ごとに、いちばん長い壁の中央に 1 枚。(x, z) = 壁の中点、y = 看板の中心の高さ、正面 (yaw) = 壁の外向き
     big = []
