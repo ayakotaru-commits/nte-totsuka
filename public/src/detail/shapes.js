@@ -55,7 +55,9 @@ export function buildShapes(props) {
     const w = p.w, nx = Math.sin(p.yaw), nz = Math.cos(p.yaw);
     const tex = canvasTexture(1024, 160, (g, W, H) => {
       g.fillStyle = bg; g.fillRect(0, 0, W, H);
-      g.fillStyle = accent; g.fillRect(0, H - 22, W, 22);
+      // 帯: チェーン店は決まった色を等分に並べる (セブンの 3 色など)。それ以外は 1 色
+      if (p.bands) { const n = p.bands.length; p.bands.forEach((col, i) => { g.fillStyle = col; g.fillRect(i * W / n, H - 22, W / n + 1, 22); }); }
+      else { g.fillStyle = accent; g.fillRect(0, H - 22, W, 22); }
       g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle';
       let fs = 96;
       g.font = `bold ${fs}px "Yu Gothic UI", "Meiryo", sans-serif`;
@@ -69,7 +71,9 @@ export function buildShapes(props) {
     sign.rotation.y = p.yaw;
     sign.castShadow = true;
     // 日よけ (ストライプ)
-    const awTex = canvasTexture(256, 64, (g, W, H) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#f4f1ea' : accent; g.fillRect(i * W / 8, 0, W / 8, H); } });
+    // チェーン店 (bands) は帯の色を順にくり返す。3 色以上 (セブン) はそのまま、2 色以下は白と交互
+    const bands = p.bands && (p.bands.length >= 3 ? p.bands : p.bands.flatMap(c => [c, '#f4f1ea']));
+    const awTex = canvasTexture(256, 64, (g, W, H) => { for (let i = 0; i < 8; i++) { g.fillStyle = bands ? bands[i % bands.length] : (i % 2 ? '#f4f1ea' : accent); g.fillRect(i * W / 8, 0, W / 8, H); } });
     awTex.wrapS = THREE.RepeatWrapping; awTex.repeat.set(Math.max(1, Math.round(w / 2.5)), 1);
     const aw = new THREE.Mesh(new THREE.PlaneGeometry(w, 1.2), new THREE.MeshStandardMaterial({ map: awTex, side: THREE.DoubleSide, roughness: 0.8 }));
     aw.position.set(p.x + nx * 0.55, p.y + 2.6, p.z + nz * 0.55);
@@ -78,6 +82,31 @@ export function buildShapes(props) {
     aw.rotation.x = -1.05;
     aw.castShadow = true;
     group.add(sign, aw);
+    // 居酒屋ののれん (入口の上から 4 枚の布が下がる) と赤ちょうちん (入口の両側)。写真で判定した店と、居酒屋の標準 (front: 'default')
+    if (p.noren) {
+      const nw = Math.min(w * 0.5, 2.6), n = 4, uxn = Math.cos(p.yaw), uzn = -Math.sin(p.yaw);
+      for (let k = 0; k < n; k++) {
+        const t = (k - (n - 1) / 2) * nw / n;
+        const cloth = new THREE.Mesh(new THREE.PlaneGeometry(nw / n * 0.92, 0.85), new THREE.MeshStandardMaterial({ color: p.noren, side: THREE.DoubleSide, roughness: 0.95 }));
+        cloth.position.set(p.x + nx * 0.6 + uxn * t, p.y + 1.95, p.z + nz * 0.6 + uzn * t);
+        cloth.rotation.y = p.yaw;
+        group.add(cloth);
+      }
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(nw, 0.06, 0.06), new THREE.MeshStandardMaterial({ color: '#4a3a2c' }));
+      bar.position.set(p.x + nx * 0.6, p.y + 2.38, p.z + nz * 0.6); bar.rotation.y = p.yaw; group.add(bar);
+    }
+    if (p.lantern) {
+      const lmat = new THREE.MeshStandardMaterial({ color: '#c8261c', emissive: '#ff5a2a', emissiveIntensity: 0, roughness: 0.6 });
+      emissive.push(lmat);
+      const uxn = Math.cos(p.yaw), uzn = -Math.sin(p.yaw);
+      for (const sgn of [-1, 1]) {
+        const lan = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lmat);
+        lan.scale.set(1, 1.35, 1);
+        const t = sgn * Math.min(w * 0.42, 1.9);
+        lan.position.set(p.x + nx * 1.0 + uxn * t, p.y + 1.95, p.z + nz * 1.0 + uzn * t);  // 日よけ (y + 2.3〜2.9、前縁は壁から約 1 m) の前縁の下
+        group.add(lan);
+      }
+    }
   }
 
   // ---------- ランドマークの大きな壁面看板 (文字だけ。実物のロゴではない) ----------

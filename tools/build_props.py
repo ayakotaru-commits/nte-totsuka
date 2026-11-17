@@ -968,6 +968,79 @@ def sign_colors(cat):
     return ["#3b3f46", "#ffffff", "#e0a43a"]
 
 
+# チェーン店の決まった配色 (店名から自動で付ける)。[地の色, 文字の色, 帯・日よけの色の並び]。ロゴは使わず、色と帯と店名の文字だけ。
+# 確認 = 路上写真 (Mapillary) で見て合わせたもの。それ以外は一般的な配色の推定 (実物と少し違うことがある)
+CHAINS = [
+    ("seven", r"セブン[-ー‐ー]?イレブン|7-?ELEVEN", ["#ffffff", "#00843d", ["#f47b20", "#00843d", "#e5262d"]], "確認"),
+    ("lawson", r"ローソン|LAWSON", ["#0072bc", "#ffffff", ["#ffffff", "#0072bc"]], "推定"),
+    ("familymart", r"ファミリーマート|FamilyMart", ["#ffffff", "#0068b7", ["#00a040", "#0068b7"]], "推定"),
+    ("mcdonalds", r"マクドナルド|McDonald", ["#db0007", "#ffc72c", ["#ffc72c", "#db0007"]], "確認"),
+    ("starbucks", r"スターバックス|Starbucks", ["#00704a", "#ffffff", ["#1e3932", "#00704a"]], "推定"),
+    ("yoshinoya", r"吉野家", ["#f08300", "#ffffff", ["#ffffff", "#f08300"]], "推定"),
+    ("matsuya", r"松屋", ["#f26b00", "#ffffff", ["#ffffff", "#f26b00"]], "推定"),
+    ("sukiya", r"すき家", ["#e60012", "#ffffff", ["#ffffff", "#e60012"]], "推定"),
+    ("gusto", r"ガスト", ["#e8380d", "#ffffff", ["#f6b73c", "#e8380d"]], "推定"),
+    ("saizeriya", r"サイゼリヤ", ["#00793a", "#ffffff", ["#d0021b", "#ffffff"]], "推定"),
+    ("doutor", r"ドトール", ["#5a3520", "#ffffff", ["#c8102e", "#5a3520"]], "推定"),
+    ("misterdonut", r"ミスタードーナツ|ミスド", ["#d6182f", "#ffffff", ["#f5a9b8", "#d6182f"]], "推定"),
+    ("daiso", r"ダイソー|DAISO", ["#e4002b", "#ffffff", ["#ffffff", "#e4002b"]], "推定"),
+    ("mufg", r"三菱UFJ銀行", ["#ffffff", "#d7000f", ["#d7000f", "#ffffff"]], "推定"),
+    ("smbc", r"三井住友銀行", ["#ffffff", "#006e3b", ["#006e3b", "#ffffff"]], "推定"),
+    ("resona", r"りそな銀行", ["#ffffff", "#00753a", ["#00753a", "#e60012"]], "推定"),
+]
+
+
+SHOPFRONTS = pathlib.Path(__file__).resolve().parent.parent / "data" / "shopfronts.json"
+IZAKAYA_NOREN = "#23262b"   # 居酒屋 (pub・bar) で、写真で判定していない店の標準: 濃紺のれん + 赤ちょうちん (推定)
+
+
+def load_shopfronts():
+    """路上写真を見て付けた個人店の店先 (tools/shopfronts.py)。[{x, z, awning, noren, lantern, sign, unseen}]"""
+    if not SHOPFRONTS.exists():
+        return []
+    return json.loads(SHOPFRONTS.read_text(encoding="utf-8"))["shops"]
+
+
+def shopfront_of(labels, p):
+    for r in labels:
+        if math.hypot(r["x"] - p["x"], r["z"] - p["z"]) <= 3:
+            return r
+    return None
+
+
+def shopfront_fields(p, is_chain, labels):
+    """個人店の店先 (写真で判定した値。居酒屋は、判定が無ければ標準ののれんと提灯)。チェーン店は CHAINS が優先。
+    日よけの色は colors[2] (帯と日よけの色)、看板は colors[0:2]。のれん・提灯は noren・lantern"""
+    if is_chain:
+        return {}
+    r = shopfront_of(labels, p)
+    out = {}
+    if r and not r.get("unseen"):
+        colors = list(sign_colors(p["cat"]))
+        if r.get("sign"):
+            colors = [r["sign"][0], r["sign"][1], r["sign"][1]]
+        if r.get("awning"):
+            colors[2] = r["awning"]
+        if colors != sign_colors(p["cat"]):
+            out["colors"] = colors
+        if r.get("noren"):
+            out["noren"] = r["noren"]
+        if r.get("lantern"):
+            out["lantern"] = True
+        out["front"] = "photo"
+    elif re.fullmatch(r"amenity:(pub|bar)", p["cat"]) and not r:
+        out.update({"noren": IZAKAYA_NOREN, "lantern": True, "front": "default"})
+    return out
+
+
+def chain_look(name):
+    """店名から、チェーンの配色 (colors, bands, key)。無ければ None"""
+    for key, pat, (bg, fg, bands), _ in CHAINS:
+        if re.search(pat, name or "", re.I):
+            return [bg, fg, bands[0]], bands, key
+    return None
+
+
 def js_signed_area(r):
     """city.js / shapes.js の signedArea (向きの符号がこちらの signed_area と逆)"""
     a, j = 0, len(r) - 1
@@ -1088,6 +1161,7 @@ def build_shapes(city, world, cx, cz, R):
 
     # ---------- 店の看板と日よけ (店の点にいちばん近い建物の、いちばん近い壁) ----------
     signs = []
+    sf_labels = load_shopfronts()
     for p in city.get("pois") or []:
         if not SHOP.match(p["cat"]) or not inR(p["x"], p["z"]) or len(signs) >= 200:
             continue
@@ -1120,7 +1194,9 @@ def build_shapes(city, world, cx, cz, R):
         nx, nz = uz * s, -ux * s
         # (x, z) = 壁の中点、y = 建物の基準の高さ、正面 (yaw) = 壁の外向き。看板は y + 3.35、日よけは y + 2.6
         signs.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(b["base"]), "yaw": round(math.atan2(nx, nz), 4),
-                      "w": r3(min(L - 0.6, 7)), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"])})
+                      "w": r3(min(L - 0.6, 7)), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"]),
+                      **({"colors": ch[0], "bands": ch[1], "chain": ch[2]} if (ch := chain_look(p.get("name"))) else {}),
+                      **shopfront_fields(p, bool(ch), sf_labels)})
     # ---------- ランドマークの大きな壁面看板 (tools/landmarks.py の look に sign があるもの) ----------
     # 外向きの方角 (東西南北) ごとに、いちばん長い壁の中央に 1 枚。(x, z) = 壁の中点、y = 看板の中心の高さ、正面 (yaw) = 壁の外向き
     big = []
