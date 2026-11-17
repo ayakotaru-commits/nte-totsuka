@@ -84,9 +84,19 @@ function patchGround(mat, uniforms) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 ${FRAG_HEAD}
-uniform sampler2D uAsph, uAsphN, uPave, uPaveN; uniform vec3 uAsphAvg, uPaveAvg;`)
+uniform sampler2D uAsph, uAsphN, uPave, uPaveN; uniform vec3 uAsphAvg, uPaveAvg;
+${FADE}
+// 値ノイズ (0〜1)。補修跡・ひび割れ・汚れの位置を決める
+float gHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float gNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(gHash(i), gHash(i + vec2(1, 0)), f.x), mix(gHash(i + vec2(0, 1)), gHash(i + vec2(1, 1)), f.x), f.y); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 float dDw = detW(), dRoad = 0.0, dPave = 0.0;
+float gFw = max(fwidth(vDW.x), fwidth(vDW.z)); // 1 画素の大きさ (m)。分岐の外で求める
+vec2 gp = vDW.xz - floor(vDW.xz / 512.0) * 512.0; // ノイズは 512 m で繰り返す (座標が大きいと精度が落ちるため)
+float gPatch = gNoise(gp / 7.0 + 13.1), gZone = gNoise(gp / 18.0 + 5.3), gDirt = gNoise(gp / 3.0) * 0.6 + gNoise(gp / 23.0) * 0.4;
+vec2 gw = vec2(gNoise(gp / 0.35 + 3.7), gNoise(gp / 0.35 + 9.1)) - 0.5; // 細かくゆがめて、ひびをぎざぎざにする
+float gCr = gNoise(gp / 1.3 + gw * 0.5) * 0.6 + gNoise(gp / 0.55 + gw * 0.8) * 0.4;
 if (dDw > 0.0) {
   vec3 b = diffuseColor.rgb;
   float lum = dot(b, vec3(0.299, 0.587, 0.114));
@@ -97,6 +107,13 @@ if (dDw > 0.0) {
   vec3 a = mix(vec3(1.0), max(texture2D(uAsph, vDW.xz / 4.0).rgb / uAsphAvg, vec3(0.95)), 0.75); // 暗い部分を下げ止め = ひび割れを消す (ざらつきは残す)
   vec3 p = texture2D(uPave, vDW.xz / 2.5).rgb / uPaveAvg;
   vec3 det = mix(vec3(1.0), a, dRoad) * mix(vec3(1.0), p, dPave);
+  // 車道: 補修跡 (新しいアスファルトで黒っぽい、ふちのはっきりした塊)、ひび割れ (古い所だけ。細い線は画素の幅でぼかす)、汚れのむら
+  float patchM = smoothstep(0.71, 0.73, gPatch);
+  float crack = aaL(abs(gCr - 0.5), 0.01, gFw / 1.3) * smoothstep(0.6, 0.75, gZone) * (1.0 - patchM) * detFade(gFw, 0.4);
+  vec3 road = mix(vec3(0.9 + 0.16 * gDirt), vec3(0.8, 0.81, 0.84), patchM) * (1.0 - 0.45 * crack);
+  // 歩道・舗装: 汚れと日焼けのむら
+  vec3 pave = vec3(0.92 + 0.14 * gDirt);
+  det *= mix(vec3(1.0), road, dRoad) * mix(vec3(1.0), pave, dPave);
   diffuseColor.rgb = mix(b, b * det, dDw);
 }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
@@ -108,7 +125,7 @@ if (dDw > 0.0) {
   normal = normalize(mix(normal, normalize((viewMatrix * vec4(wn, 0.0)).xyz), dDw));
 }`);
   };
-  mat.customProgramCacheKey = () => 'detail-ground';
+  mat.customProgramCacheKey = () => 'detail-ground2';
   mat.needsUpdate = true;
 }
 

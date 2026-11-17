@@ -8,6 +8,7 @@ import { buildShapes } from './shapes.js';
 import { buildSites } from './site.js';
 import { buildStation } from './station.js';
 import { buildWalkways } from './walkways.js';
+import { buildYard } from './yard.js';
 
 export async function loadDetail({ scene, city, world, built, props }) {
   const c = city.start || { x: 0, z: 0 };
@@ -58,6 +59,12 @@ export async function loadDetail({ scene, city, world, built, props }) {
     const wk = buildWalkways(props); // 歩道橋・デッキ・階段の手すり
     scene.add(wk.group);
     parts.push({ set: (v) => { wk.group.visible = v; } });
+  }
+
+  if (DETAIL.shapes && props) {
+    const yd = buildYard(props); // 塀・生け垣・物置・室外機 (点群から。tools/lidar_small.py)
+    scene.add(yd.group);
+    parts.push({ set: (v) => { yd.group.visible = v; } });
   }
 
   // 当たり判定 (V キーで見た目を消すと一緒に外す)

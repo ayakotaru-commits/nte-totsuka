@@ -22,6 +22,7 @@ CITY = ROOT / "public" / "data" / "city.json"
 TERRAIN = ROOT / "public" / "data" / "terrain.json"
 DST = ROOT / "public" / "data" / "props.json"
 LOTS = ROOT / "data" / "lots.json"  # 点群から読んだ木の位置・広い舗装 (tools/lidar_cover.py が作る。無ければ使わない)
+SMALL = ROOT / "data" / "small.json"  # 点群から読んだ塀・生け垣・物置と、室外機の位置 (tools/lidar_small.py が作る。無ければ使わない)
 
 RADIUS = 3000  # スタート地点からの半径 (m)。3000 = マップ全体 (旧 detail/config.js の radius)
 STEP = 0.4     # world.js の STEP (乗り越えられる段差)
@@ -226,6 +227,23 @@ def carriage(r):
     if r.get("half"):
         return r["half"][0] + r["half"][1] - 2 * sw, (r["half"][0] - r["half"][1]) / 2
     return r["w"] - 2 * sw, 0
+
+
+def rdp(pts, tol):
+    """折れ線を、ずれ tol 以内で間引く (Douglas-Peucker)"""
+    if len(pts) < 3:
+        return list(pts)
+    (ax, az), (bx, bz) = pts[0], pts[-1]
+    dx, dz = bx - ax, bz - az
+    L = math.hypot(dx, dz) or 1e-9
+    i, dmax = 0, -1
+    for k in range(1, len(pts) - 1):
+        d = abs((pts[k][0] - ax) * dz - (pts[k][1] - az) * dx) / L
+        if d > dmax:
+            i, dmax = k, d
+    if dmax <= tol:
+        return [pts[0], pts[-1]]
+    return rdp(pts[:i + 1], tol)[:-1] + rdp(pts[i:], tol)
 
 
 def walk(pts, start, step, cb):
@@ -452,9 +470,85 @@ def build_street_props(city, world, H, cx, cz, R, col):
         mirrors.append({"x": r2(px), "z": r2(pz), "y": r2(y), "yaw": r3(math.atan2(-bx, -bz))})
         col.add_circle(px, pz, 0.08, y, 3.3)
 
+    # ---------- マンホール (車道の中、約 25 m おき) ----------
+    # [x, z, 種類]。0 = 下水 (直径 0.64 m の丸い鉄蓋)、1 = 水道・ガスの小さな蓋 (直径 0.4 m)。路面に沿わせて貼るのは描画側
+    manholes = []
+    mh_grid = PointGrid(8)
+    for r in roads:
+        if r["kind"] not in DRIVABLE or r.get("ys") or r["w"] < 3.5:
+            continue
+        rnd = hash_rng("mh" + js_join(r["pts"][0]))
+        wc, c0 = carriage(r)
+
+        def cb(x, z, dx, dz, r=r, rnd=rnd, wc=wc, c0=c0):
+            lat = c0 + (rnd() - 0.5) * min(1.6, wc * 0.4)
+            px, pz = x - dz * lat, z + dx * lat
+            kind = 0 if rnd() < 0.7 else 1
+            if not inR(px, pz) or mh_grid.near(px, pz, 6) or not clear(px, pz, 0.5) or node_grid.near(px, pz, 2.5):
+                return
+            mh_grid.add(px, pz)
+            manholes.append([r2(px), r2(pz), kind])
+        walk(r["pts"], 6 + rnd() * 18, 25, cb)
+
+    # ---------- 側溝 (歩道の無い生活道路の両端。コンクリートの蓋とグレーチング) ----------
+    # 道路の縁から内側 0.35 m の帯。ひと続きの帯ごとに点の列 [[x, z], ...] (中心線)。交差点・建物の前で切る
+    gutters = []
+    for r in roads:
+        if r["kind"] not in ("residential", "unclassified", "living_street") or r.get("ys") or r.get("sw") or r["w"] < 3:
+            continue
+        for side in (1, -1):
+            run = [None]
+
+            def cb(x, z, dx, dz, r=r, side=side, run=run):
+                go = edge(r, side) - 0.2
+                px, pz = x - dz * side * go, z + dx * side * go
+                ok = inR(px, pz) and not node_grid.near(x, z, r["w"] / 2 + 3.5) and clear(px, pz, 0.15) and not at_gate(px, pz)
+                if not ok:
+                    run[0] = None
+                    return
+                cur = run[0]
+                if cur and math.hypot(cur[-1][0] - px, cur[-1][1] - pz) < 1.6:
+                    cur.append((px, pz))
+                else:
+                    run[0] = [(px, pz)]
+                    gutters.append(run[0])
+            walk(r["pts"], 0.5, 1, cb)
+    out_gutters = []
+    for g in gutters:
+        g = rdp(g, 0.04)
+        if len(g) >= 2 and sum(math.hypot(g[i + 1][0] - g[i][0], g[i + 1][1] - g[i][1]) for i in range(len(g) - 1)) >= 3:
+            out_gutters.append([[r2(x), r2(z)] for x, z in g])
+
     print(f"poles={len(poles)} wires={len(wires)} paint={len(paint)} tomare={len(tomare)} guard runs={len(guards)} posts={n_posts} vending={len(vending)} mirrors={len(mirrors)}")
+    print(f"manholes={len(manholes)} gutter runs={len(out_gutters)} ({sum(len(g) for g in out_gutters)} pts)")
     return {"poles": out_poles, "wires": wires, "paint": paint, "tomare": tomare,
-            "guardRails": out_guards, "vending": vending, "mirrors": mirrors}
+            "guardRails": out_guards, "vending": vending, "mirrors": mirrors, "manholes": manholes, "gutters": out_gutters}
+
+
+def build_yard(small, world, H, col):
+    """塀・生け垣・物置・室外機 (tools/lidar_small.py が点群から見つけた位置)。
+    yardWalls: {"k": "block" | "hedge", "p": [[x, y, z], [x, y, z]], "h": 高さ}  y = 両端の地面の高さ
+    sheds:     {x, y, z, yaw, "l": 長さ, "w": 奥行き, "h": 高さ, "c": 色の番号}  長さの向きが yaw の局所 X
+    acUnits:   {x, y, z, yaw}  正面 (局所 +Z) が壁の外を向く"""
+    walls, sheds, acs = [], [], []
+    for x0, z0, x1, z1, h, k in small.get("walls") or []:
+        mx, mz = (x0 + x1) / 2, (z0 + z1) / 2
+        if any(world.contains(b, mx, mz) for b in world.query(mx - 1, mz - 1, mx + 1, mz + 1)):
+            continue
+        a, b = [x0, H(x0, z0), z0], [x1, H(x1, z1), z1]
+        walls.append({"k": k, "p": [[r2(v) for v in a], [r2(v) for v in b]], "h": r2(h)})
+        col.add_line([[r2(x0), r2(z0), r2(a[1])], [r2(x1), r2(z1), r2(b[1])]], 0.08 if k == "block" else 0.3, r2(h))
+    for x, z, yaw, L, W, h in small.get("sheds") or []:
+        y = H(x, z)
+        c = math.floor(hash_rng(f"shed{x},{z}")() * 4)
+        sheds.append({"x": r2(x), "y": r2(y), "z": r2(z), "yaw": r3(yaw - math.pi / 2), "l": r2(L), "w": r2(W), "h": r2(h), "c": c})
+        col.add_box(x, z, yaw - math.pi / 2, L / 2, W / 2, y, h)
+    for x, z, yaw in small.get("ac") or []:
+        y = H(x, z)
+        acs.append({"x": r2(x), "y": r2(y), "z": r2(z), "yaw": r3(yaw)})
+        col.add_box(x, z, yaw, 0.4, 0.15, y, 0.62)
+    print(f"yard walls={len(walls)} sheds={len(sheds)} ac units={len(acs)}")
+    return {"yardWalls": walls, "sheds": sheds, "acUnits": acs}
 
 
 # =====================================================================
@@ -1814,6 +1908,8 @@ def build(city):
     cars = build_parking(lots, city, world, H, col, street["paint"]) if lots and lots.get("parking") else []
     rail = build_rail(city, world, H, col)
     walk = build_walk(city, world, H, col)
+    small = json.loads(SMALL.read_text(encoding="utf-8")) if SMALL.exists() else None
+    yard = build_yard(small, world, H, col) if small else {}
     print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
     return {
         "version": 1,
@@ -1826,6 +1922,7 @@ def build(city):
         "rail": rail,
         "walk": walk,
         "cars": cars,
+        **yard,
         **build_area_extras(city, world, H, col, (lots or {}).get("sites") or ()),
         "colliders": {"circle": col.circle, "box": col.box, "line": col.line, "tree": col.tree},
     }
