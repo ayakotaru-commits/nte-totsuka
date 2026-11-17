@@ -24,7 +24,8 @@ const col = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; }
 
 // ---- 頂点バッファ組み立て ----
 class GB {
-  constructor() { this.p = []; this.n = []; this.u = []; this.c = []; }
+  // mat = true: 材質の番号 (matId。壁・屋根の質感の種類。detail/textures.js が読む) を頂点ごとに持つ。番号は tri() の前に this.mat に入れる
+  constructor({ mat = false } = {}) { this.p = []; this.n = []; this.u = []; this.c = []; this.useMat = mat; this.m = []; this.mat = 0; }
   tri(a, b, c, n, ua, ub, uc, color) {
     const e1x = b[0] - a[0], e1y = b[1] - a[1], e1z = b[2] - a[2];
     const e2x = c[0] - a[0], e2y = c[1] - a[1], e2z = c[2] - a[2];
@@ -34,6 +35,7 @@ class GB {
     this.n.push(...n, ...n, ...n);
     this.u.push(...ua, ...ub, ...uc);
     this.c.push(...color, ...color, ...color);
+    if (this.useMat) this.m.push(this.mat, this.mat, this.mat);
   }
   geometry() {
     const g = new THREE.BufferGeometry();
@@ -41,6 +43,7 @@ class GB {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.u, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
+    if (this.useMat) g.setAttribute('matId', new THREE.Uint8BufferAttribute(this.m, 1));
     g.computeBoundingSphere();
     return g;
   }
@@ -590,8 +593,36 @@ function inRing(x, z, ring) {
   return ins;
 }
 
+// ---- 壁と屋根の材質 (質感の種類) を建物ごとに自動で決める ----
+// 番号は detail/textures.js のシェーダと共通。根拠は種類 (style)・高さ・壁と屋根の色 (路上写真・航空写真から読んだ色があればそれ)。
+// 日本の街でよくある組み合わせの推定で、建物ごとに実物を確かめたものではない
+export const WALL_MAT = { plaster: 0, siding: 1, tile: 2, concrete: 3, metal: 4, alc: 5 };
+export const ROOF_MAT = { slate: 0, kawara: 1, metal: 2 };
+const hslOf = (rgb) => { const o = {}; new THREE.Color(...rgb).getHSL(o, THREE.SRGBColorSpace); return o; };
+function pickWallMat(style, isHouse, isEuro, h, wc, r) {
+  const M = WALL_MAT, { h: hue, s, l } = hslOf(wc);
+  if (isEuro) return M.plaster;
+  if (style === 'industrial' || style === 'lowrise') return r < 0.55 ? M.metal : M.alc; // 工場・倉庫: 角波の鋼板か ALC
+  if (style === 'parking') return M.concrete;
+  const warm = s > 0.1 && hue > 0.02 && hue < 0.16; // 茶・ベージュ・オレンジ
+  if (isHouse) {
+    if (h >= 9 && r < 0.3) return M.alc;                 // 3 階建ての鉄骨住宅
+    return r < (warm || l < 0.6 ? 0.75 : 0.55) ? M.siding : M.plaster; // 戸建ての多くは窯業系サイディング
+  }
+  if (warm) return r < 0.8 ? M.tile : M.plaster;          // 茶系のマンション・ビルはタイル張りが多い
+  if (s < 0.06 && l < 0.75) return r < 0.45 ? M.concrete : r < 0.7 ? M.tile : M.plaster; // 灰色
+  return r < 0.45 ? M.tile : r < 0.85 ? M.plaster : M.concrete; // 白っぽい
+}
+function pickRoofMat(tile, r) {
+  const M = ROOF_MAT, { h: hue, s, l } = hslOf(tile);
+  if (s > 0.22 && (hue > 0.3 && hue < 0.75)) return M.metal;   // 青・緑の屋根は金属 (ガルバリウム・トタン)
+  if (s < 0.12 && l > 0.42) return M.metal;                    // 明るい灰色も金属
+  if (s < 0.15 && l < 0.32) return r < 0.5 ? M.kawara : M.slate; // 黒・濃い灰色: 瓦かスレート
+  return r < 0.6 ? M.slate : r < 0.8 ? M.kawara : M.metal;     // 茶系
+}
+
 function buildBuildings(buildings, looks = {}, platforms = []) {
-  const office = new GB(), house = new GB(), roof = new GB(), pitched = new GB(), euro = new GB();
+  const office = new GB({ mat: true }), house = new GB({ mat: true }), roof = new GB(), pitched = new GB({ mat: true }), euro = new GB({ mat: true });
   const lookGB = {}; // ランドマークの外壁 (外観ごとに 1 つ)
   for (const b of buildings) {
     const rnd = hash((b.part || b.id) + (b.name || '')); // 上の段 (part) は元の建物と同じ色にする
@@ -636,6 +667,8 @@ function buildBuildings(buildings, looks = {}, platforms = []) {
     // 階数に合わせて窓の段を揃える
     if (b.floors) F.floor = Math.max(2.4, (y1 - y0) / b.floors);
     const uoff = Math.floor(rnd() * TILE), voff = Math.floor(rnd() * TILE) / TILE;
+    const mr = hash('mat' + (b.part || b.id))(); // 材質の選び方は、ほかの乱数の並びを変えないよう別の乱数で
+    wallGB.mat = pickWallMat(style, isHouse, isEuro, b.h, wc, mr);
     const U = F.bay * TILE, V = F.floor * TILE;
 
     const look = b.look && looks[b.look];
@@ -662,6 +695,7 @@ function buildBuildings(buildings, looks = {}, platforms = []) {
     }
     let tile = col(ROOF_TILE[Math.floor(rnd() * ROOF_TILE.length)]);
     if (real) tile = real.map(v => Math.min(1, v * TILE_GAIN)); // 瓦のテクスチャで暗くなる分を戻す
+    pitched.mat = pickRoofMat(real || tile, hash('roof' + (b.part || b.id))());
     if (r && r.t === 'skel') addSkelRoof(pitched, b.outer, y1, r, tile);
     else if (r) addPitched(pitched, roof, r, y1, tile, wc);
     else if (b.roofs) { // 点群から作った段: 部分ごとの屋根 (下の平らな面は屋根に隠れる)
