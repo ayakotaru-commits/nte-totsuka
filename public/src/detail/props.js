@@ -91,6 +91,69 @@ export function buildProps(props) {
   tomare.receiveShadow = true; tomare.name = 'tomare';
   group.add(paintMesh, tomare);
 
+  // ---------- マンホール・側溝 (路面に沿わせて貼る板。模様は Canvas で作る) ----------
+  if (props.manholes && props.manholes.length) {
+    const tex = canvasTexture(256, 128, (g) => {
+      g.clearRect(0, 0, 256, 128);
+      const lid = (cx, r, small) => { // 鋳鉄の蓋: 外周の縁、同心円、格子の滑り止め
+        g.save(); g.beginPath(); g.arc(cx, 64, r, 0, Math.PI * 2); g.clip();
+        g.fillStyle = '#4b4a47'; g.fillRect(cx - r, 64 - r, r * 2, r * 2);
+        g.strokeStyle = '#2f2e2c'; g.lineWidth = 2;
+        if (small) { for (let k = -r; k < r; k += 7) { g.beginPath(); g.moveTo(cx + k, 64 - r); g.lineTo(cx + k, 64 + r); g.stroke(); } }
+        else {
+          for (let k = -r; k < r; k += 9) { g.beginPath(); g.moveTo(cx - r, 64 + k); g.lineTo(cx + r, 64 + k + r * 0.5); g.stroke(); g.beginPath(); g.moveTo(cx - r, 64 + k + r * 0.5); g.lineTo(cx + r, 64 + k); g.stroke(); }
+          g.fillStyle = '#5a5955'; g.beginPath(); g.arc(cx, 64, r * 0.32, 0, Math.PI * 2); g.fill();
+          g.strokeStyle = '#333230'; g.lineWidth = 3; g.beginPath(); g.arc(cx, 64, r * 0.62, 0, Math.PI * 2); g.stroke();
+        }
+        g.strokeStyle = '#6d6b66'; g.lineWidth = 5; g.beginPath(); g.arc(cx, 64, r - 3, 0, Math.PI * 2); g.stroke(); // 縁 (すり減って明るい)
+        g.restore();
+      };
+      lid(64, 62, false); lid(192, 62, true);
+    });
+    const b = new Builder();
+    for (const [x, z, k] of props.manholes) {
+      const u0 = k ? 0.5 : 0, u1 = u0 + 0.5;
+      b.flatRect(x, z, [1, 0], k ? 0.4 : 0.64, k ? 0.4 : 0.64, 0.128, [[u0, 0], [u1, 0], [u1, 1], [u0, 1]]);
+    }
+    const m = new THREE.Mesh(drape(b.geometry(), 1.5), new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.5, roughness: 0.5, metalness: 0.4, polygonOffset: true, polygonOffsetFactor: -3 }));
+    m.receiveShadow = true; m.name = 'manholes';
+    group.add(m);
+  }
+  if (props.gutters && props.gutters.length) {
+    // 5 m 分の模様: 50 cm のコンクリートの蓋 9 枚と、鉄のグレーチング 1 枚
+    const tex = canvasTexture(1024, 64, (g) => {
+      const W = 1024 / 10;
+      for (let i = 0; i < 10; i++) {
+        const x0 = i * W;
+        if (i === 6) {
+          g.fillStyle = '#3e3f40'; g.fillRect(x0, 0, W, 64);
+          g.fillStyle = '#1c1d1e'; for (let k = 6; k < W - 4; k += 7) g.fillRect(x0 + k, 8, 3, 48);
+          g.fillStyle = '#5b5c5d'; g.fillRect(x0, 0, W, 6); g.fillRect(x0, 58, W, 6);
+        } else {
+          const v = 176 + ((i * 37) % 17); g.fillStyle = `rgb(${v},${v - 3},${v - 9})`; g.fillRect(x0, 0, W, 64);
+          g.fillStyle = 'rgba(0,0,0,.08)'; for (let k = 0; k < 60; k++) g.fillRect(x0 + (k * 53) % W, (k * 29) % 64, 2, 2); // ざらつき
+          g.fillStyle = '#7e7b75'; g.fillRect(x0 + W / 2 - 6, 30, 12, 4); // 持ち上げ用の穴
+        }
+        g.fillStyle = '#6a6762'; g.fillRect(x0, 0, 2, 64); // 蓋の継ぎ目
+      }
+    });
+    tex.wrapS = THREE.RepeatWrapping;
+    const b = new Builder();
+    for (const run of props.gutters) {
+      let u = 0;
+      for (let i = 0; i + 1 < run.length; i++) {
+        const [ax, az] = run[i], [bx, bz] = run[i + 1], L = Math.hypot(bx - ax, bz - az);
+        if (L < 0.05) continue;
+        const u1 = u + L / 5;
+        b.flatRect((ax + bx) / 2, (az + bz) / 2, [(bx - ax) / L, (bz - az) / L], L, 0.35, 0.127, [[u, 0], [u1, 0], [u1, 1], [u, 1]]);
+        u = u1;
+      }
+    }
+    const m = new THREE.Mesh(drape(b.geometry(), 1.5), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 }));
+    m.receiveShadow = true; m.name = 'gutters';
+    group.add(m);
+  }
+
   // ---------- ガードパイプ (柱の点の列ごと) ----------
   const posts = [], pipes = [];
   for (const run of props.guardRails) {
