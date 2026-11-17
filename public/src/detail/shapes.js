@@ -76,6 +76,7 @@ export function buildShapes(props) {
       }
     });
     const mat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffe2b0', emissiveIntensity: 0, roughness: kind === 'lattice' ? 0.85 : 0.25, metalness: kind === 'lattice' ? 0 : 0.1 });
+    mat.userData.glow = kind === 'lattice' ? 0.9 : 0.55;   // ガラスの店先は白く飛ばないよう弱めに
     emissive.push(mat);
     return (faceMats[key] = mat);
   };
@@ -95,6 +96,7 @@ export function buildShapes(props) {
       g.fillText(p.name, W / 2, (H - 22) / 2 + 4);
     });
     const signMat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.5 });
+    signMat.userData.glow = 2.2;   // 夜は看板を窓より強く光らせる (電飾看板)
     emissive.push(signMat);
     const sign = new THREE.Mesh(new THREE.BoxGeometry(w, w * 160 / 1024 * 1.0 + 0.3, 0.18), [null, null, null, null, signMat, null].map(m => m || new THREE.MeshStandardMaterial({ color: '#2b2e33' })));
     sign.position.set(p.x + nx * 0.12, p.y + 3.35, p.z + nz * 0.12);
