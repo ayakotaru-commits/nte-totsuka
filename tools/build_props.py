@@ -990,6 +990,49 @@ CHAINS = [
 ]
 
 
+SHOPFRONTS = pathlib.Path(__file__).resolve().parent.parent / "data" / "shopfronts.json"
+IZAKAYA_NOREN = "#23262b"   # 居酒屋 (pub・bar) で、写真で判定していない店の標準: 濃紺のれん + 赤ちょうちん (推定)
+
+
+def load_shopfronts():
+    """路上写真を見て付けた個人店の店先 (tools/shopfronts.py)。[{x, z, awning, noren, lantern, sign, unseen}]"""
+    if not SHOPFRONTS.exists():
+        return []
+    return json.loads(SHOPFRONTS.read_text(encoding="utf-8"))["shops"]
+
+
+def shopfront_of(labels, p):
+    for r in labels:
+        if math.hypot(r["x"] - p["x"], r["z"] - p["z"]) <= 3:
+            return r
+    return None
+
+
+def shopfront_fields(p, is_chain, labels):
+    """個人店の店先 (写真で判定した値。居酒屋は、判定が無ければ標準ののれんと提灯)。チェーン店は CHAINS が優先。
+    日よけの色は colors[2] (帯と日よけの色)、看板は colors[0:2]。のれん・提灯は noren・lantern"""
+    if is_chain:
+        return {}
+    r = shopfront_of(labels, p)
+    out = {}
+    if r and not r.get("unseen"):
+        colors = list(sign_colors(p["cat"]))
+        if r.get("sign"):
+            colors = [r["sign"][0], r["sign"][1], r["sign"][1]]
+        if r.get("awning"):
+            colors[2] = r["awning"]
+        if colors != sign_colors(p["cat"]):
+            out["colors"] = colors
+        if r.get("noren"):
+            out["noren"] = r["noren"]
+        if r.get("lantern"):
+            out["lantern"] = True
+        out["front"] = "photo"
+    elif re.fullmatch(r"amenity:(pub|bar)", p["cat"]) and not r:
+        out.update({"noren": IZAKAYA_NOREN, "lantern": True, "front": "default"})
+    return out
+
+
 def chain_look(name):
     """店名から、チェーンの配色 (colors, bands, key)。無ければ None"""
     for key, pat, (bg, fg, bands), _ in CHAINS:
@@ -1118,6 +1161,7 @@ def build_shapes(city, world, cx, cz, R):
 
     # ---------- 店の看板と日よけ (店の点にいちばん近い建物の、いちばん近い壁) ----------
     signs = []
+    sf_labels = load_shopfronts()
     for p in city.get("pois") or []:
         if not SHOP.match(p["cat"]) or not inR(p["x"], p["z"]) or len(signs) >= 200:
             continue
@@ -1151,7 +1195,8 @@ def build_shapes(city, world, cx, cz, R):
         # (x, z) = 壁の中点、y = 建物の基準の高さ、正面 (yaw) = 壁の外向き。看板は y + 3.35、日よけは y + 2.6
         signs.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(b["base"]), "yaw": round(math.atan2(nx, nz), 4),
                       "w": r3(min(L - 0.6, 7)), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"]),
-                      **({"colors": ch[0], "bands": ch[1], "chain": ch[2]} if (ch := chain_look(p.get("name"))) else {})})
+                      **({"colors": ch[0], "bands": ch[1], "chain": ch[2]} if (ch := chain_look(p.get("name"))) else {}),
+                      **shopfront_fields(p, bool(ch), sf_labels)})
     # ---------- ランドマークの大きな壁面看板 (tools/landmarks.py の look に sign があるもの) ----------
     # 外向きの方角 (東西南北) ごとに、いちばん長い壁の中央に 1 枚。(x, z) = 壁の中点、y = 看板の中心の高さ、正面 (yaw) = 壁の外向き
     big = []

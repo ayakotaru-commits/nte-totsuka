@@ -82,6 +82,31 @@ export function buildShapes(props) {
     aw.rotation.x = -1.05;
     aw.castShadow = true;
     group.add(sign, aw);
+    // 居酒屋ののれん (入口の上から 4 枚の布が下がる) と赤ちょうちん (入口の両側)。写真で判定した店と、居酒屋の標準 (front: 'default')
+    if (p.noren) {
+      const nw = Math.min(w * 0.5, 2.6), n = 4, uxn = Math.cos(p.yaw), uzn = -Math.sin(p.yaw);
+      for (let k = 0; k < n; k++) {
+        const t = (k - (n - 1) / 2) * nw / n;
+        const cloth = new THREE.Mesh(new THREE.PlaneGeometry(nw / n * 0.92, 0.85), new THREE.MeshStandardMaterial({ color: p.noren, side: THREE.DoubleSide, roughness: 0.95 }));
+        cloth.position.set(p.x + nx * 0.6 + uxn * t, p.y + 1.95, p.z + nz * 0.6 + uzn * t);
+        cloth.rotation.y = p.yaw;
+        group.add(cloth);
+      }
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(nw, 0.06, 0.06), new THREE.MeshStandardMaterial({ color: '#4a3a2c' }));
+      bar.position.set(p.x + nx * 0.6, p.y + 2.38, p.z + nz * 0.6); bar.rotation.y = p.yaw; group.add(bar);
+    }
+    if (p.lantern) {
+      const lmat = new THREE.MeshStandardMaterial({ color: '#c8261c', emissive: '#ff5a2a', emissiveIntensity: 0, roughness: 0.6 });
+      emissive.push(lmat);
+      const uxn = Math.cos(p.yaw), uzn = -Math.sin(p.yaw);
+      for (const sgn of [-1, 1]) {
+        const lan = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lmat);
+        lan.scale.set(1, 1.35, 1);
+        const t = sgn * Math.min(w * 0.42, 1.9);
+        lan.position.set(p.x + nx * 1.0 + uxn * t, p.y + 1.95, p.z + nz * 1.0 + uzn * t);  // 日よけ (y + 2.3〜2.9、前縁は壁から約 1 m) の前縁の下
+        group.add(lan);
+      }
+    }
   }
 
   // ---------- ランドマークの大きな壁面看板 (文字だけ。実物のロゴではない) ----------
