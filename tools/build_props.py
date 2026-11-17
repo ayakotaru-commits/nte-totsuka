@@ -1162,6 +1162,7 @@ def build_shapes(city, world, cx, cz, R):
     # ---------- 店の看板と日よけ (店の点にいちばん近い建物の、いちばん近い壁) ----------
     signs = []
     sf_labels = load_shopfronts()
+    look_ids = {b["id"] for b in city["buildings"] if b.get("look")} | {b.get("part") for b in city["buildings"] if b.get("look") and b.get("part")}
     for p in city.get("pois") or []:
         if not SHOP.match(p["cat"]) or not inR(p["x"], p["z"]) or len(signs) >= 200:
             continue
@@ -1177,26 +1178,35 @@ def build_shapes(city, world, cx, cz, R):
         b = best[1]
         ring = b["rings"][0]
         s = 1 if js_signed_area(ring) > 0 else -1
+        # 店の点にいちばん近い壁 (壁の線との距離。向きが外向きの側にある壁を優先) と、その壁の上の入口の位置 (店の点を壁に投影した位置)
         e = None
         for i in range(len(ring)):
             a, c = ring[i], ring[(i + 1) % len(ring)]
             L = math.hypot(c[0] - a[0], c[1] - a[1])
             if L < 3:
                 continue
-            mx, mz = (a[0] + c[0]) / 2, (a[1] + c[1]) / 2
-            d = math.hypot(mx - p["x"], mz - p["z"])
+            ux, uz = (c[0] - a[0]) / L, (c[1] - a[1]) / L
+            t = max(0.0, min(L, (p["x"] - a[0]) * ux + (p["z"] - a[1]) * uz))
+            d = math.hypot(a[0] + ux * t - p["x"], a[1] + uz * t - p["z"])
+            nx_, nz_ = uz * s, -ux * s
+            if (p["x"] - a[0]) * nx_ + (p["z"] - a[1]) * nz_ < -1.5:
+                d += 6.0   # 店の点が壁の内側にある (壁の向きと逆) ときは、不利にする
             if e is None or d < e[0]:
-                e = (d, a, c, L)
+                e = (d, a, c, L, t)
         if not e:
             continue
-        _, a, c, L = e
+        _, a, c, L, t = e
         ux, uz = (c[0] - a[0]) / L, (c[1] - a[1]) / L
         nx, nz = uz * s, -ux * s
-        # (x, z) = 壁の中点、y = 建物の基準の高さ、正面 (yaw) = 壁の外向き。看板は y + 3.35、日よけは y + 2.6
-        signs.append({"b": b["id"], "x": r2((a[0] + c[0]) / 2), "z": r2((a[1] + c[1]) / 2), "y": r2(b["base"]), "yaw": round(math.atan2(nx, nz), 4),
-                      "w": r3(min(L - 0.6, 7)), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"]),
+        sw = min(L - 0.6, 7)
+        t = max(sw / 2 + 0.3, min(L - sw / 2 - 0.3, t)) if L > sw + 0.6 else L / 2   # 看板が壁からはみ出さない範囲に
+        # (x, z) = 看板の中心の位置 (壁の上。店の点を壁に投影した位置)、y = 建物の基準の高さ、正面 (yaw) = 壁の外向き。看板は y + 3.35、日よけは y + 2.6
+        signs.append({"b": b["id"], "x": r2(a[0] + ux * t), "z": r2(a[1] + uz * t), "y": r2(b["base"]), "yaw": round(math.atan2(nx, nz), 4),
+                      "w": r3(sw), "name": p.get("name") or "", "cat": p["cat"], "colors": sign_colors(p["cat"]),
                       **({"colors": ch[0], "bands": ch[1], "chain": ch[2]} if (ch := chain_look(p.get("name"))) else {}),
-                      **shopfront_fields(p, bool(ch), sf_labels)})
+                      **shopfront_fields(p, bool(ch), sf_labels),
+                      # 店先の柄 (看板の下に貼る): 居酒屋は格子戸、ほかはガラスの店先。ランドマーク (自前の柄がある建物) と狭い壁には付けない
+                      **({"face": ("lattice" if re.fullmatch(r"amenity:(pub|bar)", p["cat"]) else "glass")} if (b["id"] not in look_ids and sw >= 2.4) else {})})
     # ---------- ランドマークの大きな壁面看板 (tools/landmarks.py の look に sign があるもの) ----------
     # 外向きの方角 (東西南北) ごとに、いちばん長い壁の中央に 1 枚。(x, z) = 壁の中点、y = 看板の中心の高さ、正面 (yaw) = 壁の外向き
     big = []
