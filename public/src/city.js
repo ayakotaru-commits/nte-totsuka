@@ -143,7 +143,7 @@ function facadeTextures(type) {
 // テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
 // 段は外観ごとに、使う柄だけを並べる (lookRows。テクスチャを小さく保つため)
 const LOOK_KINDS = ['shop', 'panel', 'screen', 'parking', 'glass', 'plain', 'ribbon', 'screen2', 'open', 'shutter', 'band', 'louver', 'fins', 'curtain', 'curtain2',
-  'terrace', 'maroon', 'slits', 'slats', 'slats2', 'grid', 'tenants', 'store2', 'base', 'palette'];
+  'terrace', 'maroon', 'slits', 'slats', 'slats2', 'grid', 'tenants', 'store2', 'base', 'market', 'palette'];
 const LOOK_NB = 8, LOOK_BAY = 6, LOOK_RH = 128; // 横のベイ数、1 ベイの幅 (m)、1 段の高さ (px)
 function lookRows(L) {
   if (L._ri) return L._ri;
@@ -376,6 +376,24 @@ function lookTextures(L) {
       g.font = `bold ${fs}px sans-serif`;
       lines.forEach((l, i) => g.fillText(l, tx + tw / 2, ty + th / 2 + (i - (lines.length - 1) / 2) * fs * 1.15, tw - 4));
       lit(tx, ty, tw, th, t[1], 0.55);
+    }
+    // スーパーの店先 (マルエツ): 上にクリーム色のパラペット、その下に accent 色 (濃い緑) の庇、庇の下はガラスの店先 (細い縦の桟)、足元に低い腰壁
+    y = top('market');
+    g.fillStyle = L.wall; g.fillRect(x0, y, cw, rh);
+    g.fillStyle = 'rgba(0,0,0,.05)'; g.fillRect(x0, y + rh * 0.12, cw, 1.5);
+    {
+      const cy = y + rh * 0.16, ch = rh * 0.22;                      // 庇
+      const gr = g.createLinearGradient(0, cy, 0, cy + ch); gr.addColorStop(0, L.accent); gr.addColorStop(1, 'rgba(20,50,38,1)');
+      g.fillStyle = gr; g.fillRect(x0, cy, cw, ch);
+      g.fillStyle = 'rgba(255,255,255,.22)'; g.fillRect(x0, cy, cw, 3);
+      g.fillStyle = 'rgba(0,0,0,.40)'; g.fillRect(x0, cy + ch, cw, 7);   // 庇の下の影
+      const gy = cy + ch + 7, gh = rh * 0.84 - (gy - y) - rh * 0.08;      // ガラス
+      glass(x0, gy, cw, gh, '#9db0b8', '#566a73');
+      g.fillStyle = 'rgba(30,38,42,.85)';
+      for (let k = 0; k <= 8; k++) g.fillRect(x0 + k * cw / 8 - 1, gy, 2.2, gh);
+      g.fillRect(x0, gy + gh * 0.55, cw, 1.8);
+      lit(x0, gy, cw, gh, '#fff1cf', 0.75);
+      g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x0, y + rh * 0.92, cw, rh * 0.08);   // 腰壁の影
     }
     // 単色の見本 (立体の飾り relief の色): 0 壁、1 アクセント、2 ガラスの手すり、3 えんじ色、4 白い床の縁
     y = top('palette');
