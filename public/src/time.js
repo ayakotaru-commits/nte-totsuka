@@ -3,13 +3,14 @@ import * as THREE from 'three';
 // skyElev: 空のシェーダ上の太陽高度, lightElev: 実際のライト方向 (夜は月明かり)
 // azim: 0 = 南(+Z), 90 = 東(+X), -90 = 西
 export const PRESETS = [
-  { name: '昼', skyElev: 55, lightElev: 55, azim: -20, sun: '#fff6e8', sunI: 3.0, hemiI: 1.9, exposure: 0.6, fog: '#c9d6e3', win: 0.0, rayleigh: 1.2 },
-  { name: '夕方', skyElev: 4, lightElev: 8, azim: -85, sun: '#ffa865', sunI: 2.2, hemiI: 1.1, exposure: 0.55, fog: '#d8a989', win: 0.45, rayleigh: 2.5 },
-  { name: '夜', skyElev: -6, lightElev: 40, azim: 20, sun: '#8ea2d8', sunI: 0.6, hemiI: 0.55, exposure: 0.7, fog: '#141c33', win: 1.3, rayleigh: 0.4 },
-  { name: '朝', skyElev: 12, lightElev: 14, azim: 75, sun: '#ffe2c2', sunI: 2.4, hemiI: 0.75, exposure: 0.5, fog: '#dbe0e8', win: 0.08, rayleigh: 1.8 },
+  { name: '昼', skyElev: 55, lightElev: 55, azim: -20, sun: '#fff6e8', sunI: 3.0, hemiI: 1.9, exposure: 0.6, fog: '#c9d6e3', win: 0.0, rayleigh: 1.2, envI: 0.1, hemiK: 0.8, ao: 0.6, bloom: 0.12, bloomT: 1.1, sat: 1.08 },
+  { name: '夕方', skyElev: 4, lightElev: 8, azim: -85, sun: '#ffa865', sunI: 2.2, hemiI: 1.1, exposure: 0.55, fog: '#d8a989', win: 0.45, rayleigh: 2.5, envI: 0.15, hemiK: 0.75, ao: 0.6, bloom: 0.3, bloomT: 0.8, sat: 1.12 },
+  { name: '夜', skyElev: -6, lightElev: 40, azim: 20, sun: '#8ea2d8', sunI: 0.6, hemiI: 0.55, exposure: 0.7, fog: '#141c33', win: 1.3, rayleigh: 0.4, envI: 0.5, hemiK: 0.8, ao: 0.5, bloom: 0.7, bloomT: 0.5, sat: 1.05 },
+  { name: '朝', skyElev: 12, lightElev: 14, azim: 75, sun: '#ffe2c2', sunI: 2.4, hemiI: 0.75, exposure: 0.5, fog: '#dbe0e8', win: 0.08, rayleigh: 1.8, envI: 0.12, hemiK: 0.8, ao: 0.6, bloom: 0.2, bloomT: 0.9, sat: 1.1 },
 ];
 
-const num = ['skyElev', 'lightElev', 'azim', 'sunI', 'hemiI', 'exposure', 'win', 'rayleigh'];
+// envI 以降は look.js (光と空気感) が使う: 空の映り込みの強さ・半球ライトの残す割合・物の陰・にじみの強さとしきい値・彩度
+const num = ['skyElev', 'lightElev', 'azim', 'sunI', 'hemiI', 'exposure', 'win', 'rayleigh', 'envI', 'hemiK', 'ao', 'bloom', 'bloomT', 'sat'];
 
 export class TimeOfDay {
   constructor({ renderer, scene, sky, sun, hemi, windowMats }) {

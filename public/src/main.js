@@ -19,6 +19,7 @@ import { setTerrain, setCover, setLowMemory } from './terrain.js';
 import { TOUCH, setupTouch } from './touch.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
 import { startMultiplayer } from './net/index.js';
+import { Look } from './look.js';
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
@@ -76,6 +77,8 @@ async function main() {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.04;
   scene.add(sun, sun.target);
+  // 光と空気感 (空の映り込み・かすみ・物の陰・にじみ・色の仕上げ。look.js。?plain で以前の見え方)
+  const look = new Look({ renderer, scene, camera, sky, hemi, touch: TOUCH });
 
   // ---- world ----
   status('街を生成中…');
@@ -181,6 +184,7 @@ async function main() {
     camera.updateProjectionMatrix();
     renderer.setSize(innerWidth, innerHeight);
     labelRenderer.setSize(innerWidth, innerHeight);
+    look.setSize();
     if (bigmap.open) bigmap.resize();
   });
 
@@ -214,6 +218,7 @@ async function main() {
     }
     if (mp) mp.update(dt, input);
     tod.update(dt);
+    look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
 
     // 影は常にプレイヤー周辺
@@ -230,7 +235,7 @@ async function main() {
       $('place').textContent = p ? p.label + ' 付近' : '戸塚';
     }
 
-    renderer.render(scene, camera);
+    look.render();
     labelRenderer.render(scene, camera);
     input.endFrame();
   });
