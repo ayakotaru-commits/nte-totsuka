@@ -48,7 +48,10 @@ export class TimeOfDay {
     this.hemi.intensity = c.hemiI;
     this.renderer.toneMappingExposure = c.exposure;
     this.scene.fog.color.copy(c.fogC);
-    for (const m of this.windowMats) m.emissiveIntensity = c.win * (m.userData.glow || 1);   // userData.glow = 光り方の倍率 (店の看板など)
+    for (const m of this.windowMats) {
+      const v = c.win * (m.userData.glow || 1);   // userData.glow = 光り方の倍率 (店の看板など)
+      if (m.userData.opacityOnly) m.opacity = Math.min(1, v); else m.emissiveIntensity = v;   // opacityOnly = 光だまりのような透明な板 (emissive を持たない材質)
+    }
     // 太陽が沈んだら Sky シェーダの代わりに紺色の背景
     this.sky.visible = c.skyElev > -2;
     this.scene.background = this.sky.visible ? null : c.fogC;

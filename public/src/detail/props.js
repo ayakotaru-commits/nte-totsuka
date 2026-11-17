@@ -41,6 +41,24 @@ export function buildProps(props) {
   const lamps = poles.filter(p => p.lamp);
   instanced(group, new THREE.BoxGeometry(0.06, 0.06, 1.6).translate(0, 6.6, 0.8), darkMat, lamps, 'lamp_arms');
   instanced(group, new THREE.BoxGeometry(0.22, 0.1, 0.5).translate(0, 6.55, 1.55), lampMat, lamps, 'lamps');
+  // 街灯の光だまり: 灯りの真下 (アームの先、壁側へ 1.55 m) の地面に、ぼかした円の板を加算合成で置く。夜だけ見える (強さは win に連動)
+  {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    const g = cv.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, 'rgba(255,214,150,1)'); gr.addColorStop(0.4, 'rgba(255,196,120,.6)'); gr.addColorStop(1, 'rgba(255,180,100,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const poolMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0, toneMapped: false });
+    const pool = new THREE.InstancedMesh(new THREE.PlaneGeometry(15, 15).rotateX(-Math.PI / 2), poolMat, Math.max(1, lamps.length));
+    pool.count = lamps.length; pool.name = 'lamp_pools'; pool.renderOrder = 5; pool.castShadow = pool.receiveShadow = false;
+    lamps.forEach((p, i) => {
+      const x = p.x + Math.sin(p.yaw || 0) * 1.55, z = p.z + Math.cos(p.yaw || 0) * 1.55;
+      pool.setMatrixAt(i, M.compose(P.set(x, p.y + 0.16, z), Q.identity(), S.set(1, 1, 1)));
+    });
+    group.add(pool);
+    poolMat.userData.glow = 0.55; poolMat.userData.opacityOnly = true;   // opacity = win * glow (emissiveIntensity は使わない)
+    emissive.push(poolMat);
+  }
 
   // 電線 [ax, ay, az, bx, by, bz, sag] をたるませた折れ線に
   const wp = [];
