@@ -50,6 +50,36 @@ export function buildShapes(props) {
   group.add(darkRails, slabs, creams, rails);
 
   // ---------- 店の看板と日よけ ----------
+  // 店先の柄の材質 (種類と日よけの色ごとに 1 つ)。細い縦の桟、足元の腰板、中央に扉。lattice は暗い木の格子と障子の明かり
+  const faceMats = {};
+  const faceMaterial = (kind, accent) => {
+    const key = kind + accent;
+    if (faceMats[key]) return faceMats[key];
+    const tex = canvasTexture(256, 256, (g, W, H) => {
+      if (kind === 'lattice') {
+        g.fillStyle = '#3a2a20'; g.fillRect(0, 0, W, H);
+        g.fillStyle = '#e9d9b4'; g.fillRect(10, 18, W - 20, H - 70);                 // 障子の明るい面
+        g.fillStyle = '#3a2a20';
+        for (let x = 10; x <= W - 10; x += (W - 20) / 8) g.fillRect(x - 2, 18, 4, H - 70);
+        for (let y = 18; y <= H - 52; y += (H - 70) / 5) g.fillRect(10, y - 2, W - 20, 4);
+        g.fillStyle = '#2a1d16'; g.fillRect(0, H - 52, W, 52);                        // 腰板
+        g.fillStyle = 'rgba(255,255,255,.10)'; for (let y = H - 48; y < H; y += 12) g.fillRect(0, y, W, 2);
+      } else {
+        const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#8aa3b3'); gr.addColorStop(1, '#4f6676');
+        g.fillStyle = gr; g.fillRect(0, 0, W, H);
+        g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(24, 0, 34, H);               // 映り込み
+        g.fillStyle = '#d7dadb';
+        for (let x = 0; x <= W; x += W / 4) g.fillRect(x - 3, 0, 6, H - 40);            // 縦の桟
+        g.fillRect(0, 0, W, 8); g.fillRect(0, H * 0.58 - 3, W, 6);                      // 上枠・横桟
+        g.fillStyle = '#3d4348'; g.fillRect(0, H - 40, W, 40);                          // 腰壁
+        g.fillStyle = accent; g.fillRect(0, H - 44, W, 5);                              // 腰壁の上端に日よけと同じ色の線
+      }
+    });
+    const mat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffe2b0', emissiveIntensity: 0, roughness: kind === 'lattice' ? 0.85 : 0.25, metalness: kind === 'lattice' ? 0 : 0.1 });
+    emissive.push(mat);
+    return (faceMats[key] = mat);
+  };
+
   for (const p of props.signs) {
     const [bg, fg, accent] = p.colors;
     const w = p.w, nx = Math.sin(p.yaw), nz = Math.cos(p.yaw);
@@ -82,6 +112,14 @@ export function buildShapes(props) {
     aw.rotation.x = -1.05;
     aw.castShadow = true;
     group.add(sign, aw);
+    // 店先の柄 (face): 看板の下の壁に、ガラスの店先 (glass) か格子戸 (lattice) を貼る。夜は中の明かりが光る
+    if (p.face && p.w >= 2.4) {
+      const fw = p.w - 0.3, fm = faceMaterial(p.face, p.colors[2]);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(fw, 2.35), fm);
+      face.position.set(p.x + nx * 0.05, p.y + 1.3, p.z + nz * 0.05);
+      face.rotation.y = p.yaw;
+      group.add(face);
+    }
     // 居酒屋ののれん (入口の上から 4 枚の布が下がる) と赤ちょうちん (入口の両側)。写真で判定した店と、居酒屋の標準 (front: 'default')
     if (p.noren) {
       const nw = Math.min(w * 0.5, 2.6), n = 4, uxn = Math.cos(p.yaw), uzn = -Math.sin(p.yaw);
