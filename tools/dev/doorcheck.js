@@ -102,11 +102,57 @@ function terrain() {
     return { n: DOORS.length, doors: out };
   });
   console.log(JSON.stringify(res, null, 1));
+  // 本物のキャラで: F を押すと両手で押す動きが始まり、扉は少し遅れて開く。動きの最中も歩ける (止めない)
+  const res2 = await page.evaluate(async () => {
+    const { DOORS } = await import('/src/doors.js');
+    const g = window.__g, d = DOORS[0], pl = g.player;
+    pl.teleport(d.x + d.nx * 1.4, d.z + d.nz * 1.4);
+    const mk = (keys = [], press = []) => ({ pressed: (k) => press.includes(k), held: (k) => keys.includes(k), ax: 0, az: 0, endFrame() {} });
+    const r = {};
+    g.doors.update(1 / 60, pl, mk([], ['KeyF']));
+    r.doorT0 = pl.doorT;
+    const amtAt = {};
+    for (let k = 1; k <= 90; k++) {
+      pl.update(1 / 60, mk(), g.cam); g.doors.update(1 / 60, pl, mk());
+      if (k === 15 || k === 30 || k === 60 || k === 90) amtAt[k / 60] = +d.amt.toFixed(2);
+    }
+    r.doorAmtAt = amtAt; r.doorTafter = pl.doorT;
+    // 動きの最中に歩けるか: F を押して、すぐ W を押し続ける (横へ)
+    d.target = 0; d.amt = 0; for (const l of d.leaves) l.pivot.rotation.y = 0;
+    pl.teleport(d.x + d.nx * 1.4, d.z + d.nz * 1.4);
+    g.doors.update(1 / 60, pl, mk([], ['KeyF']));
+    const p0 = { x: pl.pos.x, z: pl.pos.z };
+    for (let k = 0; k < 30; k++) { pl.update(1 / 60, mk(['KeyA']), g.cam); g.doors.update(1 / 60, pl, mk(['KeyA'])); }
+    r.movedWhilePushing = +Math.hypot(pl.pos.x - p0.x, pl.pos.z - p0.z).toFixed(2);
+    r.stillPushing = pl.doorT >= 0;
+    return r;
+  });
+  console.log(JSON.stringify(res2, null, 1));
   // 画面: 正面の扉を開けた所 (道路側から) と、中庭側の扉を開けた所
   const shots = await page.evaluate(async () => {
     const { DOORS } = await import('/src/doors.js');
     return DOORS.map(d => ({ x: d.x, y: d.y, z: d.z, nx: d.nx, nz: d.nz }));
   });
+  // 押している途中のキャラ (正面の扉の前、横から)
+  await page.evaluate(async () => {
+    const { DOORS } = await import('/src/doors.js');
+    const g = window.__g, d = DOORS[0], pl = g.player;
+    d.target = 1; d.amt = 0.25; for (const l of d.leaves) l.pivot.rotation.y = l.sign * 1.5 * 0.16;
+    d.wait = 0; d.target = 1;
+    pl.teleport(d.x + d.nx * 1.1, d.z + d.nz * 1.1);
+    pl.facing = Math.atan2(-d.nx, -d.nz);
+    pl.update = () => pl.show(1 / 60, 0, { type: 'door', s: 0.5 });   // 撮影のため、この姿勢で止める
+    if (!g.camUpdate) g.camUpdate = g.cam.update;
+    g.cam.update = () => {};
+    const sx = d.nz, sz = -d.nx;   // 扉に沿う向き
+    g.cam.camera.position.set(d.x + d.nx * 3.2 + sx * 3.0, d.y + 1.7, d.z + d.nz * 3.2 + sz * 3.0);
+    g.cam.camera.lookAt(d.x + d.nx * 0.8, d.y + 1.2, d.z + d.nz * 0.8);
+    DOORS[0].leaves.forEach(l => l.pivot.rotation.y = l.sign * 0.25);
+    g.doors.update = () => {};
+  });
+  await page.waitForTimeout(5000);
+  await page.screenshot({ path: path.join(out, 'push.png'), timeout: 240000 });
+  console.log('ok', path.join(out, 'push.png'));
   for (const [i, d] of shots.entries()) {
     await page.evaluate(({ i, d }) => {
       const g = window.__g;

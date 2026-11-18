@@ -9,7 +9,7 @@ const DELAY = 0.22;      // 見せるのを遅らせる時間 (秒)。届く間�
 const SHOW_DIST = 220;   // これより遠い人は描かない (m)
 const NAME_DIST = 70;    // これより遠い人の名前は出さない (m)
 const WARP_DIST = 15;    // 一度にこれ以上動いたら、間をつながずに飛ばす (地図からのワープ)
-const ACT_NAME = [null, 'atk', 'vault', 'climb', 'hurt', 'down'];
+const ACT_NAME = [null, 'atk', 'vault', 'climb', 'hurt', 'down', 'door'];
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const lerpAngle = (a, b, t) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;

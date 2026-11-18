@@ -1,9 +1,9 @@
-// 開け閉めできる扉 (グランシティの時計の棟の正面の扉と、中庭側の扉)。
+// 開け閉めできる扉 (グランシティの時計の棟の正面の扉と、中庭側の扉)。開けるときは、キャラが両手で押す動き (character.js の doorPose)。
 // 扉の形は detail/clockhouse.js が作って DOORS に登録する。ここでは、近くで F (スマホは「開ける」ボタン) を押すと
 // 開く/閉まる動きと、当たり判定 (閉じている間だけ通れない) を受け持つ。
 // 開いた扉は、プレイヤーが 6 m 以上離れて 4 秒たつと自動で閉まる。扉の間に人がいる間は閉まらない。
 
-// 登録された扉: { x, z, y, nx, nz (外向き), w, h, leaves: [{ pivot (THREE.Object3D), sign }], rec, amt, target, away }
+// 登録された扉: { x, z, y, nx, nz (外向き), w, h, leaves: [{ pivot (THREE.Object3D), sign }], rec, amt, target, away, wait }
 export const DOORS = [];
 
 const REACH = 2.4;     // 扉の中心からこの距離 (m) 以内で操作できる
@@ -47,11 +47,16 @@ export class DoorControl {
     if (near && input.pressed('KeyF')) {
       near.target = near.target ? 0 : 1;
       near.away = 0;
-      if (near.target) player.facing = Math.atan2(near.x - p.x, near.z - p.z);   // 扉の方を向いて開ける
+      if (near.target) {
+        player.facing = Math.atan2(near.x - p.x, near.z - p.z);   // 扉の方を向いて、両手で押して開ける
+        // 手が扉に届くころ (動きの 3 割ほど) に扉が動き出す。動きを始められないとき (攻撃中など) はすぐ開く
+        near.wait = player.startDoor && player.startDoor() ? 0.3 : 0;
+      }
     }
     for (const d of DOORS) {
       if (d.target === 0 && this.inDoorway(d, p)) d.target = d.amt > 0.5 ? 1 : d.target;   // 人がいる間は閉めない
       const step = SPEED * dt;
+      if (d.wait > 0) { d.wait -= dt; continue; }
       d.amt = d.target ? Math.min(1, d.amt + step) : Math.max(0, d.amt - step);
       const e = d.amt * d.amt * (3 - 2 * d.amt);   // なめらかに
       for (const l of d.leaves) l.pivot.rotation.y = l.sign * SWING * e;

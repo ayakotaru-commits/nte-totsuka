@@ -289,9 +289,10 @@ export function makeCharacter(opt = {}) {
     }
   }
 
-  function actPose(act, Aa) {
+  function actPose(act, Aa, G) {
     if (act.type === 'atk') return atkPose(act);
     if (act.type === 'hurt' || act.type === 'down') return hitPose(act);
+    if (act.type === 'door') return doorPose(act, G);
     const X = pose();
     const s = act.s, hy = IDLE_EXT + HIP_DROP;
     const leg = (th, kn, ft, h, k, side) => { X[th] = [-h, 0, side * 0.03]; X[kn] = [k, 0, 0]; X[ft] = [0.35, 0, 0]; };
@@ -327,6 +328,22 @@ export function makeCharacter(opt = {}) {
       X.shL = [mix(-0.5, -fw, sstep(0.05, 0.3, s)), 0, 0.08 + 0.72 * m]; X.elL = [-0.12, 0, 0]; X.haL = [0, 0, 0.3];
       X.shR = [-0.5 * m + 0.2, 0, -(0.35 + 0.95 * m)]; X.elR = [-0.5, 0, 0]; X.haR = [0, 0, -0.4];
       st.anchor = { w: sstep(0.1, 0.36, s) * (1 - sstep(0.6, 0.85, s)), y: act.ly + 0.06, hands: ['haL'], lim: 0.7 };
+    }
+    return X;
+  }
+  // 扉を開ける (act = { type: 'door', s: 0〜1 })。上半身だけ: 両手を胸の高さに上げて、前へ押し出し、戻す。
+  // 脚と腰はふつうの姿勢 (G) のまま (歩きながらでも開けられる。動きは止めない)
+  function doorPose(act, G) {
+    const X = pose(), s = act.s;
+    for (const n of NAMES) X[n] = G[n].slice();
+    const up = sstep(0, 0.3, s) * (1 - sstep(0.75, 1, s));   // 腕を上げている度合い
+    const push = sstep(0.3, 0.55, s) * (1 - sstep(0.7, 0.95, s)); // 押し出している度合い
+    X.spine[0] += 0.05 * up + 0.08 * push; X.chest[0] += 0.06 * up + 0.1 * push;
+    X.head[0] += -0.05 * up;
+    for (const [sh, el, ha, side] of [['shL', 'elL', 'haL', 1], ['shR', 'elR', 'haR', -1]]) {
+      X[sh] = [mix(G[sh][0], -1.15 - 0.3 * push, up), mix(G[sh][1], 0, up), mix(G[sh][2], side * (0.22 - 0.08 * push), up)];
+      X[el] = [mix(G[el][0], -1.15 + 1.0 * push, up), 0, 0];
+      X[ha] = [mix(G[ha][0], -0.9 * push, up), 0, mix(G[ha][2], side * 0.1, up)];   // 手のひらを前へ (手首を反らす)
     }
     return X;
   }
@@ -475,7 +492,7 @@ export function makeCharacter(opt = {}) {
 
     // --- パルクールの姿勢 (終わった後は、最後の姿勢からふつうの姿勢へ戻す) ---
     st.anchor = null;
-    if (act) st.actPose = actPose(act, Aa);
+    if (act) st.actPose = actPose(act, Aa, G);
     st.trail = !!act && act.type === 'atk' && trailOn(act.step, act.ph, act.t);
     if (!act || act.type !== 'atk') { st.atkId = -1; st.atkLast = null; }
     st.actW += ((act ? 1 : 0) - st.actW) * rate(act ? 30 : 10);
