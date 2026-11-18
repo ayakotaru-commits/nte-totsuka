@@ -27,7 +27,7 @@ const UAL_MAP = {
   thL: 'DEF-thigh.L', knL: 'DEF-shin.L', ftL: 'DEF-foot.L', thR: 'DEF-thigh.R', knR: 'DEF-shin.R', ftR: 'DEF-foot.R',
 };
 // 書き出す動き: [元の名前, 書き出す名前]
-const CLIPS = [['Sword_Attack', 'ual_sword_attack'],
+const CLIPS = [['Sword_Attack', 'ual_sword_attack'], ['Sword_Attack_RM', 'ual_sword_attack_rm'],
   ['Idle_Loop', 'ual_idle'], ['Walk_Loop', 'ual_walk'], ['Jog_Fwd_Loop', 'ual_jog'], ['Sprint_Loop', 'ual_sprint'],
   ['Jump_Start', 'ual_jump_start'], ['Jump_Loop', 'ual_jump_loop'], ['Jump_Land', 'ual_jump_land'], ['Roll_RM', 'ual_roll']];
 

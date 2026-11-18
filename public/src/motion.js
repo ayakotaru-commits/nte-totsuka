@@ -15,6 +15,14 @@ export function loadMotion(name) {
   return loading[name];
 }
 
+// 時間 t (秒) の腰の位置 [x, y, z] (腰の高さを 1 とした値。T ポーズの腰からの差)。無ければ null
+export function hipsAt(name, t) {
+  const c = CLIPS[name];
+  if (!c) return null;
+  const f = Math.max(0, Math.min(c.frames - 1, t * c.fps)), i = Math.min(c.frames - 2, Math.floor(f)), u = f - i, H = c.hips;
+  return [0, 1, 2].map((j) => H[i * 3 + j] + (H[i * 3 + 3 + j] - H[i * 3 + j]) * u);
+}
+
 // 読み込み済みのデータ (無ければ undefined)。speed・phaseL・dur などを見るのに使う
 export const getMotion = (name) => CLIPS[name];
 

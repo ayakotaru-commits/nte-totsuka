@@ -4,12 +4,13 @@ import { STEP } from './world.js';
 import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
-import { getMotion } from './motion.js';
-import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, COMBO_MAX, spinAt } from './attack.js';
+import { getMotion, hipsAt } from './motion.js';
+import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, COMBO_MAX, MOCAP, spinAt } from './attack.js';
 
 export const R = 0.35; // 体の半径 (m)
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
 const DOOR_T = 0.9;
+const HIP_H = 0.94; // キャラの腰の高さ (character.js の IDLE_EXT + HIP_DROP)。動きのデータの位置はこれを 1 とした値
 // 高い所から着地したときの前転 (動きのデータ ual_roll = Quaternius の Roll_RM)。この速さ (m/s) より速く落ちて、
 // 横に ROLL_MIN_SP より速く動いていたら前転する。データの 0〜ROLL.to 秒を ROLL.rate 倍で再生し、前へ進む距離もデータから
 // (2 段ジャンプで平らな所に降りただけでは前転しない: 約 2.6 m の高さ = 11.2 m/s)
@@ -244,7 +245,12 @@ export class Player {
     if (a.step <= 3) {
       const [m0, m1, dist, side = 0] = S.move;
       if (a.step === 3) this.spin = spinAt(3, 0, a.t); // 回転斬り: 体ごと回す
-      if (a.t > m0 && a.t < m1) { // 踏み込む (進んだ距離が dist・side になる)
+      const mc = MOCAP[a.step + ':0'];
+      if (mc && mc.rm && getMotion(mc.rm) && getMotion(mc.clip)) { // 動きのデータ: 足元の進み (足元ごと進む版 − その場版) だけ進む
+        const rz = (c) => hipsAt(mc.rm, c)[2] - hipsAt(mc.clip, c)[2];
+        const c1 = Math.min(mc.rmTo, a.t * mc.speed), c0 = a.c ?? c1;
+        v = dt > 0 ? (rz(c1) - rz(c0)) * HIP_H / dt : 0; a.c = c1;
+      } else if (a.t > m0 && a.t < m1) { // 踏み込む (進んだ距離が dist・side になる)
         const k = 1 / (m1 - m0) * (Math.PI / 2) * Math.sin(Math.PI * (a.t - m0) / (m1 - m0));
         v = dist * k; sv = side * k;
       }
@@ -313,7 +319,7 @@ export class Player {
   }
   // 前転中: 操作は受け付けない。データの腰の進み方で前へ動き、着地の勢いの残り (carry) を足す
   updateRoll(dt) {
-    const a = this.act, c = getMotion('ual_roll'), hipH = 0.94; // hipH = キャラの腰の高さ (character.js の IDLE_EXT + HIP_DROP)
+    const a = this.act, c = getMotion('ual_roll'), hipH = HIP_H;
     const z = (t) => { const f = Math.min(c.frames - 1, t * c.fps), i = Math.min(c.frames - 2, Math.floor(f)), u = f - i; return c.hips[i * 3 + 2] + (c.hips[i * 3 + 5] - c.hips[i * 3 + 2]) * u; };
     a.t += dt;
     const c1 = Math.min(ROLL.to, a.t * ROLL.rate);
