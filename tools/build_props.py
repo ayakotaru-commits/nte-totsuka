@@ -1943,6 +1943,95 @@ def build_parking(lots, city, world, H, col, paint):
 # 7. 敷地の外周の柵と、墓地の墓石 (OSM のエリア: 工業用地・学校・墓地。点群から読んだ造成地: 工事の仮囲い)
 # =====================================================================
 # 種類 → (色, 高さ m)。construction (仮囲い) は金網ではなく白い板
+RAIL_FENCE = ("#7d877f", 1.8)   # 線路沿いの金網 (色, 高さ)
+RAIL_FENCE_OFF = 3.2            # いちばん外側の線路の中心からの距離 (m)
+
+
+def build_rail_fences(city, world, H, col):
+    """線路沿いの柵: いちばん外側の線路の、外側 RAIL_FENCE_OFF m に金網を張る (fences と同じ形式。kind = "rail")。
+    ほかの線路がそばにある所 (線路と線路の間)、道路・建物・ホームの所、線路の橋は空ける"""
+    pts_all = []
+    for r in city.get("rails") or []:
+        p = r["pts"]
+        for i in range(len(p) - 1):
+            (ax, az), (bx, bz) = p[i][:2], p[i + 1][:2]
+            n = max(1, int(math.hypot(bx - ax, bz - az)))
+            for k in range(n + 1):
+                pts_all.append((ax + (bx - ax) * k / n, az + (bz - az) * k / n))
+    rail_grid = PointGrid(5)
+    for x, z in pts_all:
+        rail_grid.add(x, z)
+    road_pts = PointGrid(5)
+    road_w = {}
+    for rd in city["roads"]:
+        if rd.get("ys"):
+            continue
+        p = rd["pts"]
+        for i in range(len(p) - 1):
+            (ax, az), (bx, bz) = p[i][:2], p[i + 1][:2]
+            n = max(1, int(math.hypot(bx - ax, bz - az)))
+            for k in range(n + 1):
+                x, z = ax + (bx - ax) * k / n, az + (bz - az) * k / n
+                road_pts.add(x, z)
+                road_w[(round(x, 1), round(z, 1))] = rd["w"]
+    plats = [a["outer"] for a in city.get("areas") or [] if a["kind"] == "platform"]
+
+    def near_road(x, z):
+        for gx in range(int(math.floor(x / 5)) - 3, int(math.floor(x / 5)) + 4):
+            for gz in range(int(math.floor(z / 5)) - 3, int(math.floor(z / 5)) + 4):
+                for qx, qz in road_pts.g.get((gx, gz), ()):
+                    w = road_w.get((round(qx, 1), round(qz, 1)), 6)
+                    if math.hypot(qx - x, qz - z) < w / 2 + 1.0:
+                        return True
+        return False
+
+    def blocked(x, z):
+        if rail_grid.near(x, z, RAIL_FENCE_OFF - 0.4) or near_road(x, z):
+            return True
+        if any(World.contains(b, x, z) or world.closest_d(b, x, z) < 0.4 for b in world.query(x - 1, z - 1, x + 1, z + 1)):
+            return True
+        return any(pip(x, z, r) or ring_dist(x, z, r) < 8 for r in plats)   # ホームの縁から 8 m 以内 (駅の中) は張らない
+
+    def ring_dist(x, z, ring):
+        best = 1e9
+        for i in range(len(ring)):
+            (ax, az), (bx, bz) = ring[i][:2], ring[(i + 1) % len(ring)][:2]
+            dx, dz = bx - ax, bz - az
+            L2 = dx * dx + dz * dz or 1e-9
+            t = max(0.0, min(1.0, ((x - ax) * dx + (z - az) * dz) / L2))
+            best = min(best, math.hypot(x - ax - dx * t, z - az - dz * t))
+        return best
+    post_grid = PointGrid(5)   # 並行する線路から同じ所に二重に張らない
+
+    out_posts, panels = [], []
+    for r in city.get("rails") or []:
+        if r.get("ys"):
+            continue
+        for side in (1, -1):
+            prev = [None]
+
+            def cb(x, z, dx, dz, side=side, prev=prev):
+                px, pz = x - dz * side * RAIL_FENCE_OFF, z + dx * side * RAIL_FENCE_OFF
+                beyond = any(rail_grid.near(x - dz * side * o, z + dx * side * o, 1.5) for o in range(5, 26, 3))   # 外側にまだ線路がある (線路の群れの間)
+                if beyond or blocked(px, pz) or post_grid.near(px, pz, 1.5):
+                    prev[0] = None
+                    return
+                post_grid.add(px, pz)
+                out_posts.append([r2(px), r2(pz), r2(H(px, pz))])
+                q = prev[0]
+                if q and math.hypot(px - q[0], pz - q[1]) < FENCE_STEP * 1.6:
+                    mx, mz = (px + q[0]) / 2, (pz + q[1]) / 2
+                    L = math.hypot(px - q[0], pz - q[1])
+                    yaw = math.atan2(px - q[0], pz - q[1])
+                    y = min(H(px, pz), H(q[0], q[1]))
+                    panels.append([r2(mx), r2(mz), r2(y), r3(yaw), r2(L)])
+                    col.add_box(mx, mz, yaw, 0.05, L / 2, y, RAIL_FENCE[1])
+                prev[0] = (px, pz)
+            walk(r["pts"], 0, FENCE_STEP, cb)
+    print(f"rail fences: posts={len(out_posts)} panels={len(panels)} ({len(panels) * FENCE_STEP:.0f} m)")
+    return {"kind": "rail", "color": RAIL_FENCE[0], "h": RAIL_FENCE[1], "posts": out_posts, "panels": panels} if panels else None
+
+
 FENCES = {"industrial": ("#8f969b", 1.8), "school": ("#5f8468", 1.5), "cemetery": ("#9a968c", 1.2), "construction": ("#e9e8e2", 2.0)}
 FENCE_STEP = 2.4
 
@@ -2067,6 +2156,10 @@ def build(city):
     cars = build_parking(lots, city, world, H, col, street["paint"]) if lots and lots.get("parking") else []
     rail = build_rail(city, world, H, col)
     walk = build_walk(city, world, H, col)
+    extras = build_area_extras(city, world, H, col, (lots or {}).get("sites") or ())
+    rf = build_rail_fences(city, world, H, col)
+    if rf:
+        extras["fences"].append(rf)
     small = json.loads(SMALL.read_text(encoding="utf-8")) if SMALL.exists() else None
     yard = build_yard(small, world, H, col) if small else {}
     print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
@@ -2082,7 +2175,7 @@ def build(city):
         "walk": walk,
         "cars": cars,
         **yard,
-        **build_area_extras(city, world, H, col, (lots or {}).get("sites") or ()),
+        **extras,
         "colliders": {"circle": col.circle, "box": col.box, "line": col.line, "tree": col.tree},
     }
 
