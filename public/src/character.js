@@ -6,7 +6,7 @@
 // 無い・読めないときは、下で作る組み立て式のキャラのまま動く。
 import * as THREE from 'three';
 import { shrinkTextures } from './lowmem.js';
-import { samplePose, trailOn, LEGS } from './attack.js';
+import { samplePose, trailOn, LEGS, TRAIL_STYLE, DUST } from './attack.js';
 
 const PI = Math.PI;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -182,14 +182,14 @@ export function makeCharacter(opt = {}) {
   const atkQ = { shL: new THREE.Quaternion(), shR: new THREE.Quaternion() };
   function atkPose(act) {
     const X = pose();
-    const [hy, cy, lean, roll, lx, ly, lz, rx, ry, rz, stance, crouch] = st.atkP = samplePose(act.step, act.ph, act.t);
+    st.atkP = samplePose(act.step, act.ph, act.t);
     // 前の手順の姿勢からなめらかにつなぐ (手順が変わった直後の短い間)
     const id = act.step * 10 + act.ph;
     if (st.atkId !== id) { st.atkId = id; st.atkFrom = st.atkLast ? st.atkLast.slice() : null; }
     const P = st.atkP;
     if (st.atkFrom) { const w = sstep(0, 0.1, act.t); for (let i = 0; i < P.length; i++) P[i] = st.atkFrom[i] + (P[i] - st.atkFrom[i]) * w; }
     st.atkLast = P;
-    const [Hy, Cy, Lean, Roll, Lx, Ly, Lz, Rx, Ry, Rz, Stance, Crouch] = P;
+    const [Hy, Cy, Lean, Roll, Lx, Ly, Lz, Rx, Ry, Rz, Stance, Crouch, LegYaw] = P;
     const legMode = LEGS[act.step + ':' + act.ph] || 0;
     // 胴: 腰が回り、残りを背骨と胸が回す。頭は半分だけついていく
     X.hips = [Lean * (legMode === 2 ? 0.5 : 0.2), Hy, Roll * 0.5];
@@ -203,8 +203,10 @@ export function makeCharacter(opt = {}) {
     X.elL = [-fl, 0, 0]; X.elR = [-fr, 0, 0];
     X.haL = [0, 0, 0.15]; X.haR = [0, 0, -0.15];
     // 脚。足は地面に対して平らに着ける (足首 = -(太もも + 膝))。腰をひねっても足先は向きを保つ
+    // (脚の向き LegYaw が 1 に近いほど、脚ごと腰の向きへ回る)
+    const legYaw = -Hy * 0.9 * (1 - (LegYaw || 0));
     const leg = (th, kn, ft, side, tx, kx, fx) => {
-      X[th] = [tx, -Hy * 0.9, side * 0.09]; X[kn] = [kx, 0, 0]; X[ft] = [fx === undefined ? -(tx + kx) : fx, 0, 0];
+      X[th] = [tx, legYaw, side * 0.09]; X[kn] = [kx, 0, 0]; X[ft] = [fx === undefined ? -(tx + kx) : fx, 0, 0];
     };
     if (legMode === 1) { leg('thL', 'knL', 'ftL', 1, -0.9, 1.3, 0.3); leg('thR', 'knR', 'ftR', -1, -0.55, 1.5, 0.4); } // 膝を抱える
     else if (legMode === 2) { leg('thL', 'knL', 'ftL', 1, 0.35, 0.5, 0.7); leg('thR', 'knR', 'ftR', -1, 0.5, 0.35, 0.7); } // 脚を後ろへ流す
@@ -251,7 +253,9 @@ export function makeCharacter(opt = {}) {
     return { geo, samples: [] };
   });
   const _hp = new THREE.Vector3(), _ep = new THREE.Vector3(), _dir = new THREE.Vector3(), _qs = new THREE.Quaternion(), _o = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3();
-  function updateSwords(dt, armed, trailing) {
+  function updateSwords(dt, armed, trailing, style) {
+    const life = style ? style.life : TRAIL_LIFE, alpha = style ? style.alpha : 0.5;
+    const t0 = style ? style.from : 0.2, t1 = style ? style.to : 0.88;
     if (!fx.parent && root.parent) root.parent.add(fx);
     st.sword = clamp(st.sword + (armed ? dt / 0.14 : -dt / 0.28), 0, 1);
     const S = st.sword;
@@ -270,22 +274,79 @@ export function makeCharacter(opt = {}) {
         const e = sstep(0, 1, S);
         sw.blade.scale.set(1 + 2.5 * (1 - e), e, 1 + 2.5 * (1 - e)); // 出るときは、短く太い光が伸びる
         if (trailing) { // 刃の先と根もとを世界座標で残す
-          _t1.copy(_o).addScaledVector(_dir, 0.88); _t2.copy(_o).addScaledVector(_dir, 0.2);
+          _t1.copy(_o).addScaledVector(_dir, t1); _t2.copy(_o).addScaledVector(_dir, t0);
           root.localToWorld(_t1); root.localToWorld(_t2);
-          tr.samples.unshift({ a: _t1.clone(), b: _t2.clone(), age: 0 });
+          tr.samples.unshift({ a: _t1.clone(), b: _t2.clone(), age: 0, life, alpha });
         }
       }
       // 古いものを消し、頂点を作り直す
       for (const sm of tr.samples) sm.age += dt;
-      while (tr.samples.length && (tr.samples[tr.samples.length - 1].age > TRAIL_LIFE || tr.samples.length > TRAIL_MAX)) tr.samples.pop();
+      while (tr.samples.length && (tr.samples[tr.samples.length - 1].age > tr.samples[tr.samples.length - 1].life || tr.samples.length > TRAIL_MAX)) tr.samples.pop();
       const n = tr.samples.length, pos = tr.geo.attributes.position.array, col = tr.geo.attributes.color.array, c = trailCols[i];
       for (let k = 0; k < n; k++) {
-        const sm = tr.samples[k], al = Math.pow(Math.max(0, 1 - sm.age / TRAIL_LIFE), 1.6) * 0.5;
+        const sm = tr.samples[k], al = Math.pow(Math.max(0, 1 - sm.age / sm.life), 1.6) * sm.alpha;
         pos.set([sm.a.x, sm.a.y, sm.a.z, sm.b.x, sm.b.y, sm.b.z], k * 6);
-        col.set([c[0], c[1], c[2], al, c[0], c[1], c[2], al * 0.08], k * 8);
+        col.set([c[0], c[1], c[2], al, c[0], c[1], c[2], al * (sm.alpha > 0.5 ? 0.25 : 0.08)], k * 8);
       }
       tr.geo.attributes.position.needsUpdate = true; tr.geo.attributes.color.needsUpdate = true;
       tr.geo.setDrawRange(0, Math.max(0, n - 1) * 6);
+    }
+  }
+
+  // ---- 土ぼこり (踏み込んだ足元に上がる、ぼかした丸の板) ----
+  const DUST_N = 14, DUST_LIFE = 0.7;
+  let dustTex = null;
+  const dusts = [];
+  function dustTexture() {
+    if (dustTex) return dustTex;
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.4)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    dustTex = new THREE.CanvasTexture(c); dustTex.colorSpace = THREE.SRGBColorSpace;
+    return dustTex;
+  }
+  const _fp = new THREE.Vector3(), _fw = new THREE.Vector3();
+  function spawnDust(foot) {
+    if (!root.parent || typeof document === 'undefined') return;
+    if (!dusts.length) {
+      for (let i = 0; i < DUST_N; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dustTexture(), color: '#9a8f80', transparent: true, depthWrite: false, opacity: 0 }));
+        sp.visible = false; sp.frustumCulled = false; fx.add(sp);
+        dusts.push({ sp, age: DUST_LIFE, vx: 0, vy: 0, vz: 0, s0: 0 });
+      }
+    }
+    root.updateMatrixWorld(true);
+    const J = vrmRig && vrmRig.nodes.ftL ? vrmRig.nodes : BONE;
+    (foot === 'L' ? J.ftL : J.ftR).getWorldPosition(_fp);
+    _fp.y = root.getWorldPosition(_fw).y + 0.05; // 地面の高さ (キャラの足元)
+    for (let i = 0; i < DUST_N; i++) {
+      const d = dusts[i], a = (i / DUST_N) * PI * 2 + Math.random() * 0.4, v = 1.2 + Math.random() * 1.4;
+      d.age = Math.random() * 0.06; d.vx = Math.cos(a) * v; d.vz = Math.sin(a) * v; d.vy = 0.6 + Math.random() * 0.9;
+      d.s0 = 0.18 + Math.random() * 0.16;
+      d.sp.position.set(_fp.x + Math.cos(a) * 0.12, _fp.y, _fp.z + Math.sin(a) * 0.12);
+      d.sp.visible = true;
+    }
+  }
+  function updateDust(dt, act) {
+    // 決めた時間をまたいだら上げる (同じ一振りで 2 回上げない)
+    const key = act && act.type === 'atk' ? act.step + ':' + act.ph : null, D = key && DUST[key];
+    if (D) {
+      if (st.dustKey !== key || act.t < st.dustT) st.dustDone = false;
+      if (!st.dustDone && act.t >= D[0] && st.dustKey === key) { spawnDust(D[1]); st.dustDone = true; }
+      st.dustT = act.t;
+    }
+    st.dustKey = key;
+    for (const d of dusts) {
+      if (!d.sp.visible) continue;
+      d.age += dt;
+      if (d.age >= DUST_LIFE) { d.sp.visible = false; continue; }
+      const k = Math.exp(-4 * dt);
+      d.vx *= k; d.vz *= k; d.vy *= Math.exp(-2 * dt);
+      d.sp.position.x += d.vx * dt; d.sp.position.y += d.vy * dt; d.sp.position.z += d.vz * dt;
+      const u = d.age / DUST_LIFE;
+      d.sp.scale.setScalar(d.s0 * (1 + 1.8 * Math.sqrt(u)));
+      d.sp.material.opacity = 0.5 * Math.min(1, u * 8) * (1 - u) * (1 - u);
     }
   }
 
@@ -397,7 +458,8 @@ export function makeCharacter(opt = {}) {
   function update(dt, speed, onGround, vy, stair = 0, act = null, armed = false) {
     updateInner(dt, speed, onGround, vy, stair, act);
     if (vrmRig) applyVRM(dt);
-    updateSwords(Math.max(1e-4, Math.min(dt, 0.1)), armed, st.trail);
+    updateSwords(Math.max(1e-4, Math.min(dt, 0.1)), armed, st.trail, st.trailStyle);
+    updateDust(Math.max(1e-4, Math.min(dt, 0.1)), act);
   }
 
   function updateInner(dt, speed, onGround, vy, stair, act) {
@@ -494,6 +556,7 @@ export function makeCharacter(opt = {}) {
     st.anchor = null;
     if (act) st.actPose = actPose(act, Aa, G);
     st.trail = !!act && act.type === 'atk' && trailOn(act.step, act.ph, act.t);
+    st.trailStyle = st.trail ? TRAIL_STYLE[act.step + ':' + act.ph] || null : null;
     if (!act || act.type !== 'atk') { st.atkId = -1; st.atkLast = null; }
     st.actW += ((act ? 1 : 0) - st.actW) * rate(act ? 30 : 10);
     if (st.actW < 0.01 && !act) st.actPose = null;
@@ -677,6 +740,8 @@ export function makeCharacter(opt = {}) {
     fx.removeFromParent(); root.removeFromParent();
     root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     for (const t of trails) t.geo.dispose();
+    for (const d of dusts) d.sp.material.dispose();
+    if (dustTex) dustTex.dispose();
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };

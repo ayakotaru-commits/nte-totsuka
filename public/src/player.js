@@ -224,15 +224,21 @@ export class Player {
       this.startStep(this.comboGrace > 0 ? this.comboNext : 1, dir);
       a = this.atk;
     } else if (press && a.step !== 5) a.queued = true;
-    a.t += dt;
     const S = STEPS[a.step], dur = S.dur[a.ph];
-    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    let v = 0;
+    // 振り抜く瞬間 (S.stop) に、ほんの少しだけ時間を止める (ヒットストップ)。止まっている間は進まない
+    if (S.stop && a.ph === 0 && !a.stopped && a.t < S.stop[0] && a.t + dt >= S.stop[0]) { a.t = S.stop[0]; a.stopped = true; a.hold = S.stop[1]; }
+    else if (a.hold > 0) a.hold -= dt;
+    else a.t += dt;
+    let v = 0, sv = 0;
     if (a.step <= 3) {
-      const [m0, m1, dist] = S.move;
-      if (a.t > m0 && a.t < m1) v = dist / (m1 - m0) * (Math.PI / 2) * Math.sin(Math.PI * (a.t - m0) / (m1 - m0)); // 踏み込む (進んだ距離が dist になる)
+      const [m0, m1, dist, side = 0] = S.move;
+      if (a.t > m0 && a.t < m1 && !(a.hold > 0)) { // 踏み込む (進んだ距離が dist・side になる)
+        const k = 1 / (m1 - m0) * (Math.PI / 2) * Math.sin(Math.PI * (a.t - m0) / (m1 - m0));
+        v = dist * k; sv = side * k;
+      }
       if (a.queued && a.t >= S.cancel) { this.startStep(a.step + 1, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
       if (a.t >= dur) { this.endStep(a.step + 1); return this.finishAtk(dt, null, 0); }
+      return this.finishAtk(dt, a, v, sv);
     } else if (a.step === 4) {
       if (a.ph === 0) {
         if (a.t >= dur) { // 跳ぶ
@@ -267,10 +273,10 @@ export class Player {
     return this.finishAtk(dt, a, v);
   }
 
-  // 前へ踏み込む速さ v で体を動かし、姿勢を渡す
-  finishAtk(dt, a, v) {
+  // 前へ踏み込む速さ v・左へ動く速さ sv で体を動かし、姿勢を渡す
+  finishAtk(dt, a, v, sv = 0) {
     const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    if (a) this.vel.set(fx * v, fz * v);
+    if (a) this.vel.set(fx * v + fz * sv, fz * v - fx * sv); // 左 = (cos, -sin)
     else this.vel.multiplyScalar(Math.exp(-14 * dt));
     this.moveBody(dt);
     this.stair = 0;
