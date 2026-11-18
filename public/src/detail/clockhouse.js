@@ -7,6 +7,7 @@
 // 壁そのもの (当たり判定のある箱) は city.js が描く。ここでは壁の前に外観の板と、立体の飾りを置く。
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
+import { DOORS } from '../doors.js';
 
 const CREAM = '#e6d6b2', PIER = '#f3ecdc', OCHRE = '#cfa45a', SLATE = '#59606b', DOOR = '#7e2a22', GLASS = '#2c363e';
 
@@ -43,20 +44,9 @@ function facadeTextures(L, H, color, items) {
         g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(cx - ww / 2 - 0.15 * px, bottom - 0.08 * my, ww + 0.3 * px, 0.1 * my); // 窓台
         continue;
       }
-      // 扉: 白い石の枠、赤い枠のガラス扉 2 枚、上に明かり取り
-      if (lit) { g.fillStyle = '#ffd9a0'; g.fillRect(cx - ww / 2, top, ww, bottom - top); continue; }
-      g.fillStyle = PIER; g.fillRect(cx - ww / 2 - 0.3 * px, top - 0.3 * my, ww + 0.6 * px, bottom - top + 0.3 * my);
-      g.fillStyle = DOOR; g.fillRect(cx - ww / 2, top, ww, bottom - top);
-      const fr = 0.13 * px, tr = top + 0.6 * my;
-      g.fillStyle = GLASS;
-      g.fillRect(cx - ww / 2 + fr, top + fr, ww - 2 * fr, tr - top - 1.5 * fr);        // 明かり取り
-      for (const sx of [-1, 1]) {
-        const x0 = sx < 0 ? cx - ww / 2 + fr : cx + fr / 2;
-        g.fillRect(x0, tr + fr / 2, ww / 2 - 1.5 * fr, bottom - tr - 2 * fr);
-      }
-      g.fillStyle = 'rgba(255,214,150,.22)'; g.fillRect(cx - ww / 2 + fr, tr, ww - 2 * fr, bottom - tr - 2 * fr);
-      g.strokeStyle = DOOR; g.lineWidth = 0.05 * px;
-      for (let k = 1; k < 5; k++) { const y = tr + k * (bottom - tr) / 5; g.beginPath(); g.moveTo(cx - ww / 2, y); g.lineTo(cx + ww / 2, y); g.stroke(); }
+      // 扉の所: 白い石の枠を描き、扉の大きさの穴を抜く (扉は開け閉めできる立体の板。makeDoor)
+      if (!lit) { g.fillStyle = PIER; g.fillRect(cx - ww / 2 - 0.3 * px, top - 0.3 * my, ww + 0.6 * px, bottom - top + 0.3 * my); }
+      g.clearRect(cx - ww / 2, top, ww, bottom - top);
     }
   });
   return { tex: draw(false), lit: draw(true) };
@@ -96,7 +86,7 @@ export function buildClockhouse({ hl, group, shadow }) {
   // face(中心 x, z, 向き (外向きの角度), 長さ, 高さ, 並び)
   const face = (x, z, ang, L, H, items) => {
     const { tex, lit } = facadeTextures(L, H, hl.color, items);
-    const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: lit, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.82 });
+    const m = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: lit, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.82, alphaTest: 0.5 });
     emissive.push(m);
     const p = new THREE.Mesh(new THREE.PlaneGeometry(L, H), m);
     p.position.set(x + Math.sin(ang) * 0.04, H / 2, z + Math.cos(ang) * 0.04);
@@ -108,11 +98,43 @@ export function buildClockhouse({ hl, group, shadow }) {
   const winTop = Math.min(4.3, h - 0.75);
   const front = bays(W, door, winTop, 2);
   face(0, 0, 0, W, h, front);                                                      // 正面
+  // 開け閉めできる扉 (赤い枠のガラス扉 2 枚。doors.js が動かす)。z0 = 壁の面、ang = 外向き
+  const doorTex = canvasTexture(128, 256, (c, Wt, Ht) => {
+    c.fillStyle = DOOR; c.fillRect(0, 0, Wt, Ht);
+    const f = 12, tr = Ht * 0.19;
+    c.fillStyle = GLASS; c.fillRect(f, f, Wt - 2 * f, tr - 1.5 * f); c.fillRect(f, tr + f / 2, Wt - 2 * f, Ht - tr - 3 * f);
+    c.fillStyle = 'rgba(255,214,150,.18)'; c.fillRect(f, tr + f / 2, Wt - 2 * f, Ht - tr - 3 * f);
+    c.fillStyle = DOOR; for (let k = 1; k < 5; k++) c.fillRect(f, tr + k * (Ht - tr) / 5 - 2, Wt - 2 * f, 4);
+    c.fillStyle = '#c9a45a'; c.fillRect(Wt - f - 6, Ht * 0.55, 4, 26);   // 取っ手
+  });
+  const doorM = new THREE.MeshStandardMaterial({ map: doorTex, roughness: 0.4, metalness: 0.2 });
+  const makeDoor = (z0, ang) => {
+    if (!door) return;
+    const dh = 3.15, lw = door / 2 - 0.03;
+    const dg = new THREE.Group();
+    dg.position.set(0, 0, z0); dg.rotation.y = ang;
+    here.add(dg);
+    const leaves = [];
+    for (const sx of [-1, 1]) {   // sx = 吊り元の側。開くと内側 (-z) へ回る
+      const pivot = new THREE.Group();
+      pivot.position.set(sx * door / 2, 0, -0.06);
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(lw, dh, 0.07).translate(-sx * lw / 2, dh / 2, 0), doorM);
+      pivot.add(shadow(leaf));
+      dg.add(pivot);
+      leaves.push({ pivot, sign: -sx });
+    }
+    // 世界の座標 (扉の中央・外向き)
+    const c = Math.cos(hl.yaw), s = Math.sin(hl.yaw), lz = z0;
+    const oa = hl.yaw + ang;
+    DOORS.push({ x: hl.x + lz * s, z: hl.z + lz * c, y: hl.y, nx: Math.sin(oa), nz: Math.cos(oa), w: door, h: dh, leaves });
+  };
+  makeDoor(0, 0);
   face(-W / 2, -D / 2, -Math.PI / 2, D, h, bays(D, 0, winTop, 1));                 // 横
   face(W / 2, -D / 2, Math.PI / 2, D, h, bays(D, 0, winTop, 1));
   const bd = bk.depth || 0, bi = bk.inset || 0, bh = bk.h || 4.4, BW = W - 2 * bi;
   if (bd > 0) {
     face(0, -D - bd, Math.PI, BW, bh, bays(BW, door, Math.min(3.6, bh - 0.6), 2)); // 中庭側
+    makeDoor(-D - bd, Math.PI);
     face(-BW / 2, -D - bd / 2, -Math.PI / 2, bd, bh, bays(bd, 0, Math.min(3.6, bh - 0.6), 1));
     face(BW / 2, -D - bd / 2, Math.PI / 2, bd, bh, bays(bd, 0, Math.min(3.6, bh - 0.6), 1));
   } else {

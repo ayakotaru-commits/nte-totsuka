@@ -112,6 +112,15 @@ export class World {
     }
   }
 
+  // 開け閉めできる扉の当たり判定 (doors.js)。rec.door.open が true の間は通れる
+  addDoor(x, z, yaw, hx, hz, y0, y1) {
+    this.addColliders({ box: [[x, z, yaw, hx, hz, y0, y1]] }, true);
+    const rec = this.props[this.props.length - 1];
+    rec.door = { open: false };
+    this.hasDoors = true;
+    return rec;
+  }
+
   // (x, z) での上面の高さ。勾配屋根は斜面の高さ、それ以外は上端
   top(b, x, z) {
     if (!b.roofs) return b.topY;
@@ -143,7 +152,8 @@ export class World {
   querySolid(minx, minz, maxx, maxz) {
     const out = this.query(minx, minz, maxx, maxz);
     if (!this.props.length) return out;
-    const pr = this.query(minx, minz, maxx, maxz, this.propGrid);
+    let pr = this.query(minx, minz, maxx, maxz, this.propGrid);
+    if (this.hasDoors) pr = pr.filter(r => !(r.door && r.door.open));   // 開いている扉は通れる
     return out.concat(this.propsOn ? pr : pr.filter(r => r.always));
   }
 

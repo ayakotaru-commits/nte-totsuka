@@ -13,6 +13,7 @@ import { TimeOfDay } from './time.js';
 import { Waypoints } from './waypoint.js';
 import { BigMap } from './bigmap.js';
 import { loadDetail } from './detail/index.js'; // detail (お試し)
+import { DoorControl } from './doors.js';
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
 import { setTerrain, setCover, setLowMemory } from './terrain.js';
@@ -94,6 +95,7 @@ async function main() {
   }
   if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
   const detail = await loadDetail({ scene, city, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
+  const doors = new DoorControl(world); // 開け閉めできる扉 (時計の棟。形は detail が作って登録する)
 
   releaseGeometryAfterUpload(scene); // スマホ・タブレットだけ: 頂点データの JS 側の控えを、GPU に送った後に手放す
 
@@ -213,6 +215,7 @@ async function main() {
     if (!bigmap.open) {
       // キャラの動きは 1/30 秒以下に刻んで進める (すり抜け防止)。ジャンプなどの「押した瞬間」は最初の 1 刻みだけに効かせる
       const n = Math.ceil(dt / (1 / 30) - 1e-6) || 1;
+      doors.update(dt, player, input);   // 扉の開け閉め (F)。押した瞬間を player より先に見る
       for (let i = 0; i < n; i++) { player.update(dt / n, input, cam); if (n > 1) input.endFrame(); }
       cam.update(dt, player.pos, false, player);
     }
