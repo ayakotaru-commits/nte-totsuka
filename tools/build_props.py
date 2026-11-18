@@ -1555,8 +1555,167 @@ def build_rail(city, world, H, col):
                 state["next"] += GANTRY_STEP
             state["run"] += d
     print(f"platforms={len(platforms)} canopies={len(canopies)} columns={len(columns)} gantries={len(gantries)} catenary segs={len(catenary)}")
+    routes = build_train_routes(city, H, platforms)
     return {"platforms": platforms, "canopies": canopies, "columns": columns, "gantries": gantries, "catenary": catenary,
-            "dims": {"platH": PLAT_H, "mastH": MAST_H}}
+            "dims": {"platH": PLAT_H, "mastH": MAST_H}, "routes": routes}
+
+
+RAIL_TOP = 0.37      # 地面の線路のレールの上面 (地形からの高さ。city.js のバラスト 0.13 + レール 0.25 - 貼り付けのずれ)
+RAIL_TOP_BRIDGE = 0.5  # 線路の橋のレールの上面 (ys からの高さ。bridges.js)
+ROUTE_STEP = 5.0     # 走る道筋の点の間隔 (m)
+
+
+def train_line(name):
+    """線の名前 → 電車の種類 (None = 走らせない。側線・引き込み線など名前の無い線)"""
+    if not name:
+        return None
+    if "貨物" in name:
+        return "freight"
+    if "横須賀" in name:
+        return "yokosuka"
+    if "東海道" in name or "Tokaido" in name:
+        return "tokaido"
+    return None
+
+
+def build_train_routes(city, H, platforms):
+    """電車が走る道筋。OSM の線路は線路 1 本ごと・区間ごとに分かれているので、端点でつないで、地図の端から端までの道筋にする。
+    分かれ道では同じ種類の線を優先し、いちばんまっすぐ続く区間を選ぶ。左側通行なので、反対向きの線路が右にある向きだけを残す。
+    routes: [{"line": 種類, "p": [[x, y, z], ...] (約 5 m おき。y = レールの上面), "stop": 駅で止まる位置 (先頭の、道筋の始点からの距離 m) か null}]"""
+    segs = []
+    for r in city.get("rails") or []:
+        line = train_line(r.get("name"))
+        if not line:
+            continue
+        pts = r["pts"]
+        ys = [y + RAIL_TOP_BRIDGE for y in r["ys"]] if r.get("ys") else None
+        segs.append({"line": line, "pts": [(p[0], p[1]) for p in pts], "ys": ys})
+    key = lambda p: (round(p[0] * 2), round(p[1] * 2))   # 0.5 m で同じ点とみなす
+    ends = {}
+    for i, sg in enumerate(segs):
+        ends.setdefault(key(sg["pts"][0]), []).append((i, 0))
+        ends.setdefault(key(sg["pts"][-1]), []).append((i, 1))
+
+    def oriented(i, rev):
+        sg = segs[i]
+        pts = sg["pts"][::-1] if rev else sg["pts"]
+        ys = (sg["ys"][::-1] if rev else sg["ys"]) if sg["ys"] else None
+        return pts, ys
+
+    def walk_from(i, rev):
+        path, used = [], set()
+        line = segs[i]["line"]
+        while True:
+            used.add(i)
+            pts, ys = oriented(i, rev)
+            path.append((pts, ys))
+            tail = pts[-1]
+            dx, dz = pts[-1][0] - pts[-2][0], pts[-1][1] - pts[-2][1]
+            L = math.hypot(dx, dz) or 1
+            best = None
+            for j, end in ends.get(key(tail), []):
+                if j in used:
+                    continue
+                nrev = end == 1
+                q, _ = oriented(j, nrev)
+                ex, ez = q[1][0] - q[0][0], q[1][1] - q[0][1]
+                M = math.hypot(ex, ez) or 1
+                cos = (dx * ex + dz * ez) / L / M
+                if cos < math.cos(math.radians(25)):
+                    continue
+                score = cos + (0.5 if segs[j]["line"] == line else 0)
+                if best is None or score > best[0]:
+                    best = (score, j, nrev)
+            if not best:
+                return path
+            _, i, rev = best
+
+    raw = []
+    for k, lst in ends.items():
+        if len(lst) != 1:
+            continue
+        i, end = lst[0]
+        path = walk_from(i, end == 1)
+        # 点の列 (重なる継ぎ目は 1 つに) と、点ごとの高さ (橋は ys、地面は地形)
+        P = []
+        for pts, ys in path:
+            for n, (x, z) in enumerate(pts):
+                if P and n == 0:
+                    continue
+                P.append((x, z, ys[n] if ys else None))
+        L = sum(math.hypot(P[n + 1][0] - P[n][0], P[n + 1][1] - P[n][1]) for n in range(len(P) - 1))
+        B = city["bounds"]
+        edge = lambda x, z: x < B["minX"] + 40 or x > B["maxX"] - 40 or z < B["minZ"] + 40 or z > B["maxZ"] - 40
+        if L >= 1000 and edge(P[0][0], P[0][1]) and edge(P[-1][0], P[-1][1]):   # 地図の端から端まで (途中から始まる側線は除く)
+            raw.append((segs[i]["line"], P, L))
+
+    def resample(P):
+        out, acc = [], 0.0
+        nxt = 0.0
+        for n in range(len(P) - 1):
+            (ax, az, ay), (bx, bz, by) = P[n], P[n + 1]
+            d = math.hypot(bx - ax, bz - az)
+            if d <= 0:
+                continue
+            while nxt <= acc + d + 1e-9:
+                t = (nxt - acc) / d
+                x, z = ax + (bx - ax) * t, az + (bz - az) * t
+                if ay is not None and by is not None:
+                    y = ay + (by - ay) * t
+                else:
+                    y = H(x, z) + RAIL_TOP
+                out.append([r2(x), r2(y), r2(z)])
+                nxt += ROUTE_STEP
+            acc += d
+        return out
+
+    routes = [(line, resample(P), L) for line, P, L in raw]
+
+    # 左側通行: 進む向きの右 3〜15 m に、同じ種類のほかの道筋 (= 反対向きの線路。間にホームがあることもある) がある向きだけを残す
+    def right_side_score(pts, others):
+        sc = 0
+        for n in range(10, len(pts) - 10, 20):
+            x, z = pts[n][0], pts[n][2]
+            dx, dz = pts[n + 1][0] - pts[n - 1][0], pts[n + 1][2] - pts[n - 1][2]
+            L = math.hypot(dx, dz) or 1
+            for o in others:
+                for q in o[::2]:
+                    vx, vz = q[0] - x, q[2] - z
+                    d = math.hypot(vx, vz)
+                    if 3 <= d <= 15 and abs(vx * dx + vz * dz) / L < 1.5:
+                        sc += 1 if (dx * vz - dz * vx) / L < 0 else -1   # 右 = 進む向きから時計回り (x = 東, z = 南)
+        return sc
+
+    kept = []
+    seen = set()
+    for line, pts, L in routes:
+        sig = (line, round(pts[0][0] / 20), round(pts[0][2] / 20), round(pts[-1][0] / 20), round(pts[-1][2] / 20))
+        if sig in seen:
+            continue
+        seen.add(sig)
+        others = [p for l2, p, _ in routes if l2 == line and p is not pts]
+        if right_side_score(pts, others) > 0:
+            kept.append((line, pts))
+
+    # 駅で止まる位置: ホームの横を通る旅客線は、編成の中央がホームの中央に来る所で止まる (先頭の位置で持つ)
+    out = []
+    for line, pts in kept:
+        stop = None
+        if line != "freight":
+            for pf in platforms:
+                mid = len(pf["left"]) // 2
+                cx = (pf["left"][mid][0] + pf["right"][mid][0]) / 2
+                cz = (pf["left"][mid][1] + pf["right"][mid][1]) / 2
+                n, d = min(((n, math.hypot(p[0] - cx, p[2] - cz)) for n, p in enumerate(pts)), key=lambda t: t[1])
+                if d < 12:
+                    stop = r2(n * ROUTE_STEP + TRAIN_CARS[line] * CAR_LEN / 2)
+        out.append({"line": line, "p": pts, "stop": stop})
+    print("train routes: " + ", ".join(f"{r['line']} {len(r['p']) * ROUTE_STEP:.0f} m" + (" (停車)" if r["stop"] else "") for r in out))
+    return out
+
+
+TRAIN_CARS = {"tokaido": 15, "yokosuka": 15, "freight": 20}   # 両数 (貨物は機関車 + 貨車)
+CAR_LEN = 20.0                                                  # 1 両の長さ (m)。貨車も同じとして扱う
 
 
 # 5b. 歩道橋・デッキ・階段・スロープの手すり
