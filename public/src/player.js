@@ -8,7 +8,8 @@ import { STEPS, LAUNCH, SPIN, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_I
 
 export const R = 0.35; // 体の半径 (m)
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
-export const ACT_ID = { atk: 1, vault: 2, climb: 3, hurt: 4, down: 5 }; // 動きの種類の番号 (通信用)
+const DOOR_T = 0.9;   // 扉を開ける動きの長さ (秒)
+export const ACT_ID = { atk: 1, vault: 2, climb: 3, hurt: 4, down: 5, door: 6 }; // 動きの種類の番号 (通信用)
 const PUSH_RATE = 10; // 押し合いで離れる速さ (1/秒。重なりの約 6 割を 0.1 秒で戻す)
 const GRAVITY = 24, JUMP_V = 8.2, JUMP2_V = 7.6;
 
@@ -24,6 +25,7 @@ export class Player {
     this.walkMode = false;
     this.act = null;       // 実行中のパルクール (parkour.js の plan() の結果)
     this.actCool = 0;      // 終わった直後に続けて発動しないための待ち時間
+    this.doorT = -1;       // 扉を開ける動きの経過時間 (秒。-1 = していない)
     this.atk = null;       // 実行中の攻撃 { step, ph, t, queued, fx, fz, v0 }。step 1〜5 (attack.js)
     this.comboNext = 1;    // 続きの入力を受け付けている間の、次の手順
     this.comboGrace = 0;   // その残り時間 (秒)
@@ -103,7 +105,19 @@ export class Player {
     const sp = this.vel.length();
     this.moveBody(dt);
 
-    this.show(dt, sp);
+    // 扉を開ける動き (doors.js が startDoor を呼ぶ)。上半身だけの動きで、移動は止めない
+    if (this.doorT >= 0) {
+      this.doorT += dt;
+      if (this.doorT >= DOOR_T) this.doorT = -1;
+    }
+    this.show(dt, sp, this.doorT >= 0 ? { type: 'door', s: this.doorT / DOOR_T } : null);
+  }
+
+  // 扉を開ける動きを始める (doors.js)。攻撃・パルクールの最中は動かさない
+  startDoor() {
+    if (this.atk || this.act) return false;
+    this.doorT = 0;
+    return true;
   }
 
   // 水平移動 (すり抜け防止にサブステップ) と垂直 (重力・着地)
