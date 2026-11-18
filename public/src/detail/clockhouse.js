@@ -293,3 +293,65 @@ export function buildCourtArch({ ar, group, shadow }) {
   add(new THREE.BoxGeometry(0.5, 0.7, D + 0.1), new THREE.MeshStandardMaterial({ color: OCHRE, roughness: 0.6 }), 0, spring + r + 0.15, 0);   // 要石
   add(new THREE.BoxGeometry(W + 0.4, 0.6, D + 0.4), pier, 0, H - 0.3, 0);          // 上の梁 (蛇腹)
 }
+
+// 立体駐車場の入口 (不動産サイトの写真: 1 階の暗い開口に、上がアーチの黒い鉄の引き戸の門。前はレンガ色の舗装と駐車ます)
+export function buildCarpark({ cp, group, shadow, drapeFn }) {
+  const g = new THREE.Group();
+  g.position.set(cp.x, cp.y, cp.z);
+  g.rotation.y = cp.yaw;            // +z = 外向き (道路の側)
+  group.add(g);
+  const W = cp.w, H = cp.h;
+  const iron = new THREE.MeshStandardMaterial({ color: '#16191c', roughness: 0.45, metalness: 0.55 });
+  // 奥の暗い開口 (駐車場の中)
+  // 中は日陰の灰色 (黒にすると鉄の門と見分けがつかない)。奥の梁と柱の影を描く
+  const inside = canvasTexture(256, 96, (c, Wt, Ht) => {
+    c.fillStyle = '#6a6e70'; c.fillRect(0, 0, Wt, Ht);
+    c.fillStyle = '#4c5053'; c.fillRect(0, 0, Wt, Ht * 0.16);
+    for (const x of [0.12, 0.5, 0.88]) c.fillRect(Wt * x - 6, 0, 12, Ht);
+    const gr = c.createLinearGradient(0, 0, 0, Ht); gr.addColorStop(0, 'rgba(0,0,0,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = gr; c.fillRect(0, 0, Wt, Ht);
+  });
+  const dark = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.0, H + 0.2).translate(0, (H + 0.2) / 2, 0), new THREE.MeshStandardMaterial({ map: inside, roughness: 1 }));
+  dark.position.z = 0.05; g.add(dark);
+  // 門: 縦格子の引き戸 2 枚 + 中央の上のアーチ形の飾り
+  const gateTex = canvasTexture(512, 192, (c, Wt, Ht) => {
+    c.clearRect(0, 0, Wt, Ht);
+    c.fillStyle = '#fff';
+    const top = Ht * 0.18;
+    c.fillRect(0, top, Wt, 6); c.fillRect(0, Ht - 8, Wt, 8); c.fillRect(0, (top + Ht) / 2, Wt, 4);
+    for (let x = 3; x < Wt; x += 11) c.fillRect(x, top, 3, Ht - top);
+    c.fillRect(0, top, 6, Ht - top); c.fillRect(Wt - 6, top, 6, Ht - top); c.fillRect(Wt / 2 - 4, top, 8, Ht - top);
+    c.lineWidth = 5; c.strokeStyle = '#fff';
+    c.beginPath(); c.arc(Wt / 2, top + Ht * 0.55, Ht * 0.55, Math.PI * 1.15, Math.PI * 1.85); c.stroke();   // 中央のアーチ
+    c.beginPath(); c.arc(Wt / 2, top + Ht * 0.62, Ht * 0.5, Math.PI * 1.2, Math.PI * 1.8); c.stroke();
+    for (let k = -3; k <= 3; k++) { c.beginPath(); c.arc(Wt / 2 + k * 18, top - 6, 5, 0, Math.PI * 2); c.stroke(); }
+  });
+  const gate = new THREE.Mesh(new THREE.PlaneGeometry(W, H + 0.5).translate(0, (H + 0.5) / 2, 0),
+    new THREE.MeshStandardMaterial({ color: '#16191c', map: gateTex, alphaTest: 0.5, roughness: 0.45, metalness: 0.55, side: THREE.DoubleSide }));
+  gate.position.z = 0.6; g.add(shadow(gate));
+  for (const sx of [-1, 1]) {   // 門柱
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, H + 0.6, 0.22).translate(0, (H + 0.6) / 2, 0), iron);
+    post.position.set(sx * (W / 2 + 0.11), 0, 0.6); g.add(shadow(post));
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), iron); cap.position.set(sx * (W / 2 + 0.11), H + 0.72, 0.6); g.add(cap);
+  }
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(W + 0.4, 0.06, 0.12), iron); rail.position.set(0, 0.03, 0.6); g.add(rail);   // 戸車のレール
+  // 前の舗装 (レンガ色のタイル) と白い駐車ます
+  const lt = cp.lot;
+  if (lt) {
+    const tile = canvasTexture(512, 512, (c, S) => {
+      c.fillStyle = '#c9957f'; c.fillRect(0, 0, S, S);
+      for (let r = 0; r < 24; r++) for (let k = 0; k < 24; k++) {
+        c.fillStyle = (r * 7 + k * 3) % 5 < 2 ? '#bb8a72' : (r + k) % 3 ? '#d3a28b' : '#c48d75';
+        c.fillRect(k * S / 24 + (r % 2) * S / 48 + 1, r * S / 24 + 1, S / 24 - 2, S / 24 - 2);
+      }
+      c.strokeStyle = '#f4f1ea'; c.lineWidth = 6;
+      const n = lt.stalls || 0, sw = S * 2.6 / lt.len, x0 = S / 2 - n * sw / 2 - S * 0.2;
+      for (let k = 0; k <= n; k++) { c.beginPath(); c.moveTo(x0 + k * sw, S * 0.08); c.lineTo(x0 + k * sw, S * 0.08 + S * 5.0 / lt.dep); c.stroke(); }
+    });
+    const geo = new THREE.PlaneGeometry(lt.len, lt.dep, Math.ceil(lt.len / 2), Math.ceil(lt.dep / 2)).rotateX(-Math.PI / 2);
+    geo.rotateY(cp.yaw); geo.translate(lt.x, 0.07, lt.z);
+    const pave = new THREE.Mesh(drapeFn(geo, 1.0), new THREE.MeshStandardMaterial({ map: tile, roughness: 0.85 }));
+    pave.receiveShadow = true;
+    group.add(pave);
+  }
+}

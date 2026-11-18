@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { drape } from '../terrain.js';
-import { buildClockhouse, buildCourtArch } from './clockhouse.js';
+import { buildClockhouse, buildCourtArch, buildCarpark } from './clockhouse.js';
 
 const stoneMat = () => new THREE.MeshStandardMaterial({ color: '#f1ece2', roughness: 0.7 });
 
@@ -73,6 +73,7 @@ export function buildSiteExtras({ site, group }) {
   const hl = site.hall;
   if (hl && hl.v === 2) buildClockhouse({ hl, group, shadow });   // 時計の棟 (clockhouse.js)
   if (site.arch) buildCourtArch({ ar: site.arch, group, shadow });   // 中庭の独立したアーチの門
+  if (site.carpark) buildCarpark({ cp: site.carpark, group, shadow, drapeFn: drape });   // 立体駐車場の入口
   else if (hl) {
     const L = hl.width, H = hl.height, nx = Math.sin(hl.yaw), nz = Math.cos(hl.yaw);
     // 通り抜ける開口 (opening = { w, h }。時計のある門のとき)。開口の左右に、アーチ窓を 2.4 m おきに並べる
@@ -270,8 +271,9 @@ export function buildSiteExtras({ site, group }) {
       group.add(bed);
     }
   }
-  if (site.obelisk) {
-    const { x: ox, y: oy, z: oz } = site.obelisk;
+  const obl = site.obelisk || (site.garden && site.garden.obelisk);   // garden.layout の円形の広場の中央
+  if (obl) {
+    const { x: ox, y: oy, z: oz } = obl;
     const ob = new THREE.Group();
     ob.position.set(ox, oy, oz);
     ob.add(shadow(new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 1.4).translate(0, 0.4, 0), stone)));
