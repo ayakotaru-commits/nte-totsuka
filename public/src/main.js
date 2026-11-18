@@ -145,8 +145,24 @@ async function main() {
   // ---- UI ----
   const overlay = $('overlay');
   // キャラのモデルが届くまで待つ (開始直後に組み立て式のキャラから差し替わるのを防ぐ。無いとき・読めないときもここで解決する)
+  // 待つ間に、見た目の計算プログラム (シェーダ) を作っておく。以前は最初の 1 コマでまとめて作っていたので、
+  // 「準備完了」の直後に数秒止まり、歩いて新しい物が画面に入るたびにも引っかかっていた。
+  // 画面外・遠くの物も含めて、表示中の物を全部作る (?nocompile で以前どおり)
   status('キャラを読み込み中…');
+  const precompile = () => {
+    if (Q.has('nocompile')) return Promise.resolve();
+    // 光と空気感 (look.js) が有効なときは、街を描画先 (sceneRT) に描くので、その条件で作る (色の仕上げの有無でプログラムが別になる)
+    renderer.setRenderTarget(look.post ? look.sceneRT : null);
+    const p = renderer.compileAsync(scene, camera).catch((e) => console.warn('シェーダの先読みに失敗:', e));
+    renderer.setRenderTarget(null);
+    return p;
+  };
+  const compiling = precompile();
   await player.model.ready;
+  status('見た目を準備中…');
+  await compiling;
+  await precompile(); // キャラのモデルの分 (作り済みのものは飛ばされる)
+  look.render(); // 最初の 1 コマを読み込み画面の裏で描いておく (影・物の陰・にじみの処理もここで作られる)
   status('準備完了');
   // スクリーンショット確認用: ?shot&yaw=1.5&pitch=0.8&dist=60&t=2
   const qs = new URLSearchParams(location.search);
