@@ -370,10 +370,30 @@ export function buildCarpark({ cp, group, shadow, drapeFn }) {
       const n = lt.stalls || 0, sw = S * 2.6 / lt.len, x0 = S / 2 - n * sw / 2 - S * 0.2;
       for (let k = 0; k <= n; k++) { c.beginPath(); c.moveTo(x0 + k * sw, S * 0.08); c.lineTo(x0 + k * sw, S * 0.08 + S * 5.0 / lt.dep); c.stroke(); }
     });
-    const geo = new THREE.PlaneGeometry(lt.len, lt.dep, Math.ceil(lt.len / 2), Math.ceil(lt.dep / 2)).rotateX(-Math.PI / 2);
-    geo.rotateY(cp.yaw); geo.translate(lt.x, 0.07, lt.z);
+    let geo;
+    if (lt.poly && lt.poly.length >= 3) {
+      geo = polyGeometry(lt.poly, 0.07);   // 道路の端で切った形 (build_props.py)
+    } else {
+      geo = new THREE.PlaneGeometry(lt.len, lt.dep, Math.ceil(lt.len / 2), Math.ceil(lt.dep / 2)).rotateX(-Math.PI / 2);
+      geo.rotateY(cp.yaw); geo.translate(lt.x, 0.07, lt.z);
+    }
     const pave = new THREE.Mesh(drapeFn(geo, 1.0), new THREE.MeshStandardMaterial({ map: tile, roughness: 0.85 }));
     pave.receiveShadow = true;
     group.add(pave);
   }
+}
+
+// 地面の上の凸多角形 (点 = [x, z, u, v]) を、上向きの三角形の扇にする (drape が地形に沿わせて細かく分ける)
+export function polyGeometry(P, y) {
+  const pos = [], uv = [];
+  const area = P.reduce((s, q, i) => { const r = P[(i + 1) % P.length]; return s + q[0] * r[1] - r[0] * q[1]; }, 0);
+  for (let i = 1; i + 1 < P.length; i++) {
+    const tri = area > 0 ? [P[0], P[i + 1], P[i]] : [P[0], P[i], P[i + 1]];   // x-z 平面で上 (+y) を向く順
+    for (const q of tri) { pos.push(q[0], y, q[1]); uv.push(q[2], q[3]); }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.computeVertexNormals();
+  return geo;
 }

@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { drape } from '../terrain.js';
-import { buildClockhouse, buildCourtArch, buildCarpark } from './clockhouse.js';
+import { buildClockhouse, buildCourtArch, buildCarpark, polyGeometry } from './clockhouse.js';
 
 const stoneMat = () => new THREE.MeshStandardMaterial({ color: '#f1ece2', roughness: 0.7 });
 
@@ -207,8 +207,14 @@ export function buildSiteExtras({ site, group }) {
       }
     });
     tile.wrapS = tile.wrapT = THREE.RepeatWrapping; tile.repeat.set(ct.w / 3, ct.d / 3);
-    const geo = new THREE.PlaneGeometry(ct.w, ct.d, Math.ceil(ct.w / 2), Math.ceil(ct.d / 2)).rotateX(-Math.PI / 2);
-    geo.rotateY(ct.yaw); geo.translate(ct.x, 0.08, ct.z);
+    let geo;
+    if (ct.poly && ct.poly.length >= 3) {   // 道路の端で切った形 (build_props.py)。模様は長方形のときと同じ並び
+      geo = polyGeometry(ct.poly, 0.08);
+      tile.repeat.set(ct.w / 3, ct.d / 3);
+    } else {
+      geo = new THREE.PlaneGeometry(ct.w, ct.d, Math.ceil(ct.w / 2), Math.ceil(ct.d / 2)).rotateX(-Math.PI / 2);
+      geo.rotateY(ct.yaw); geo.translate(ct.x, 0.08, ct.z);
+    }
     const pave = new THREE.Mesh(drape(geo, 1.0), new THREE.MeshStandardMaterial({ map: tile, roughness: 0.85 }));
     pave.receiveShadow = true;
     group.add(pave);

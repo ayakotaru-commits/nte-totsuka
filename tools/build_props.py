@@ -968,6 +968,48 @@ def garden_layout(garden, lay, H, col, clear_of):
     garden["planters"] = planters
 
 
+def road_clipped(city, gx, gz, dx, dz, nx, nz, LL, DD):
+    """(gx, gz) から外向き (nx, nz) へ DD m、壁に沿う向き (dx, dz) へ ±LL/2 の長方形を、車の通る道路の端で切った凸多角形。
+    点は [x, z, u, v] (u, v = 長方形の中の位置 0〜1)。舗装の板が道路に重なって、路面と同じ高さでちらつかないようにする"""
+    poly = [[-LL / 2, 0.0], [LL / 2, 0.0], [LL / 2, DD], [-LL / 2, DD]]   # (t = 壁に沿う向き, d = 壁から外へ)
+    W2 = lambda tt, d: (gx + dx * tt + nx * d, gz + dz * tt + nz * d)
+    lx, lz = W2(0, DD / 2)
+    for r in city["roads"]:
+        if r["kind"] not in DRIVABLE or r.get("ys"):
+            continue
+        pts = r["pts"]
+        for k in range(1, len(pts)):
+            a, b = pts[k - 1], pts[k]
+            if seg_d(lx, lz, a, b) > DD + LL:
+                continue
+            L2 = math.hypot(b[0] - a[0], b[1] - a[1])
+            if L2 < 1e-6:
+                continue
+            ex, ez = -(b[1] - a[1]) / L2, (b[0] - a[0]) / L2   # 道路の線の横向き
+            off = r["w"] / 2 + 0.2                             # 道路の端 (少し余裕)
+            if seg_d(*W2(0, 0), a, b) < off:
+                continue   # 起点が道路の中 (この線は使わない)
+            side = 1 if (gx - a[0]) * ex + (gz - a[1]) * ez > 0 else -1   # 起点のある側
+            u = ((lx - a[0]) * (b[0] - a[0]) + (lz - a[1]) * (b[1] - a[1])) / (L2 * L2)
+            if u < -0.5 or u > 1.5:
+                continue   # 線分の先 (道路の端の先) では切らない
+            f = lambda q: side * ((W2(*q)[0] - a[0]) * ex + (W2(*q)[1] - a[1]) * ez) - off
+            out = []
+            for i in range(len(poly)):
+                P0, P1 = poly[i - 1], poly[i]
+                f0, f1 = f(P0), f(P1)
+                if f1 >= 0:
+                    if f0 < 0:
+                        s = f0 / (f0 - f1)
+                        out.append([P0[0] + (P1[0] - P0[0]) * s, P0[1] + (P1[1] - P0[1]) * s])
+                    out.append(P1)
+                elif f0 >= 0:
+                    s = f0 / (f0 - f1)
+                    out.append([P0[0] + (P1[0] - P0[0]) * s, P0[1] + (P1[1] - P0[1]) * s])
+            poly = out
+    return [[r2(W2(tt, d)[0]), r2(W2(tt, d)[1]), r3((tt + LL / 2) / LL), r3(1 - d / DD)] for tt, d in poly]
+
+
 def build_site_extras(site, city, world, H, col, gi, clear_of, o):
     # ---------- 門: 通路の両面にアーチ ----------
     gt = site.get("gate")
@@ -1014,9 +1056,12 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
         gx, gz = ax + dx * cp["t"], az + dz * cp["t"]
         gy = H(gx, gz)
         lot = cp.get("lot") or {}
-        lx, lz = gx + nx * lot.get("dep", 10) / 2, gz + nz * lot.get("dep", 10) / 2
+        LL, DD = lot.get("len", 12), lot.get("dep", 10)
+        lx, lz = gx + nx * DD / 2, gz + nz * DD / 2
+        # 舗装の形: 門の前の長方形を、車の通る道路の端で切る (道路に重なると、路面と同じ高さで描かれてちらつく)
+        pts_out = road_clipped(city, gx, gz, dx, dz, nx, nz, LL, DD)
         o["carpark"] = {"x": r2(gx), "z": r2(gz), "y": r2(gy), "yaw": r3(math.atan2(nx, nz)), "w": cp["w"], "h": cp["h"],
-                        "lot": {"x": r2(lx), "z": r2(lz), "y": r2(H(lx, lz)), "len": lot.get("len", 12), "dep": lot.get("dep", 10), "stalls": lot.get("stalls", 2)}}
+                        "lot": {"x": r2(lx), "z": r2(lz), "y": r2(H(lx, lz)), "len": LL, "dep": DD, "stalls": lot.get("stalls", 2), "poly": pts_out}}
 
     # ---------- 噴水のある円形広場 ----------
     pz = site.get("plaza")
@@ -1039,7 +1084,8 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
         sx, sz = at(L / 2 - 1.6, 2.4)
         cx, cz = at(0, depth / 2)
         o["court"] = {"x": r2(cx), "z": r2(cz), "y": r2(H(cx, cz)), "yaw": yw, "w": r3(L - 0.8), "d": depth, "bollards": bol,
-                      "statue": {"x": r2(sx), "z": r2(sz), "y": r2(H(sx, sz))}}
+                      "statue": {"x": r2(sx), "z": r2(sz), "y": r2(H(sx, sz))},
+                      "poly": road_clipped(city, hx, hz, tx, tz, fx, fz, L - 0.8, depth)}   # 道路に重ならないよう切った形
         col.add_circle(sx, sz, 0.8, H(sx, sz), 2.0)
 
     # ---------- エントランス棟の正面 (いちばん front を向いた壁) ----------
