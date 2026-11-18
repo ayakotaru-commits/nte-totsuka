@@ -886,12 +886,28 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
             fz = gt["center"][1] + uz * side * (gt["length"] / 2 + 0.03)
             faces.append({"x": r2(fx), "z": r2(fz), "y": r2(gbase), "yaw": r3(math.atan2(ux, uz))})
         if gt.get("clockhouse"):
-            # 時計のある門 (道路から最初に見える建物): 道路側 (-軸の向き) の面に、アーチ窓・時計・スレート屋根の正面を張る。
-            # 敷地の内側の面は、これまでどおり石のアーチ
-            road = faces.pop(0)
-            o["hall"] = {"x": road["x"], "z": road["z"], "y": road["y"], "yaw": r3(math.atan2(-ux, -uz)), "width": gt["wide"],
-                         "height": gt["h"], "color": gt.get("color") or "#e3d2b0", "opening": {"w": gt["passage"], "h": gt["clear_h"], "doors": True}}
-        o["gate"] = {"width": gt["passage"], "clear_h": gt["clear_h"], "color": gt.get("color") or "#dcc6a0", "faces": faces}
+            # 時計の棟 (tools/clockhouse.py): 4 面の外観・マンサード屋根・ドーマー・時計・庇・後ろの平屋は site_extras.js が作る。
+            # (x, z) = 正面の壁の中央、yaw = 正面の外向き (道路の側)
+            nn = math.hypot(ux, uz)
+            road = faces[0]
+            bk = gt.get("back") or {}
+            o["hall"] = {"x": road["x"], "z": road["z"], "y": r2(gbase), "yaw": r3(math.atan2(-ux / nn, -uz / nn)), "width": gt["wide"],
+                         "depth": gt["length"], "height": gt["h"], "roof_h": gt.get("roof_h", gt["h"] + 2.0), "roof_in": gt.get("roof_in", 1.2),
+                         "back": {"depth": bk.get("depth", 0), "inset": bk.get("inset", 0.5), "h": bk.get("h", 4.4)},
+                         "color": gt.get("color") or "#e9ddc1", "opening": {"w": gt["passage"], "h": gt["clear_h"], "doors": True}, "v": 2}
+            ar = gt.get("arch")
+            if ar:
+                # 中庭の独立したアーチの門 (時計の棟の裏の噴水の先。中庭側の写真より)。s = 基準点から奥への距離
+                vx, vz = ux / nn, uz / nn
+                ax, az = gt["origin"][0] + vx * ar["s"], gt["origin"][1] + vz * ar["s"]
+                ay = H(ax, az)
+                o["arch"] = {"x": r2(ax), "z": r2(az), "y": r2(ay), "yaw": r3(math.atan2(vx, vz)), "w": ar["w"], "open": ar["open"], "h": ar["h"]}
+                pw = (ar["w"] - ar["open"]) / 2
+                for sg in (-1, 1):
+                    off = sg * (ar["open"] + pw) / 2
+                    col.add_box(ax - vz * off, az + vx * off, math.atan2(vx, vz), pw / 2, 0.5, ay, ar["h"])
+        else:
+            o["gate"] = {"width": gt["passage"], "clear_h": gt["clear_h"], "color": gt.get("color") or "#dcc6a0", "faces": faces}
 
     # ---------- 噴水のある円形広場 ----------
     pz = site.get("plaza")
@@ -936,8 +952,8 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
                      "width": r3(L), "height": hallB["h"], "color": hallB.get("color") or "#e3d2b0"}
         make_court(o["hall"]["x"], o["hall"]["z"], o["hall"]["yaw"], L)
     elif site.get("gate", {}).get("clockhouse") and o.get("hall"):
-        # 時計の棟: 車寄せは棟の正面 (道路側) に置く。左右は塀
-        make_court(o["hall"]["x"], o["hall"]["z"], o["hall"]["yaw"], o["hall"]["width"])
+        # 時計の棟: 車寄せは棟の正面 (道路側) に、道路ぎわまで置く
+        make_court(o["hall"]["x"], o["hall"]["z"], o["hall"]["yaw"], o["hall"]["width"], depth=site["gate"].get("setback", 9.0))
 
     # ---------- 屋上の塔 ----------
     turrets = []
@@ -1215,7 +1231,8 @@ def build_shapes(city, world, cx, cz, R):
         if b.get("balcony_tiers") and parts_of.get(b["id"]):
             ht = max([b["h"]] + [p["h"] for p in parts_of[b["id"]]])
             floors = b.get("floors") or math.floor(ht / 3.0)
-            fh = ht / max(floors, 1)
+            fh = b.get("floor_h") or ht / max(floors, 1)   # floor_h = 段ごとに階数を持つ建物 (tools/grancity.py)
+            floors = round(ht / fh)
             tiers += [(p["outer"], p["h"], p.get("minH") or 0.0) for p in parts_of[b["id"]]]
         else:
             floors = b.get("floors") or math.floor(b["h"] / 3.0)

@@ -20,7 +20,8 @@ export function buildShapes(props) {
     // それ以外は壁全体で 1 枚
     const stag = w.dark && !w.corr;
     const BAY = 7.2, nseg = stag ? Math.max(1, Math.round((len - 2 * inset) / BAY)) : 1;
-    const DEPTHS = [1.3, 2.4, 3.3, 1.9, 2.8];
+    // 深さの差は控えめに (2026-11: 不動産サイトの写真の中庭側は、ほぼそろった深さ。深い板が重なると屋根が浮いて見えた)
+    const DEPTHS = [1.5, 1.9, 2.3, 1.7, 2.1];
     // k0: 段状の建物の上の段は、その段の最初の階から (無ければ 2 階から)
     for (let k = Math.max(1, w.k0 || 1); k < w.floors; k++) {
       const y = w.y + k * w.floorH;
@@ -33,9 +34,11 @@ export function buildShapes(props) {
         SB.quad(Q2(t0, 0, y - T), Q2(t1, 0, y - T), Q2(t1, D2, y - T), Q2(t0, D2, y - T), [0, -1, 0]);
         SB.quad(Q2(t0, D2, y - T), Q2(t1, D2, y - T), Q2(t1, D2, y), Q2(t0, D2, y), [nx, 0, nz]);
         if (stag) for (const t of [t0, t1]) SB.quad(Q2(t, 0, y - T), Q2(t, D2, y - T), Q2(t, D2, y), Q2(t, 0, y), [ux, 0, uz]);
-        // 手すり壁 (前面 + 両端)
-        RB.quad(Q2(t0, D2, y), Q2(t1, D2, y), Q2(t1, D2, y + 1.1), Q2(t0, D2, y + 1.1), [nx, 0, nz]);
-        for (const t of [t0, t1]) RB.quad(Q2(t, 0, y), Q2(t, D2, y), Q2(t, D2, y + 1.1), Q2(t, 0, y + 1.1), [ux, 0, uz]);
+        // 手すり壁 (前面 + 両端)。敷地の壁は濃い灰色の鉄の縦格子 (uv の u = 長さ ÷ 格子の間隔)
+        const P = RB === darkRailB ? 0.2 : 0;
+        const uv = (L) => P ? [[0, 0], [L / P, 0], [L / P, 1], [0, 1]] : undefined;
+        RB.quad(Q2(t0, D2, y), Q2(t1, D2, y), Q2(t1, D2, y + 1.1), Q2(t0, D2, y + 1.1), [nx, 0, nz], uv(t1 - t0));
+        for (const t of [t0, t1]) RB.quad(Q2(t, 0, y), Q2(t, D2, y), Q2(t, D2, y + 1.1), Q2(t, 0, y + 1.1), [ux, 0, uz], uv(D2));
       }
     }
   }
@@ -43,7 +46,15 @@ export function buildShapes(props) {
   slabs.castShadow = slabs.receiveShadow = true; slabs.name = 'balcony_slabs';
   const creams = new THREE.Mesh(creamB.geometry(), new THREE.MeshStandardMaterial({ color: '#e0d0aa', roughness: 0.9 }));
   creams.castShadow = creams.receiveShadow = true; creams.name = 'balcony_slabs_cream';
-  const darkRails = new THREE.Mesh(darkRailB.geometry(), new THREE.MeshStandardMaterial({ color: '#8d959b', roughness: 0.4, metalness: 0.4, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
+  // 敷地 (グランシティ) の手すり: 濃い灰色の鉄の縦格子と笠木 (写真より。以前は半透明の板で、ガラスのように見えた)
+  // 格子のすき間は半透明の暗い色 (アルファで抜くと、遠くで点々にちらつくため)
+  const barTex = canvasTexture(32, 64, (g, W, H) => {
+    g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(0, 0, W, H);
+    g.clearRect(0, 7, W, H - 12); g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(0, 7, W, H - 12);
+    g.fillStyle = '#fff'; g.fillRect(0, 0, W, 7); g.fillRect(0, H - 5, W, 5); g.fillRect(W / 2 - 4, 0, 8, H);
+  });
+  barTex.wrapS = THREE.RepeatWrapping;
+  const darkRails = new THREE.Mesh(darkRailB.geometry(), new THREE.MeshStandardMaterial({ color: '#3b4148', map: barTex, transparent: true, depthWrite: false, roughness: 0.45, metalness: 0.5, side: THREE.DoubleSide }));
   darkRails.castShadow = true; darkRails.name = 'balcony_rails_dark';
   const rails = new THREE.Mesh(railB.geometry(), new THREE.MeshStandardMaterial({ color: '#eef0f0', roughness: 0.6, transparent: true, opacity: 0.88, side: THREE.DoubleSide }));
   rails.castShadow = true; rails.name = 'balcony_rails';

@@ -5,6 +5,7 @@
 //
 // 使い方: node tools/dev/shot.js <出力フォルダ> <視点.json> [--city <city.json>] [--dump]
 //   --city  public/data/city.json の代わりに別のファイルを読ませる (修正前後の比較用)
+//   --props public/data/props.json の代わりに別のファイルを読ませる (同上)
 //   --dump  信号機・バス停などの位置を表示する
 //   --q '&plain'  URL に付け足す (例: 光と空気感なしの以前の見え方 = &plain)
 //   --night 夜の画面にする (URL に ?t=2。夕方は --dusk、朝は --morning)
@@ -43,6 +44,7 @@ function terrain() {
   const dump = args.includes('--dump'); if (dump) args.splice(args.indexOf('--dump'), 1);
   const tod = ['--night', '--dusk', '--morning'].find(f => args.includes(f)); for (const f of ['--night', '--dusk', '--morning']) if (args.includes(f)) args.splice(args.indexOf(f), 1);
   const city = flag('--city');
+  const props = flag('--props');
   const extraQ = flag('--q') || '';
   const [out, viewsFile] = args;
   if (!out || !viewsFile) { console.error('usage: node tools/dev/shot.js <出力フォルダ> <視点.json> [--city <city.json>] [--dump]'); process.exit(1); }
@@ -74,6 +76,7 @@ function terrain() {
     r.fulfill({ body: t, contentType: 'application/javascript' });
   });
   if (city) await page.route('**/data/city.json', r => r.fulfill({ path: path.resolve(city), contentType: 'application/json' }));
+  if (props) await page.route('**/data/props.json', r => r.fulfill({ path: path.resolve(props), contentType: 'application/json' }));
   page.on('pageerror', e => console.log('ERR', e.message));
   page.on('console', m => { if (/\[detail\]|rror/.test(m.text())) console.log('LOG', m.text()); });
   const tq = tod === '--night' ? '&t=2' : tod === '--dusk' ? '&t=1' : tod === '--morning' ? '&t=3' : '';
