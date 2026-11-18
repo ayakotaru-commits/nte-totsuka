@@ -353,6 +353,12 @@ python tools/terrain_bridges.py --undo   # 元に戻す
 - 剣は握った手から前腕の向きに伸びる。軌跡は刃の先と根もとの世界座標を残すリボン（`TRAIL` の時間だけ。0.18 秒で消える）。
 - 確認: `node tools/dev/charshot.js <出力フォルダ> "atk=1&ph=0&t=0.2" "atk=4&ph=1&t=0.14&air=1"`（手順・局面・時間。空中は `&air=1`）。
 
+
+#### 動きのデータ（お試し、URL に `?mocap`）
+手作りの姿勢の代わりに、動きのデータ（骨の向きをコマごとに並べたもの）で動かす仕組み。今は攻撃の 1 撃目だけを、Quaternius「Universal Animation Library」の無料版（**CC0 1.0**、作者 Quaternius）の `Sword_Attack`（右手で斜め上から振り下ろし、大きく踏み込んで沈む。1.5 秒を 1.36 倍速）に替えられる。標準では使わない。
+- 書き出し: `tools/motion/export.js` → `public/data/motions/<名前>.json`（元データは `data/raw/ual/` に `git clone --depth 1 https://github.com/J-Ponzo/gltf-universal-animation-library.git data/raw/ual`）。元の人形を T ポーズ（`A_TPose`）に合わせ、骨ごとの「T ポーズからの回転」を、正面をそろえてキャラの骨の親子に沿って直す（仕組みは `tools/motion/export.html` の先頭）。
+- 再生: `public/src/motion.js`（読み込みと時間で引く）、`attack.js` の `MOCAP`・`useMocap()`（どの手順をどのデータで、速さ・タイミング）、`character.js` の `atkPose()`（データの向きを `X.q` で骨へ渡す。腰の前後の移動も付ける）。
+- 無料版にある動き（46 種）: 歩き・走り・ダッシュ・ジャンプ・前転・しゃがみ・パンチ・剣の攻撃 1 つ・被弾・倒れる など。二刀の連撃は無い。
 ### マルチプレイ（public/src/net/・server/）
 同じ街に入った人どうしが見え、「戦闘オン」にした人同士で攻撃が当たる。**標準では無効**で、`public/src/net/config.js` の `SERVER` にサーバーの URL を書いたとき（または URL に `?mp=wss://…` を付けたとき）だけ働く。サーバー（Cloudflare Workers の無料プランで動く構成）の中身・公開のしかた・お金の注意・決まりの数字は `server/README.md`。
 

@@ -63,6 +63,18 @@ export const FX = {
 // 剣を手の中でまわす時間 [始め, 終わり] (5 の締め)
 export const TWIRL = { '5:2': [0.3, 0.62] };
 
+// 動きのデータ (public/data/motions。motion.js) を使う手順 { clip: データの名前, speed: 再生の速さ }。
+// 標準では空 (手作りの姿勢)。useMocap() で試せる (URL に ?mocap)
+export const MOCAP = {};
+export function useMocap() {
+  // 1 撃目を Quaternius の Sword_Attack (1.5 秒。右手で斜め上から振り下ろし、大きく踏み込んで沈む) に替える
+  const sp = 1.36;
+  MOCAP['1:0'] = { clip: 'ual_sword_attack', speed: sp };
+  STEPS[1] = { dur: [1.5 / sp], cancel: 0.9 / sp, move: [0.35 / sp, 0.65 / sp, 1.4, 0], stops: [[0, 0.52 / sp, 0.06]] };
+  TRAIL['1:0'] = [0.4 / sp, 0.7 / sp];
+  FX['1:0'] = [[0.55 / sp, 'dust', 'R']];
+}
+
 const sm = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 // 手順・局面・時間から、体ごと回す角度 (rad、+ = 左回り) を返す。回り終えたら 0 (1 周は 0 と同じ向き)
 export function spinAt(step, ph, t) {

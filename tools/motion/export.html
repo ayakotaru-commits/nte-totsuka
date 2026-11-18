@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- 動きのデータ (glTF の人型の動き) を、キャラの骨 (character.js の BONE) の向きに直して書き出すページ。
+  tools/motion/export.js がヘッドレスブラウザで開いて使う。直接は開かない。
+  やっていること:
+    1. 元の人形を T ポーズ (rest に指定した動きの最初のコマ) にして、骨ごとの世界の向き W0 を覚える
+    2. 動きの各コマで、骨ごとの世界の向き W を取り、T ポーズからの回転 D = W × W0⁻¹ を求める
+    3. 人形の正面を +z に合わせ (F)、キャラの骨の親子に沿って「親から見た回転」に直す: local = D親⁻¹ × D子
+       (キャラに無い骨 = 肩甲骨・胸の上・つま先 は、子の回転に含まれる)
+    4. 腕はキャラの骨の基準が「腕を下ろした姿勢」なので、T ポーズとの差 (HL・HR) をかける (character.js の applyVRM の逆) -->
+<html><body>
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+window.exportClip = async (src, clipName, restName, map, fps) => {
+  const g = await new GLTFLoader().loadAsync(src);
+  const scene = g.scene, mixer = new THREE.AnimationMixer(scene);
+  const node = (n) => { const o = scene.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n)); // 読み込むと名前の "." が消える
+    if (!o) throw new Error('骨が無い: ' + n); return o; };
+  const pose = (name, t) => { mixer.stopAllAction(); const a = mixer.clipAction(g.animations.find((c) => c.name === name)); a.reset().play(); mixer.setTime(t); scene.updateMatrixWorld(true); };
+  // キャラの骨の親子 (character.js の BONE と同じ)
+  const PARENT = { hips: null, spine: 'hips', chest: 'spine', neck: 'chest', head: 'neck', shL: 'chest', elL: 'shL', haL: 'elL', shR: 'chest', elR: 'shR', haR: 'elR',
+    thL: 'hips', knL: 'thL', ftL: 'knL', thR: 'hips', knR: 'thR', ftR: 'knR' };
+  // T ポーズ
+  pose(restName, 0);
+  const W0 = {}, up = new THREE.Vector3(0, 1, 0);
+  for (const n in map) W0[n] = node(map[n]).getWorldQuaternion(new THREE.Quaternion());
+  const pL = node(map.thL).getWorldPosition(new THREE.Vector3()), pR = node(map.thR).getWorldPosition(new THREE.Vector3());
+  const fwd = new THREE.Vector3().crossVectors(up, pR.sub(pL)).setY(0).normalize(); // 正面 = 上 × 右
+  const F = new THREE.Quaternion().setFromUnitVectors(fwd, new THREE.Vector3(0, 0, 1)), Fi = F.clone().invert();
+  const hip0 = node(map.hips).getWorldPosition(new THREE.Vector3());
+  const HL = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2), HR = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+  const clip = g.animations.find((c) => c.name === clipName);
+  const n = Math.max(2, Math.round(clip.duration * fps) + 1), out = {}, hipsPos = [];
+  for (const k in map) out[k] = [];
+  for (let i = 0; i < n; i++) {
+    pose(clipName, Math.min(clip.duration, i / fps));
+    const D = {};
+    for (const k in map) D[k] = F.clone().multiply(node(map[k]).getWorldQuaternion(new THREE.Quaternion()).multiply(W0[k].clone().invert())).multiply(Fi);
+    for (const k in map) {
+      const q = PARENT[k] ? D[PARENT[k]].clone().invert().multiply(D[k]) : D[k].clone();
+      // 腕: キャラの骨の基準 (腕を下ろした姿勢) に直す
+      if (k === 'shL') q.multiply(HL.clone().invert());
+      if (k === 'shR') q.multiply(HR.clone().invert());
+      if (k === 'elL' || k === 'haL') q.premultiply(HL).multiply(HL.clone().invert());
+      if (k === 'elR' || k === 'haR') q.premultiply(HR).multiply(HR.clone().invert());
+      if (out[k].length >= 4) { const p = out[k].slice(-4); if (p[0] * q.x + p[1] * q.y + p[2] * q.z + p[3] * q.w < 0) q.set(-q.x, -q.y, -q.z, -q.w); } // 補間で遠回りしないよう符号をそろえる
+      out[k].push(...[q.x, q.y, q.z, q.w].map((v) => +v.toFixed(4)));
+    }
+    // 腰の移動 (T ポーズの腰からの差、人形の正面を +z にした向き。高さで割って、身長に依らない値にする)
+    const hp = node(map.hips).getWorldPosition(new THREE.Vector3()).sub(hip0).applyQuaternion(F).divideScalar(hip0.y);
+    hipsPos.push(+hp.x.toFixed(4), +hp.y.toFixed(4), +hp.z.toFixed(4));
+  }
+  return { fps, frames: n, dur: clip.duration, bones: out, hips: hipsPos };
+};
+window.ready = true;
+</script>
+</body></html>
