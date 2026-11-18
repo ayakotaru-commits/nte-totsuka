@@ -70,13 +70,15 @@ export const TWIRL = { '5:2': [0.3, 0.62] };
 export const MOCAP = {};
 export function useMocap() {
   // 1 撃目を Quaternius の Sword_Attack (1.5 秒。右手で斜め上から振り下ろし、大きく踏み込んで沈む) に、2 撃目をその左右反転に替える
+  // 前へ進む距離は、同じ動きの「足元ごと進む版」(Sword_Attack_RM、rm) の腰の位置 − その場版の腰の位置 = 足元の進み (player.js)。
+  // 踏み込みで約 0.9 m、後ろ足を引き寄せて約 0.6 m 進む。足が地面を滑らない (以前は決めた 1.4 m を押していたので、踏ん張った足が滑った)
   const sp = 1.36;
-  MOCAP['1:0'] = { clip: 'ual_sword_attack', speed: sp };
-  STEPS[1] = { dur: [1.5 / sp], cancel: 0.9 / sp, move: [0.35 / sp, 0.65 / sp, 1.4, 0], stops: [[0, 0.52 / sp, 0.06]] };
+  MOCAP['1:0'] = { clip: 'ual_sword_attack', speed: sp, rm: 'ual_sword_attack_rm', rmTo: 1.43 }; // rmTo: rm の最後のコマは頭に戻っているので使わない
+  STEPS[1] = { dur: [1.5 / sp], cancel: 0.9 / sp, move: [0, 0, 0, 0], stops: [[0, 0.52 / sp, 0.06]] };
   TRAIL['1:0'] = [0.4 / sp, 0.7 / sp];
   FX['1:0'] = [[0.55 / sp, 'dust', 'R']];
   // 2 撃目は 1 撃目の左右反転 (左手で振り下ろし、左足で踏み込む)
-  MOCAP['2:0'] = { clip: 'ual_sword_attack', speed: sp, mirror: true };
+  MOCAP['2:0'] = { ...MOCAP['1:0'], mirror: true };
   STEPS[2] = { ...STEPS[1], stops: STEPS[1].stops.map((s) => s.slice()) };
   TRAIL['2:0'] = TRAIL['1:0'].slice();
   FX['2:0'] = [[0.55 / sp, 'dust', 'L']];

@@ -361,7 +361,7 @@ python tools/terrain_bridges.py --undo   # 元に戻す
 手作りの姿勢の代わりに、動きのデータ（骨の向きをコマごとに並べたもの）で動かす仕組み。データは Quaternius「Universal Animation Library」の無料版（**CC0 1.0**、作者 Quaternius）。使っているもの:
 - **待機・歩き・走り・ダッシュ**: `Idle_Loop`・`Walk_Loop`・`Jog_Fwd_Loop`・`Sprint_Loop`。速さで 3 つを混ぜ（歩き 1.6 m/s はほぼ歩き、走り 5.5・ダッシュ 10 は全力疾走を速めて再生）、左足が前へ出る時をそろえて、1 周で進む距離に合わせて位相を進める（足が滑らない）。進む速さはデータから測った値に、このキャラの脚に合わせた補正（`character.js` の `LOCO_K`）をかけた。**階段は手作りのまま**（データに階段の動きが無い）。
 - **ジャンプ**: 上がっている間は `Jump_Start` の後半（脚を抱える）、落ちている間は `Jump_Loop`、着地の直後は `Jump_Land`（落ちた速さで深さを変え、走っているときは浅く）。
-- **攻撃の 1・2 撃目**: `Sword_Attack`（右手で斜め上から振り下ろし、大きく踏み込んで沈む。1.5 秒を 1.36 倍速）。2 撃目はその左右反転（`motion.js` の `sampleMotion(..., mirror)`: 骨の左右を入れ替え、回転を鏡に映す）。3〜5 撃目・扉・被弾は手作りのまま。
+- **攻撃の 1・2 撃目**: `Sword_Attack`（右手で斜め上から振り下ろし、大きく踏み込んで沈む。1.5 秒を 1.36 倍速）。2 撃目はその左右反転（`motion.js` の `sampleMotion(..., mirror)`: 骨の左右を入れ替え、回転を鏡に映す）。前へ進む距離は、同じ動きの「足元ごと進む版」（`Sword_Attack_RM`）の腰の位置からその場版の腰の位置を引いた「足元の進み」（踏み込みで約 0.9 m、後ろ足を引き寄せて約 0.6 m）。以前は決めた距離（1.4 m）を押していて、踏ん張った足が滑って見えた。3〜5 撃目・扉・被弾は手作りのまま。
 - 書き出し: `tools/motion/export.js` → `public/data/motions/<名前>.json`（元データは `data/raw/ual/` に `git clone --depth 1 https://github.com/J-Ponzo/gltf-universal-animation-library.git data/raw/ual`）。元の人形を T ポーズ（`A_TPose`）に合わせ、骨ごとの「T ポーズからの回転」を、正面をそろえてキャラの骨の親子に沿って直す（仕組みは `tools/motion/export.html` の先頭）。
 - 再生: `public/src/motion.js`（読み込みと時間で引く）、`character.js` の `locoData()`（歩き・走り・空中。手作りの姿勢 `G`・`Aa` をデータで置き換える）、`attack.js` の `MOCAP`・`useMocap()`（攻撃のどの手順をどのデータで）、`character.js` の `atkPose()`（データの向きを `X.q` で骨へ渡す。腰の前後の移動も付ける）。
 - 無料版にある動き（46 種）: 歩き・走り・ダッシュ・ジャンプ・前転・しゃがみ・パンチ・剣の攻撃 1 つ・被弾・倒れる など。二刀の連撃は無い。

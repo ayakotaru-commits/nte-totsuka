@@ -33,7 +33,7 @@ import { spinAt, useMocap } from '../../public/src/attack.js';
 import { loadMotion } from '../../public/src/motion.js';
 
 const qs = new URLSearchParams(location.search);
-if (!qs.has('handmade')) { useMocap(); await loadMotion('ual_sword_attack'); } // 攻撃の 1 撃目を動きのデータで。&handmade で手作り (main.js と同じ)
+if (!qs.has('handmade')) { useMocap(); await loadMotion('ual_sword_attack'); await loadMotion('ual_sword_attack_rm'); } // 攻撃の 1 撃目を動きのデータで。&handmade で手作り (main.js と同じ)
 const atkStep = +(qs.get('atk') || 0), atkPh = +(qs.get('ph') || 0);
 const speed = +(qs.get('pose') || 0), T = atkStep ? 0 : +(qs.get('t') || 1), air = qs.has('air');
 const renderer = new THREE.WebGLRenderer({ antialias: true });

@@ -25,7 +25,7 @@ import { useMocap } from './attack.js';
 import { loadMotion } from './motion.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
-if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); }
+if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); loadMotion('ual_sword_attack_rm'); }
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
