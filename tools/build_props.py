@@ -1555,8 +1555,253 @@ def build_rail(city, world, H, col):
                 state["next"] += GANTRY_STEP
             state["run"] += d
     print(f"platforms={len(platforms)} canopies={len(canopies)} columns={len(columns)} gantries={len(gantries)} catenary segs={len(catenary)}")
+    routes = build_train_routes(city, H, platforms)
+    fixtures = build_station_fixtures(city, world, H, col, platforms)
     return {"platforms": platforms, "canopies": canopies, "columns": columns, "gantries": gantries, "catenary": catenary,
-            "dims": {"platH": PLAT_H, "mastH": MAST_H}}
+            "dims": {"platH": PLAT_H, "mastH": MAST_H}, "routes": routes, **fixtures}
+
+
+def build_station_fixtures(city, world, H, col, platforms):
+    """駅の中: 駅舎 (線路の上の建物) を支える柱、ホームから駅舎へ上がる階段、ホームのベンチ・駅名標・自販機。
+    piers:    駅舎の柱 [x, z, 下端 y, 上端 y]。線路の中心から 2.4 m 以上離れた所に、約 9 m おき
+    stairs:   階段 {"x", "z" (下端の中央), "yaw" (上る向き), "w" 幅, "y0" 下端 (ホームの上面), "y1" 上端 (駅舎の床), "len" 長さ}
+    benches:  ベンチ {x, y, z, yaw}  正面 (局所 +Z) が線路を向く
+    nameSigns: 駅名標 {x, y, z, yaw}  板の面が線路を向く (両面)
+    platVending: ホームの自販機 {x, y, z, yaw}"""
+    rails = [r["pts"] for r in city.get("rails") or []]
+    rail_grid = PointGrid(5)
+    for p in rails:
+        for i in range(len(p) - 1):
+            (ax, az), (bx, bz) = p[i][:2], p[i + 1][:2]
+            n = max(1, int(math.hypot(bx - ax, bz - az) * 2))
+            for k in range(n + 1):
+                rail_grid.add(ax + (bx - ax) * k / n, az + (bz - az) * k / n)
+    station = [b for b in city["buildings"] if b.get("look") == "totsuka_station" and (b.get("minH") or 0) > 0]
+    under = lambda x, z: next((b for b in station if pip(x, z, b["outer"])), None)
+
+    piers = []
+    for b in station:
+        xs, zs = [q[0] for q in b["outer"]], [q[1] for q in b["outer"]]
+        y1 = (b.get("y") or 0) + b["minH"]
+        x = min(xs) + 4.5
+        while x < max(xs):
+            z = min(zs) + 4.5
+            while z < max(zs):
+                if pip(x, z, b["outer"]) and not rail_grid.near(x, z, 2.4) and not any(math.hypot(x - q[0], z - q[1]) < 6 for q in piers):
+                    y0 = H(x, z)
+                    piers.append([r2(x), r2(z), r2(y0), r2(y1)])
+                    col.add_circle(x, z, 0.45, y0, y1 - y0)
+                z += 9
+            x += 9
+
+    stairs, benches, signs, vend = [], [], [], []
+    for pf in platforms:
+        L, R, Y = pf["left"], pf["right"], pf["y"]
+        C = [((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, y, math.hypot(a[0] - b[0], a[1] - b[1])) for a, b, y in zip(L, R, Y)]
+        n = len(C)
+        # 駅舎の下にある所 (ホームの点の番号の範囲)
+        inside = [i for i, c in enumerate(C) if under(c[0], c[1])]
+        if inside:
+            i0 = max(inside)                       # 駅舎の南の端 (番号の大きい側) から、南へ下りる階段
+            j = min(n - 1, i0 + 3)
+            (x0, z0), (x1, z1) = C[i0][:2], C[j][:2]
+            d = math.hypot(x1 - x0, z1 - z0) or 1
+            ux, uz = (x0 - x1) / d, (z0 - z1) / d     # 上る向き (駅舎の方へ)
+            b = under(C[i0][0], C[i0][1])
+            y1 = (b.get("y") or 0) + b["minH"]
+            y0 = C[i0][2]                           # ホームの上面
+            rise = y1 - y0
+            ln = rise / 0.55                        # 勾配 約 29° (蹴上げ 16 cm・踏面 29 cm)
+            sx, sz = C[i0][0] - ux * (ln - 2.0), C[i0][1] - uz * (ln - 2.0)   # 上端が駅舎の中へ 2 m 入るように
+            w = min(3.0, max(1.8, C[i0][3] - 4.5))
+            stairs.append({"x": r2(sx), "z": r2(sz), "yaw": r3(math.atan2(ux, uz)), "w": r2(w), "y0": r2(y0), "y1": r2(y1), "len": r2(ln)})
+            col.add_box(sx + ux * ln / 2, sz + uz * ln / 2, math.atan2(ux, uz), w / 2 + 0.1, ln / 2, y0, rise)
+            stair_zone = [(sx + ux * t, sz + uz * t) for t in range(0, int(ln) + 4, 2)]
+        else:
+            stair_zone = []
+        busy = lambda x, z: under(x, z) or any(math.hypot(x - q[0], z - q[1]) < 3.5 for q in stair_zone)
+        for i in range(2, n - 2):
+            x, z, y, wd = C[i]
+            if wd < 5 or busy(x, z):
+                continue
+            a, b2 = C[i - 1], C[i + 1]
+            dx, dz = b2[0] - a[0], b2[1] - a[1]
+            d = math.hypot(dx, dz) or 1
+            nx, nz = -dz / d, dx / d                # ホームに直角 (左の線路の側)
+            yaw_along = math.atan2(dx / d, dz / d)
+            if i % 6 == 0:                          # ベンチ (約 24 m おき。背中合わせに 2 脚)
+                for s_ in (1, -1):
+                    bx, bz = x + nx * s_ * 0.45, z + nz * s_ * 0.45
+                    benches.append({"x": r2(bx), "y": r2(y), "z": r2(bz), "yaw": r3(math.atan2(nx * s_, nz * s_))})
+                col.add_box(x, z, yaw_along, 0.9, 0.9, y, 0.45)
+            elif i % 15 == 3:                       # 駅名標 (約 60 m おき)
+                signs.append({"x": r2(x), "y": r2(y), "z": r2(z), "yaw": r3(math.atan2(nx, nz))})
+                col.add_circle(x, z, 0.1, y, 2.3)
+            elif i % 40 == 10:                      # 自販機 (背中合わせ)
+                for s_ in (1, -1):
+                    vx, vz = x + nx * s_ * 0.45, z + nz * s_ * 0.45
+                    vend.append({"x": r2(vx), "y": r2(y), "z": r2(vz), "yaw": r3(math.atan2(nx * s_, nz * s_)), "color": 0})
+                col.add_box(x, z, yaw_along, 0.5, 0.8, y, 1.83)
+    print(f"station: piers={len(piers)} stairs={len(stairs)} benches={len(benches)} name signs={len(signs)} vending={len(vend)}")
+    return {"piers": piers, "stairs": stairs, "benches": benches, "nameSigns": signs, "platVending": vend}
+
+
+RAIL_TOP = 0.55      # 地面の線路のレールの上面 (地形からの高さ。detail/trackbed.js と同じ)
+RAIL_TOP_BRIDGE = 0.5  # 線路の橋のレールの上面 (ys からの高さ。bridges.js)
+ROUTE_STEP = 5.0     # 走る道筋の点の間隔 (m)
+
+
+def train_line(name):
+    """線の名前 → 電車の種類 (None = 走らせない。側線・引き込み線など名前の無い線)"""
+    if not name:
+        return None
+    if "貨物" in name:
+        return "freight"
+    if "横須賀" in name:
+        return "yokosuka"
+    if "東海道" in name or "Tokaido" in name:
+        return "tokaido"
+    return None
+
+
+def build_train_routes(city, H, platforms):
+    """電車が走る道筋。OSM の線路は線路 1 本ごと・区間ごとに分かれているので、端点でつないで、地図の端から端までの道筋にする。
+    分かれ道では同じ種類の線を優先し、いちばんまっすぐ続く区間を選ぶ。左側通行なので、反対向きの線路が右にある向きだけを残す。
+    routes: [{"line": 種類, "p": [[x, y, z], ...] (約 5 m おき。y = レールの上面), "stop": 駅で止まる位置 (先頭の、道筋の始点からの距離 m) か null}]"""
+    segs = []
+    for r in city.get("rails") or []:
+        line = train_line(r.get("name"))
+        if not line:
+            continue
+        pts = r["pts"]
+        ys = [y + RAIL_TOP_BRIDGE for y in r["ys"]] if r.get("ys") else None
+        segs.append({"line": line, "pts": [(p[0], p[1]) for p in pts], "ys": ys})
+    key = lambda p: (round(p[0] * 2), round(p[1] * 2))   # 0.5 m で同じ点とみなす
+    ends = {}
+    for i, sg in enumerate(segs):
+        ends.setdefault(key(sg["pts"][0]), []).append((i, 0))
+        ends.setdefault(key(sg["pts"][-1]), []).append((i, 1))
+
+    def oriented(i, rev):
+        sg = segs[i]
+        pts = sg["pts"][::-1] if rev else sg["pts"]
+        ys = (sg["ys"][::-1] if rev else sg["ys"]) if sg["ys"] else None
+        return pts, ys
+
+    def walk_from(i, rev):
+        path, used = [], set()
+        line = segs[i]["line"]
+        while True:
+            used.add(i)
+            pts, ys = oriented(i, rev)
+            path.append((pts, ys))
+            tail = pts[-1]
+            dx, dz = pts[-1][0] - pts[-2][0], pts[-1][1] - pts[-2][1]
+            L = math.hypot(dx, dz) or 1
+            best = None
+            for j, end in ends.get(key(tail), []):
+                if j in used:
+                    continue
+                nrev = end == 1
+                q, _ = oriented(j, nrev)
+                ex, ez = q[1][0] - q[0][0], q[1][1] - q[0][1]
+                M = math.hypot(ex, ez) or 1
+                cos = (dx * ex + dz * ez) / L / M
+                if cos < math.cos(math.radians(25)):
+                    continue
+                score = cos + (0.5 if segs[j]["line"] == line else 0)
+                if best is None or score > best[0]:
+                    best = (score, j, nrev)
+            if not best:
+                return path
+            _, i, rev = best
+
+    raw = []
+    for k, lst in ends.items():
+        if len(lst) != 1:
+            continue
+        i, end = lst[0]
+        path = walk_from(i, end == 1)
+        # 点の列 (重なる継ぎ目は 1 つに) と、点ごとの高さ (橋は ys、地面は地形)
+        P = []
+        for pts, ys in path:
+            for n, (x, z) in enumerate(pts):
+                if P and n == 0:
+                    continue
+                P.append((x, z, ys[n] if ys else None))
+        L = sum(math.hypot(P[n + 1][0] - P[n][0], P[n + 1][1] - P[n][1]) for n in range(len(P) - 1))
+        B = city["bounds"]
+        edge = lambda x, z: x < B["minX"] + 40 or x > B["maxX"] - 40 or z < B["minZ"] + 40 or z > B["maxZ"] - 40
+        if L >= 1000 and edge(P[0][0], P[0][1]) and edge(P[-1][0], P[-1][1]):   # 地図の端から端まで (途中から始まる側線は除く)
+            raw.append((segs[i]["line"], P, L))
+
+    def resample(P):
+        out, acc = [], 0.0
+        nxt = 0.0
+        for n in range(len(P) - 1):
+            (ax, az, ay), (bx, bz, by) = P[n], P[n + 1]
+            d = math.hypot(bx - ax, bz - az)
+            if d <= 0:
+                continue
+            while nxt <= acc + d + 1e-9:
+                t = (nxt - acc) / d
+                x, z = ax + (bx - ax) * t, az + (bz - az) * t
+                if ay is not None and by is not None:
+                    y = ay + (by - ay) * t
+                else:
+                    y = H(x, z) + RAIL_TOP
+                out.append([r2(x), r2(y), r2(z)])
+                nxt += ROUTE_STEP
+            acc += d
+        return out
+
+    routes = [(line, resample(P), L) for line, P, L in raw]
+
+    # 左側通行: 進む向きの右 3〜15 m に、同じ種類のほかの道筋 (= 反対向きの線路。間にホームがあることもある) がある向きだけを残す
+    def right_side_score(pts, others):
+        sc = 0
+        for n in range(10, len(pts) - 10, 20):
+            x, z = pts[n][0], pts[n][2]
+            dx, dz = pts[n + 1][0] - pts[n - 1][0], pts[n + 1][2] - pts[n - 1][2]
+            L = math.hypot(dx, dz) or 1
+            for o in others:
+                for q in o[::2]:
+                    vx, vz = q[0] - x, q[2] - z
+                    d = math.hypot(vx, vz)
+                    if 3 <= d <= 15 and abs(vx * dx + vz * dz) / L < 1.5:
+                        sc += 1 if (dx * vz - dz * vx) / L < 0 else -1   # 右 = 進む向きから時計回り (x = 東, z = 南)
+        return sc
+
+    kept = []
+    seen = set()
+    for line, pts, L in routes:
+        sig = (line, round(pts[0][0] / 20), round(pts[0][2] / 20), round(pts[-1][0] / 20), round(pts[-1][2] / 20))
+        if sig in seen:
+            continue
+        seen.add(sig)
+        others = [p for l2, p, _ in routes if l2 == line and p is not pts]
+        if right_side_score(pts, others) > 0:
+            kept.append((line, pts))
+
+    # 駅で止まる位置: ホームの横を通る旅客線は、編成の中央がホームの中央に来る所で止まる (先頭の位置で持つ)
+    out = []
+    for line, pts in kept:
+        stop = None
+        if line != "freight":
+            for pf in platforms:
+                mid = len(pf["left"]) // 2
+                cx = (pf["left"][mid][0] + pf["right"][mid][0]) / 2
+                cz = (pf["left"][mid][1] + pf["right"][mid][1]) / 2
+                n, d = min(((n, math.hypot(p[0] - cx, p[2] - cz)) for n, p in enumerate(pts)), key=lambda t: t[1])
+                if d < 12:
+                    stop = r2(n * ROUTE_STEP + TRAIN_CARS[line] * CAR_LEN / 2)
+        out.append({"line": line, "p": pts, "stop": stop})
+    print("train routes: " + ", ".join(f"{r['line']} {len(r['p']) * ROUTE_STEP:.0f} m" + (" (停車)" if r["stop"] else "") for r in out))
+    return out
+
+
+TRAIN_CARS = {"tokaido": 15, "yokosuka": 15, "freight": 20}   # 両数 (貨物は機関車 + 貨車)
+CAR_LEN = 20.0                                                  # 1 両の長さ (m)。貨車も同じとして扱う
 
 
 # 5b. 歩道橋・デッキ・階段・スロープの手すり
@@ -1784,6 +2029,95 @@ def build_parking(lots, city, world, H, col, paint):
 # 7. 敷地の外周の柵と、墓地の墓石 (OSM のエリア: 工業用地・学校・墓地。点群から読んだ造成地: 工事の仮囲い)
 # =====================================================================
 # 種類 → (色, 高さ m)。construction (仮囲い) は金網ではなく白い板
+RAIL_FENCE = ("#7d877f", 1.8)   # 線路沿いの金網 (色, 高さ)
+RAIL_FENCE_OFF = 3.2            # いちばん外側の線路の中心からの距離 (m)
+
+
+def build_rail_fences(city, world, H, col):
+    """線路沿いの柵: いちばん外側の線路の、外側 RAIL_FENCE_OFF m に金網を張る (fences と同じ形式。kind = "rail")。
+    ほかの線路がそばにある所 (線路と線路の間)、道路・建物・ホームの所、線路の橋は空ける"""
+    pts_all = []
+    for r in city.get("rails") or []:
+        p = r["pts"]
+        for i in range(len(p) - 1):
+            (ax, az), (bx, bz) = p[i][:2], p[i + 1][:2]
+            n = max(1, int(math.hypot(bx - ax, bz - az)))
+            for k in range(n + 1):
+                pts_all.append((ax + (bx - ax) * k / n, az + (bz - az) * k / n))
+    rail_grid = PointGrid(5)
+    for x, z in pts_all:
+        rail_grid.add(x, z)
+    road_pts = PointGrid(5)
+    road_w = {}
+    for rd in city["roads"]:
+        if rd.get("ys"):
+            continue
+        p = rd["pts"]
+        for i in range(len(p) - 1):
+            (ax, az), (bx, bz) = p[i][:2], p[i + 1][:2]
+            n = max(1, int(math.hypot(bx - ax, bz - az)))
+            for k in range(n + 1):
+                x, z = ax + (bx - ax) * k / n, az + (bz - az) * k / n
+                road_pts.add(x, z)
+                road_w[(round(x, 1), round(z, 1))] = rd["w"]
+    plats = [a["outer"] for a in city.get("areas") or [] if a["kind"] == "platform"]
+
+    def near_road(x, z):
+        for gx in range(int(math.floor(x / 5)) - 3, int(math.floor(x / 5)) + 4):
+            for gz in range(int(math.floor(z / 5)) - 3, int(math.floor(z / 5)) + 4):
+                for qx, qz in road_pts.g.get((gx, gz), ()):
+                    w = road_w.get((round(qx, 1), round(qz, 1)), 6)
+                    if math.hypot(qx - x, qz - z) < w / 2 + 1.0:
+                        return True
+        return False
+
+    def blocked(x, z):
+        if rail_grid.near(x, z, RAIL_FENCE_OFF - 0.4) or near_road(x, z):
+            return True
+        if any(World.contains(b, x, z) or world.closest_d(b, x, z) < 0.4 for b in world.query(x - 1, z - 1, x + 1, z + 1)):
+            return True
+        return any(pip(x, z, r) or ring_dist(x, z, r) < 8 for r in plats)   # ホームの縁から 8 m 以内 (駅の中) は張らない
+
+    def ring_dist(x, z, ring):
+        best = 1e9
+        for i in range(len(ring)):
+            (ax, az), (bx, bz) = ring[i][:2], ring[(i + 1) % len(ring)][:2]
+            dx, dz = bx - ax, bz - az
+            L2 = dx * dx + dz * dz or 1e-9
+            t = max(0.0, min(1.0, ((x - ax) * dx + (z - az) * dz) / L2))
+            best = min(best, math.hypot(x - ax - dx * t, z - az - dz * t))
+        return best
+    post_grid = PointGrid(5)   # 並行する線路から同じ所に二重に張らない
+
+    out_posts, panels = [], []
+    for r in city.get("rails") or []:
+        if r.get("ys"):
+            continue
+        for side in (1, -1):
+            prev = [None]
+
+            def cb(x, z, dx, dz, side=side, prev=prev):
+                px, pz = x - dz * side * RAIL_FENCE_OFF, z + dx * side * RAIL_FENCE_OFF
+                beyond = any(rail_grid.near(x - dz * side * o, z + dx * side * o, 1.5) for o in range(5, 26, 3))   # 外側にまだ線路がある (線路の群れの間)
+                if beyond or blocked(px, pz) or post_grid.near(px, pz, 1.5):
+                    prev[0] = None
+                    return
+                post_grid.add(px, pz)
+                out_posts.append([r2(px), r2(pz), r2(H(px, pz))])
+                q = prev[0]
+                if q and math.hypot(px - q[0], pz - q[1]) < FENCE_STEP * 1.6:
+                    mx, mz = (px + q[0]) / 2, (pz + q[1]) / 2
+                    L = math.hypot(px - q[0], pz - q[1])
+                    yaw = math.atan2(px - q[0], pz - q[1])
+                    y = min(H(px, pz), H(q[0], q[1]))
+                    panels.append([r2(mx), r2(mz), r2(y), r3(yaw), r2(L)])
+                    col.add_box(mx, mz, yaw, 0.05, L / 2, y, RAIL_FENCE[1])
+                prev[0] = (px, pz)
+            walk(r["pts"], 0, FENCE_STEP, cb)
+    print(f"rail fences: posts={len(out_posts)} panels={len(panels)} ({len(panels) * FENCE_STEP:.0f} m)")
+    return {"kind": "rail", "color": RAIL_FENCE[0], "h": RAIL_FENCE[1], "posts": out_posts, "panels": panels} if panels else None
+
+
 FENCES = {"industrial": ("#8f969b", 1.8), "school": ("#5f8468", 1.5), "cemetery": ("#9a968c", 1.2), "construction": ("#e9e8e2", 2.0)}
 FENCE_STEP = 2.4
 
@@ -1908,6 +2242,10 @@ def build(city):
     cars = build_parking(lots, city, world, H, col, street["paint"]) if lots and lots.get("parking") else []
     rail = build_rail(city, world, H, col)
     walk = build_walk(city, world, H, col)
+    extras = build_area_extras(city, world, H, col, (lots or {}).get("sites") or ())
+    rf = build_rail_fences(city, world, H, col)
+    if rf:
+        extras["fences"].append(rf)
     small = json.loads(SMALL.read_text(encoding="utf-8")) if SMALL.exists() else None
     yard = build_yard(small, world, H, col) if small else {}
     print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
@@ -1923,7 +2261,7 @@ def build(city):
         "walk": walk,
         "cars": cars,
         **yard,
-        **build_area_extras(city, world, H, col, (lots or {}).get("sites") or ()),
+        **extras,
         "colliders": {"circle": col.circle, "box": col.box, "line": col.line, "tree": col.tree},
     }
 

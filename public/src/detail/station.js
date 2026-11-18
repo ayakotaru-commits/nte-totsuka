@@ -1,7 +1,7 @@
 // 5. 駅と線路: ホーム・ホームの屋根と柱・架線柱・架線
 // 配置は tools/build_props.py が計算した data/props.json の rail。ここでは形を作って置くだけ。
 import * as THREE from 'three';
-import { Builder } from './util.js';
+import { Builder, canvasTexture } from './util.js';
 
 const SKIRT = 1.4;      // ホームの側面の高さ (上面から下へ)
 const ROOF_T = 0.25;    // 屋根の厚さ
@@ -112,6 +112,96 @@ export function buildStation(props) {
   wires.name = 'catenary';
   group.add(wires);
 
-  console.info(`[detail] platforms=${R.platforms.length} canopy columns=${R.columns.length} gantries=${R.gantries.length}`);
+  // ---------- 駅舎を支える柱 (線路の間に立つ。props.json の rail.piers: [x, z, 下端 y, 上端 y]) ----------
+  const piers = R.piers || [];
+  if (piers.length) {
+    const pg = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1, 16).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: '#c9c6bf', roughness: 0.85 }));
+    const im = new THREE.InstancedMesh(pg.geometry, pg.material, piers.length);
+    const M = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), S = new THREE.Vector3();
+    piers.forEach(([x, z, y0, y1], i) => im.setMatrixAt(i, M.compose(P.set(x, y0, z), Q, S.set(1, y1 - y0, 1))));
+    im.name = 'station_piers'; im.castShadow = im.receiveShadow = true;
+    group.add(im);
+  }
+
+  // ---------- ホームから駅舎へ上がる階段 (段・両側の壁・手すり) ----------
+  const steps = new Builder(), walls = new Builder(), rails2 = new Builder();
+  for (const st of R.stairs || []) {
+    const ux = Math.sin(st.yaw), uz = Math.cos(st.yaw), nx = uz, nz = -ux, hw = st.w / 2;
+    const n = Math.max(4, Math.round((st.y1 - st.y0) / 0.16)), run = st.len / n, rise = (st.y1 - st.y0) / n;
+    const at = (t, s, y) => [st.x + ux * t + nx * s, y, st.z + uz * t + nz * s];
+    for (let k = 0; k < n; k++) {
+      const t0 = k * run, t1 = t0 + run, y = st.y0 + (k + 1) * rise;
+      steps.quad(at(t0, -hw, y), at(t0, hw, y), at(t1, hw, y), at(t1, -hw, y), [0, 1, 0]);                         // 踏面
+      steps.quad(at(t0, hw, y - rise), at(t0, -hw, y - rise), at(t0, -hw, y), at(t0, hw, y), [-ux, 0, -uz]);        // 蹴上げ
+    }
+    for (const s of [-1, 1]) { // 両側の腰壁 (高さ 1.1 m、斜めに上る)
+      const o = s * (hw + 0.08);
+      const a0 = at(0, o, st.y0), a1 = at(st.len, o, st.y1);
+      walls.quad(a0, a1, [a1[0], a1[1] + 1.1, a1[2]], [a0[0], a0[1] + 1.1, a0[2]], [nx * s, 0, nz * s]);
+      walls.quad(a1, a0, [a0[0], a0[1] + 1.1, a0[2]], [a1[0], a1[1] + 1.1, a1[2]], [-nx * s, 0, -nz * s]);
+      const r0 = at(0, s * (hw - 0.05), st.y0 + 0.85), r1 = at(st.len, s * (hw - 0.05), st.y1 + 0.85);
+      rails2.quad(r0, r1, [r1[0], r1[1] + 0.05, r1[2]], [r0[0], r0[1] + 0.05, r0[2]], [-nx * s, 0, -nz * s]);
+    }
+    // 階段の下の空間をふさぐ壁 (ホームの上から階段の裏まで)
+    for (const s of [-1, 1]) {
+      const o = s * (hw + 0.08);
+      walls.quad(at(0, o, st.y0), at(st.len, o, st.y0), at(st.len, o, st.y1), at(0, o, st.y0), [nx * s, 0, nz * s]);
+    }
+  }
+  if (R.stairs && R.stairs.length) {
+    mesh(steps, '#8d8f90', 'station_stair_steps');
+    mesh(walls, '#d9d6cf', 'station_stair_walls', { side: THREE.DoubleSide });
+    mesh(rails2, '#b9bcbe', 'station_stair_rails', { metalness: 0.6, roughness: 0.4, side: THREE.DoubleSide });
+  }
+
+  // ---------- ベンチ (樹脂の座面が 3 つ並んだ形) ----------
+  const benches = R.benches || [];
+  if (benches.length) {
+    const seat = new THREE.MeshStandardMaterial({ color: '#2f6fae', roughness: 0.5 });
+    const leg = new THREE.MeshStandardMaterial({ color: '#8e9193', roughness: 0.5, metalness: 0.5 });
+    const parts = [
+      [new THREE.BoxGeometry(1.6, 0.06, 0.42).translate(0, 0.44, 0.02), seat],
+      [new THREE.BoxGeometry(1.6, 0.4, 0.05).translate(0, 0.68, -0.18).rotateX(-0.08), seat],
+      [new THREE.BoxGeometry(1.5, 0.08, 0.08).translate(0, 0.38, -0.05), leg],
+      [new THREE.BoxGeometry(0.06, 0.4, 0.3).translate(-0.6, 0.2, 0), leg],
+      [new THREE.BoxGeometry(0.06, 0.4, 0.3).translate(0.6, 0.2, 0), leg],
+    ];
+    const M = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), S = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
+    for (const [g, m] of parts) {
+      const im = new THREE.InstancedMesh(g, m, benches.length);
+      benches.forEach((b, i) => im.setMatrixAt(i, M.compose(P.set(b.x, b.y, b.z), Q.setFromAxisAngle(Y, b.yaw), S)));
+      im.castShadow = im.receiveShadow = true; im.name = 'platform_benches';
+      group.add(im);
+    }
+  }
+
+  // ---------- 駅名標 (白い板に駅名・ひらがな・ローマ字、緑の帯。両面。2 本の柱) ----------
+  const signs = R.nameSigns || [];
+  if (signs.length) {
+    const tex = canvasTexture(512, 256, (g) => {
+      g.fillStyle = '#fbfbf8'; g.fillRect(0, 0, 512, 256);
+      g.fillStyle = '#2f8f4e'; g.fillRect(0, 170, 512, 22);
+      g.fillStyle = '#1b1d20'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = 'bold 92px "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", sans-serif'; g.fillText('戸 塚', 256, 78);
+      g.font = 'bold 30px "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", sans-serif'; g.fillText('と つ か', 256, 140);
+      g.font = 'bold 30px sans-serif'; g.fillText('Totsuka', 256, 222);
+    });
+    const face = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, side: THREE.DoubleSide });
+    const pole = new THREE.MeshStandardMaterial({ color: '#6d7276', roughness: 0.5, metalness: 0.5 });
+    const M = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), S = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
+    const parts = [
+      [new THREE.PlaneGeometry(1.8, 0.9).translate(0, 1.85, 0), face], // 板の面は局所 +Z (= 線路の側) を向く。横幅はホームに沿う
+      [new THREE.CylinderGeometry(0.04, 0.04, 2.3, 8).translate(-0.8, 1.15, 0), pole],
+      [new THREE.CylinderGeometry(0.04, 0.04, 2.3, 8).translate(0.8, 1.15, 0), pole],
+    ];
+    for (const [g, m] of parts) {
+      const im = new THREE.InstancedMesh(g, m, signs.length);
+      signs.forEach((b, i) => im.setMatrixAt(i, M.compose(P.set(b.x, b.y, b.z), Q.setFromAxisAngle(Y, b.yaw), S)));
+      im.castShadow = true; im.receiveShadow = true; im.name = 'name_signs';
+      group.add(im);
+    }
+  }
+
+  console.info(`[detail] platforms=${R.platforms.length} canopy columns=${R.columns.length} gantries=${R.gantries.length} piers=${piers.length} stairs=${(R.stairs || []).length} benches=${benches.length} signs=${signs.length}`);
   return { group };
 }
