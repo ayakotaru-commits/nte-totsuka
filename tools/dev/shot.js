@@ -70,6 +70,10 @@ function terrain() {
   page.setDefaultTimeout(240000);
   await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/**', r =>
     r.fulfill({ path: path.join(THREE_DIR, r.request().url().replace('https://cdn.jsdelivr.net/npm/three@0.170.0/', '')), contentType: 'application/javascript' }));
+  // キャラのモデル (VRM) 用。tools/dev/.cache/vrm に three-vrm があれば使う (準備は tools/dev/charshot.js の先頭。無ければ組み立て式のキャラで撮る)
+  const VRM_DIR = path.join(__dirname, '.cache', 'vrm', 'package');
+  if (fs.existsSync(VRM_DIR)) await page.route('https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.3/**', r =>
+    r.fulfill({ path: path.join(VRM_DIR, r.request().url().replace('https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.3/', '')), contentType: 'application/javascript' }));
   // プレイヤー・カメラ・シーンを外から動かせるように、main.js に 1 行足して読ませる (リポジトリのファイルは変えない)
   await page.route('**/src/main.js', async r => {
     const t = (await (await r.fetch()).text()).replace('const qs = new URLSearchParams', 'window.__g = { player, cam, scene };\n  const qs = new URLSearchParams');
