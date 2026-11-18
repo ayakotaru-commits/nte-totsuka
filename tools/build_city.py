@@ -963,6 +963,11 @@ def main():
         ref = json.loads(TERRAIN.read_text(encoding="utf-8"))["ref"]
         buildings = lidar_shape.apply(buildings, ref)
         lidar_note = "形と屋根の色: 神奈川県 点群・オルソ画像 (CC BY 4.0)"
+        # 外観設定の住棟 (グランシティ) の高さの段。外観設定の建物は lidar_shape が直さないので別に作る (tools/grancity.py)
+        import grancity
+        buildings = grancity.apply(buildings, ref=ref)
+        for s in sites:
+            s["buildings"] += [b["id"] for b in buildings if grancity.TAG in b["id"] and b["id"].split(grancity.TAG)[0] in s["buildings"]]
 
         # 歩道橋・デッキ・そこへ上がる階段の高さも実測に合わせる (deck_heights.py)
         import deck_heights

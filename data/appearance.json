@@ -25,32 +25,30 @@
     "cypress": true
    },
    "fence": "#2c3035",
+   "wings": {
+    "_note": "住棟の段 (tools/grancity.py)。点群の高さから、道路側・北の端で低くなる段を作る",
+    "ids": ["gc67c119d0a", "gcd93bf5e36", "g5317b7beb1", "g1d9fb23741"]
+   },
    "gate": {
-    "at": [
-     -299.6,
-     1432.15
-    ],
-    "axis": [
-     0.756,
-     0.655
-    ],
-    "origin": [
-     -299.77,
-     1432.97
-    ],
-    "setback": 3.0,
-    "depth": 3.4,
-    "wide": 12.0,
+    "_note": "時計の棟 (tools/clockhouse.py)。位置・大きさは点群 (令和3年度) の高さから: 正面の幅 15 m・奥行き 7 m・高さ約 7 m (マンサード屋根の上端)、時計の部分は約 9 m、後ろに奥行き 4 m・高さ 4.4 m の平屋。外観は不動産サイトの公開写真 (写真そのものは保存・使用していない)",
+    "at": [-299.6, 1432.15],
+    "axis": [0.756, 0.655],
+    "origin": [-296.60, 1417.86],
+    "setback": 5.5,
+    "depth": 7.0,
+    "wide": 15.0,
+    "h": 5.0,
+    "roof_h": 7.0,
+    "roof_in": 1.2,
     "passage": 3.2,
-    "clear_h": 4.0,
-    "wall_from": -6.5,
-    "wall_h": 4.6,
-    "links": [
-     [-21.6, -6.0, 3.0, 6.4],
-     [6.0, 9.1, 3.0, 6.7]
+    "clear_h": 3.4,
+    "back": {"depth": 4.0, "inset": 0.5, "h": 4.4},
+    "walls": [
+     [7.6, 15.5, 1.5, 14.0, 3.6]
     ],
+    "arch": {"s": 30.5, "w": 6.4, "open": 3.6, "h": 5.4},
     "clockhouse": true,
-    "color": "#e3d2b0"
+    "color": "#e2cfa8"
    },
    "plaza": {
     "at": [
@@ -170,7 +168,7 @@
   },
     {"name": "グランシティ 付属棟 (道路側)", "key": "grancity_annex", "at": [-274, 1398], "source": "路上写真 (持ち主提供、2025-05) の観察: 低い箱形で窓が無く、クリーム色の壁に横の目地、屋根の縁は濃い茶色の帯。灰色のシャッターが 2 枚並ぶ。シャッターの面 (敷地の駐車場側) の位置は写真の見え方からの推定", "look": {"facade": "mall", "wall": "#d9c59c", "accent": "#4a3b2e", "floor_h": 3.5, "floors": ["band"], "glass_floors": 1, "door_kind": "shutter", "door_w": 3.4, "door_off": 1.6}, "entrances": [[-273.5, 1395.1]]},
     {"name": "グランシティ 立体駐車場", "key": "grancity_parking", "at": [-230, 1400], "source": "路上写真 (持ち主提供、2025-05) の観察: 3 層、灰緑の金属パネルを横に張った面と、柱・筋交いの見える暗い開口が交互に重なる。敷地の門 (黒い鉄のアーチ) の隣。柱の間隔・開口の高さは推定", "look": {"facade": "mall", "wall": "#9fa59d", "accent": "#3e4246", "floor_h": 2.67, "floors": ["louver", "louver", "louver"], "glass_floors": 0}},
-    {"name": "グランシティ 車寄せの塀", "key": "grancity_wall", "at": [[-296.97, 1427.06], [-305.22, 1436.59], [-287.18, 1425.62], [-301.05, 1441.85]], "source": "路上写真 (持ち主提供、2025-05) の観察: 車寄せの左右は、クリーム色の高い塀 (横の目地・上に濃い茶の縁) で囲まれ、中庭は外から見えない。高さ・長さは写真の見え方からの推定。at は tools/clockhouse.py の出力 (wall_at) に合わせる", "look": {"facade": "mall", "wall": "#dccaa2", "accent": "#4a3b2e", "floor_h": 4.6, "floors": ["band"], "glass_floors": 0}},
+    {"name": "グランシティ 車寄せの横の低い棟", "key": "grancity_wall", "at": [[-298.31, 1431.66]], "source": "路上写真 (持ち主提供、2025-05) の観察: 車寄せの右は、クリーム色の壁 (横の目地・上に濃い茶の縁) の低い棟。大きさ (高さ約 3.6 m) と位置は点群から。at は tools/clockhouse.py の出力 (wall_at) に合わせる", "look": {"facade": "mall", "wall": "#dccaa2", "accent": "#4a3b2e", "floor_h": 4.6, "floors": ["band"], "glass_floors": 0}},
     {"name": "戸塚区総合庁舎 (区役所)", "key": "totsuka_ward_office", "at": [-45, 105], "source": "公開情報: 1 階に店舗と第 2 交通広場 (バス・タクシー)、2 階に行政サービスコーナー、3 階にレストラン・カフェ、3〜4 階に区民文化センター、上の階に区役所の各課、9 階まで・屋上庭園。高さ・段の形は点群 (屋上約 43 m、その上に塔屋) / 路上写真 (持ち主提供、2024-08、東側の道路から) の観察: 1 階は店のガラス面で上に青い線、その上に白い腰壁、2〜3 階は 2 層続くガラスの壁 (薄い青緑、細い縦の枠、ガラスに『戸塚区』の表示)、その上に薄い灰色の庇が横に張り出す。4 階から上は白い壁に太い縦のフィンが約 3 m ごとに並び、間に細い縦長の窓。2 階のデッキへ濃い灰色の鉄骨の階段が上がる。北の面は Wikimedia Commons の写真 (北東の角から。写真そのものは保存・使用していない) の観察: 4 階から上は大きな白いパネルの壁に細い縦のスリットが数本ずつ、2〜3 階はえんじ色の奥まった壁の前にガラスの手すりのテラスが 2 段、1 階もえんじ色、4 階の床が大きく張り出す。写真の無い西・南の面は東と同じ柄にした (推定)", "look": {"facade": "mall", "wall": "#e4e6e5", "accent": "#1f4f9e", "floor_h": 4.78, "floors": ["shop", "curtain", "curtain2", "fins", "fins", "fins", "fins", "fins", "fins"], "glass_floors": 1, "door_w": 6, "accent2": "#6b2a2c", "faces": {"n": {"floors": ["maroon", "terrace", "terrace", "slits", "slits", "slits", "slits", "slits", "slits"]}}, "relief": {"fins": {"w": 0.9, "d": 0.45}, "eaves": [{"floor": 1, "depth": 1.0, "h": 0.35, "color": "accent", "faces": ["e", "s", "w"]}, {"floor": 1, "depth": 1.6, "h": 0.5, "color": "slab", "faces": ["n"], "rail": 1.1}, {"floor": 2, "depth": 1.6, "h": 0.5, "color": "slab", "faces": ["n"], "rail": 1.1}, {"floor": 3, "depth": 1.4, "h": 0.6, "faces": ["e", "s", "w"]}, {"floor": 3, "depth": 2.2, "h": 0.8, "faces": ["n"]}]}, "sign": {"text": "戸塚区役所", "bg": "#ffffff", "fg": "#1d4f9a", "floor": 1.55, "max_w": 9, "ratio": 0.2, "min_len": 5}}},
     {"name": "サクラス戸塚", "key": "saclass", "at": [-269, -20], "rename": "サクラス戸塚", "fill_gaps": true, "source": "公開情報 (Wikipedia ほか): 2009 年開業の商業施設、地下 2 階・地上 6〜7 階、店は地下 1〜2 階、3〜6 階は駐車場 (約 740 台) とクリニック、サクラスデッキで駅と接続、名前は区の花の桜から / 写真の観察 (ja.wikipedia と Wikimedia Commons の 2 枚。写真そのものは保存・使用していない): 南の面は東から順に、角の塔 (丸い角・クリニック階のガラスの格子・色の四角のテナント看板 2×4 枚・上に格子)、波形の白い縦格子の駐車場 (ところどころ桜色の板)、白い高い塔に大きな Saclass の文字、西の端は灰色の壁に白い縦格子の駐車場 (1 階は柱の並ぶ吹きさらし、2 階はガラスのテラス)。1 階は白い壁に店の入口、2 階はガラスの売り場。東・北・西の面は写真が無いので灰色の駐車場の柄 (推定)。看板の店名は写真の当時 (2020 年ごろ) のもの", "look": {"facade": "mall", "wall": "#f0f0ec", "accent": "#d8789c", "accent2": "#e6e8e6", "floor_h": 4.0, "floors": ["base", "store2", "slats2", "slats2", "slats2", "slats2", "slats2", "slats2"], "glass_floors": 1, "door_w": 6, "zones": [{"note": "角の丸い所", "from": [-221, 45], "to": [-236, 57.5], "w": 4.5, "floors": ["base", "open", "plain", "plain", "plain", "plain", "plain", "slats2"]}, {"note": "クリニックのガラスの格子", "from": [-235, 57], "to": [-247.2, 51.7], "w": 4.5, "floors": ["base", "open", "grid", "grid", "grid", "grid", "grid", "slats2"]}, {"note": "テナントの看板", "from": [-247.2, 51.7], "to": [-252.7, 49.2], "w": 4.5, "align": true, "floors": ["base", "store2", "tenants", "tenants", "tenants", "tenants", "plain", "plain"]}, {"note": "塔の白い壁", "from": [-252.7, 49.2], "to": [-260, 46], "w": 4.5, "floors": ["base", "store2", "plain", "plain", "plain", "plain", "plain", "plain"]}, {"note": "波形の縦格子", "from": [-260, 46], "to": [-290, 23], "w": 5, "floors": ["base", "store2", "plain", "slats", "slats", "slats", "slats", "slats"]}, {"note": "Saclass の文字の塔", "from": [-289, 21], "to": [-308, 7], "w": 5, "floors": ["base", "store2", "plain", "plain", "plain", "plain", "plain", "plain"]}, {"note": "西の端の灰色の駐車場", "from": [-308, 7], "to": [-336, -6], "w": 5, "floors": ["open", "terrace", "plain", "slats2", "slats2", "slats2", "slats2", "slats2"]}], "tenants": {"5": [["sanwa", "#c2185b", "#ffffff"], ["ニトリ", "#1f8a7a", "#ffffff"]], "4": [["SPORTS GOLF\nHIMARAYA", "#1d1d1f", "#ffffff"], ["oasis", "#1d2f6b", "#ffffff"]], "3": [["ワットマン", "#ffffff", "#d32f2f"], ["薬 HAC\nwelcia", "#1d3a8a", "#ffe14d"]], "2": [["西松屋", "#ffffff", "#1d3a8a"], ["ドリーム", "#2e7d32", "#ffe14d"]]}, "sign": [{"text": "Saclass", "bg": "#f0f0ec", "fg": "#d0577f", "floor": 5.6, "max_w": 14, "ratio": 0.32, "w": 11, "at": [-283, 30]}]}},
     {"name": "ライオンズステージ 戸塚ルヴェールの丘", "key": "lions_luvere", "at": [-540, 1500], "fill_gaps": true, "color": "#a8927a", "set": {"balcony": "all", "balcony_tiers": true, "floors": 5}, "source": "公開情報: RC 造・地上 6 階・108 戸 (5 階とする資料もある)、バルコニー 7.8〜14.9 ㎡ / 路上写真 (Mapillary、2018 年、西の道から約 70 m。写真そのものは保存・使用していない) の観察: 道沿いの石積みの擁壁の上に建ち、壁は茶がかったタン (日陰で暗く写るので、色は明るさを実際の外壁に近づけた推定)、白っぽい手すりのバルコニーが西面・南面に並び、上の階は段状に引っ込む。ほかの面のバルコニーは推定 (balcony: all)。点群の段のすき間 (6.3〜9.3 m) は fill_gaps で埋めた"},

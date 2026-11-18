@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { drape } from '../terrain.js';
+import { buildClockhouse, buildCourtArch } from './clockhouse.js';
 
 const stoneMat = () => new THREE.MeshStandardMaterial({ color: '#f1ece2', roughness: 0.7 });
 
@@ -70,7 +71,9 @@ export function buildSiteExtras({ site, group }) {
   // ---------- エントランス棟の正面 (路上写真 2025-05 より: 白い石の柱の間に高いアーチ窓が 4 つと中央のアーチ扉、
   //            黒いガラスの庇、屋根の上の円形の時計、紺灰色のスレート屋根とアーチ形のドーマー窓) ----------
   const hl = site.hall;
-  if (hl) {
+  if (hl && hl.v === 2) buildClockhouse({ hl, group, shadow });   // 時計の棟 (clockhouse.js)
+  if (site.arch) buildCourtArch({ ar: site.arch, group, shadow });   // 中庭の独立したアーチの門
+  else if (hl) {
     const L = hl.width, H = hl.height, nx = Math.sin(hl.yaw), nz = Math.cos(hl.yaw);
     // 通り抜ける開口 (opening = { w, h }。時計のある門のとき)。開口の左右に、アーチ窓を 2.4 m おきに並べる
     const op = hl.opening, P0 = op ? op.w : 2.0, half = L / 2;

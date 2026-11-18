@@ -819,7 +819,7 @@ def restore(buildings):
     out = []
     for b in buildings:
         b.pop("rc", None)
-        if b.get("part"):
+        if b.get("part") and b.get("src") != "appearance":   # 外観設定で作った段 (tools/grancity.py) は残す
             continue
         l = b.pop("lidar", None)
         if l:
