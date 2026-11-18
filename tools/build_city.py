@@ -706,7 +706,7 @@ def apply_appearance(buildings, areas):
             buildings.append(hb)
             ids.append(hb["id"])
         site = {"name": st["area_name"], "outer": area["outer"], "buildings": ids}
-        for k in ("garden", "fence", "gate", "hall", "plaza", "turrets", "awnings"):
+        for k in ("garden", "fence", "gate", "hall", "plaza", "turrets", "awnings", "frontage", "carpark"):
             if k in st:
                 site[k] = st[k]
         sites.append(site)

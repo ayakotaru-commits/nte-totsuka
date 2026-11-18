@@ -400,6 +400,7 @@ def build_street_props(city, world, H, cx, cz, R, col):
     # ---------- ガードパイプ (幹線の歩道側) ----------
     # ひと続きの柵ごとに支柱の点の列 [[x, z, y], ...]。支柱は約 2m おき、隣どうしをパイプ 2 段 (高さ 0.45, 0.8) でつなぐ
     guards = []
+    fronts = frontage_sites(city)
     for r in roads:
         if r["kind"] not in MAJOR or r.get("ys"):
             continue
@@ -409,7 +410,8 @@ def build_street_props(city, world, H, cx, cz, R, col):
             def cb(x, z, dx, dz, r=r, side=side, run=run):
                 go = edge(r, side) - r["sw"] + 0.2 if r.get("sw") else edge(r, side) + 0.2
                 px, pz = x - dz * side * go, z + dx * side * go
-                ok = inR(px, pz) and not node_grid.near(x, z, r["w"] / 2 + 9) and clear(px, pz, 0.3) and not at_gate(px, pz)
+                ok = (inR(px, pz) and not node_grid.near(x, z, r["w"] / 2 + 9) and clear(px, pz, 0.3) and not at_gate(px, pz)
+                      and not any(near_ring(px, pz, f, 3.0) for f in fronts))
                 if not ok:
                     run[0] = None
                     return
@@ -716,6 +718,23 @@ def build_signals(city, world, H, cx, cz, R, col, paint):
 # =====================================================================
 # 3. 敷地の外構 (data/appearance.json の sites) (旧 detail/site.js, site_extras.js)
 # =====================================================================
+def seg_d(px, pz, a, b):
+    """点と線分の距離"""
+    dx, dz = b[0] - a[0], b[1] - a[1]
+    l2 = dx * dx + dz * dz
+    u = 0 if l2 == 0 else max(0.0, min(1.0, ((px - a[0]) * dx + (pz - a[1]) * dz) / l2))
+    return math.hypot(px - a[0] - dx * u, pz - a[1] - dz * u)
+
+
+def frontage_sites(city):
+    """道路側にガードパイプを置かない敷地 (appearance の frontage.guard = false。グランシティ: 道路ぎわはレンガ色の歩道と植え込みだけ)"""
+    return [s["outer"] for s in city.get("sites") or [] if (s.get("frontage") or {}).get("guard") is False]
+
+
+def near_ring(px, pz, ring, d):
+    return pip(px, pz, ring) or any(seg_d(px, pz, ring[i - 1], ring[i]) < d for i in range(len(ring)))
+
+
 def hull(pts):
     p = sorted(pts, key=lambda q: (q[0], q[1]))
     cross = lambda o, a, b: (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
@@ -811,16 +830,20 @@ def build_sites(city, world, H, col):
                                 continue
                             d = (ux, uz) if dir_along else (-uz, ux)
                             paths.append([r2(mx), r2(mz), r3(d[0]), r3(d[1]), r3(tb - ta + 0.02), w, r3(tm / 2)])
-                    strip(lo, hi, 3.0, True)
-                    strip(loA, hiA, 2.4, False)
+                    lay = g.get("layout")
+                    if not lay:
+                        strip(lo, hi, 3.0, True)
+                        strip(loA, hiA, 2.4, False)
                     gy = H(cx, cz)
                     garden = {"lawn": g.get("lawn") or "#86a85e", "cell": C, "cells": [[r2(x), r2(z)] for x, z in cells],
                               "paths": paths, "ring": {"x": r2(cx), "z": r2(cz), "r0": 0, "r1": 6.5}}
-                    if g.get("fountain"):
+                    if lay:
+                        garden_layout(garden, lay, H, col, clear_of)
+                    elif g.get("fountain"):
                         garden["fountain"] = {"x": r2(cx), "z": r2(cz), "y": r2(gy)}
                         col.add_circle(cx, cz, 2.8, gy, 0.5)
                         col.add_circle(cx, cz, 0.35, gy, 2.0)
-                    if g.get("cypress"):
+                    if g.get("cypress") and not lay:
                         trees = []
                         t = lo + 4
                         while t < hi - 3:
@@ -851,13 +874,25 @@ def build_sites(city, world, H, col):
                     return abs(ac) < gt["wide"] / 2 + 1.0 and -22 < al < gt["length"] / 2
                 return abs(ac) < gt["passage"] / 2 + 0.8 and abs(al) < gt["length"] / 2 + 12
             ring, posts = site["outer"], []
+            # frontage.fence = false: 車の通る道路に面した所には置かない (道路の端から 3 m 以内)
+            front_roads = []
+            if (site.get("frontage") or {}).get("fence") is False:
+                front_roads = [r for r in city["roads"] if r["kind"] in DRIVABLE and r["kind"] != "service" and not r.get("ys")
+                               and any(near_ring(x, z, ring, 30) for x, z in r["pts"][:: max(1, len(r["pts"]) // 40)] + [r["pts"][-1]])]
+
+            def by_road(x, z):
+                for r in front_roads:
+                    p = r["pts"]
+                    if any(seg_d(x, z, p[k - 1], p[k]) < r["w"] / 2 + 3.0 for k in range(1, len(p))):
+                        return True
+                return False
             for i in range(len(ring)):
                 a, c = ring[i], ring[(i + 1) % len(ring)]
                 L = math.hypot(c[0] - a[0], c[1] - a[1])
                 t = 0
                 while t <= L:
                     x, z = a[0] + (c[0] - a[0]) * t / L, a[1] + (c[1] - a[1]) * t / L
-                    if not in_gateway(x, z) and clear_of(x, z, 1.0):
+                    if not in_gateway(x, z) and clear_of(x, z, 1.0) and not by_road(x, z):
                         posts.append({"x": x, "z": z, "dx": (c[0] - a[0]) / L, "dz": (c[1] - a[1]) / L, "seg": i, "t": t})
                     t += 2.4
             panels = []
@@ -871,6 +906,66 @@ def build_sites(city, world, H, col):
             o["fence"] = {"color": site["fence"], "posts": [[r2(p["x"]), r2(p["z"]), r2(H(p["x"], p["z"]))] for p in posts], "panels": panels}
         out.append(o)
     return out
+
+
+def garden_layout(garden, lay, H, col, clear_of):
+    """中庭の配置を data/appearance.json の garden.layout から作る (航空写真で測った位置。グランシティ)。
+    paths: [[x0, z0], [x1, z1], 幅]、circles: 石張りの円形の広場 {at, r, feature: fountain | obelisk}、
+    panels: 白い縁の芝の区画 {at, len, wid, yaw (度。長い向き)}、hedges: 刈り込んだ生け垣 {from, to, wid, h}、planters: 丸い植え込み {at, r}"""
+    paths = []
+    for (x0, z0), (x1, z1), w in lay.get("paths", []):
+        L = math.hypot(x1 - x0, z1 - z0)
+        dx, dz = (x1 - x0) / L, (z1 - z0) / L
+        n = max(1, round(L / 1.0))
+        for i in range(n):   # 1 m ごとの板 (地形に沿わせるため)
+            tm = (i + 0.5) * L / n
+            paths.append([r2(x0 + dx * tm), r2(z0 + dz * tm), r3(dx), r3(dz), r3(L / n + 0.02), w, r3(tm / 2)])
+    garden["paths"] = paths
+    garden["rings"], garden["fountains"] = [], []
+    for c in lay.get("circles", []):
+        x, z = c["at"]
+        y = H(x, z)
+        garden["rings"].append({"x": x, "z": z, "r0": 0, "r1": c["r"], "stone": True})
+        if c.get("feature") == "fountain":
+            garden["fountains"].append({"x": x, "z": z, "y": r2(y)})
+            col.add_circle(x, z, 2.8, y, 0.5)
+            col.add_circle(x, z, 0.35, y, 2.0)
+        elif c.get("feature") == "obelisk":
+            garden["obelisk"] = {"x": x, "z": z, "y": r2(y)}
+            col.add_box(x, z, 0, 0.7, 0.7, y, 0.8)
+            col.add_circle(x, z, 0.42, y, 5.6)
+    panels, trees = [], []
+    for p in lay.get("panels", []):
+        x, z = p["at"]
+        yaw = math.radians(p.get("yaw", 0))
+        ux, uz = math.cos(yaw), math.sin(yaw)
+        y = H(x, z)
+        panels.append({"x": x, "z": z, "y": r2(y), "len": p["len"], "wid": p["wid"], "dx": r3(ux), "dz": r3(uz)})
+        for sl in (-1, 1):   # 区画の四隅に円すい形の木
+            for sw in (-1, 1):
+                tx = x + ux * sl * (p["len"] / 2 - 0.9) - uz * sw * (p["wid"] / 2 - 0.9)
+                tz = z + uz * sl * (p["len"] / 2 - 0.9) + ux * sw * (p["wid"] / 2 - 0.9)
+                ty = H(tx, tz)
+                trees.append([r2(tx), r2(tz), r2(ty)])
+                col.add_circle(tx, tz, 0.6, ty, 5.5)
+    garden["panels"], garden["cypress"] = panels, trees
+    hedges = []
+    for hd in lay.get("hedges", []):
+        (x0, z0), (x1, z1) = hd["from"], hd["to"]
+        L = math.hypot(x1 - x0, z1 - z0)
+        mx, mz = (x0 + x1) / 2, (z0 + z1) / 2
+        y = H(mx, mz)
+        yaw = math.atan2(x1 - x0, z1 - z0)
+        hedges.append({"x": r2(mx), "z": r2(mz), "y": r2(min(H(x0, z0), H(x1, z1))), "yaw": r3(yaw), "len": r2(L), "wid": hd["wid"], "h": hd["h"]})
+        col.add_box(mx, mz, yaw, hd["wid"] / 2, L / 2, y, hd["h"])
+    garden["hedges"] = hedges
+    planters = []
+    for pl in lay.get("planters", []):
+        x, z = pl["at"]
+        y = H(x, z)
+        planters.append({"x": x, "z": z, "y": r2(y), "r": pl["r"]})
+        col.add_circle(x, z, pl["r"], y, 0.9)
+    garden["planters"] = planters
 
 
 def build_site_extras(site, city, world, H, col, gi, clear_of, o):
@@ -908,6 +1003,20 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
                     col.add_box(ax - vz * off, az + vx * off, math.atan2(vx, vz), pw / 2, 0.5, ay, ar["h"])
         else:
             o["gate"] = {"width": gt["passage"], "clear_h": gt["clear_h"], "color": gt.get("color") or "#dcc6a0", "faces": faces}
+
+    # ---------- 立体駐車場の入口 (道路側の壁の 1 階に黒い鉄の門、前にレンガ色の舗装と駐車ます 2 台分) ----------
+    cp = site.get("carpark")
+    if cp:
+        (ax, az), (bx, bz) = cp["a"], cp["b"]
+        L = math.hypot(bx - ax, bz - az)
+        dx, dz = (bx - ax) / L, (bz - az) / L
+        nx, nz = cp.get("out", [dz, -dx])   # 外向き (道路の側)
+        gx, gz = ax + dx * cp["t"], az + dz * cp["t"]
+        gy = H(gx, gz)
+        lot = cp.get("lot") or {}
+        lx, lz = gx + nx * lot.get("dep", 10) / 2, gz + nz * lot.get("dep", 10) / 2
+        o["carpark"] = {"x": r2(gx), "z": r2(gz), "y": r2(gy), "yaw": r3(math.atan2(nx, nz)), "w": cp["w"], "h": cp["h"],
+                        "lot": {"x": r2(lx), "z": r2(lz), "y": r2(H(lx, lz)), "len": lot.get("len", 12), "dep": lot.get("dep", 10), "stalls": lot.get("stalls", 2)}}
 
     # ---------- 噴水のある円形広場 ----------
     pz = site.get("plaza")
@@ -1014,8 +1123,8 @@ def build_site_extras(site, city, world, H, col, gi, clear_of, o):
                     t += every
         o["awnings"] = {"color": site["awnings"]["color"], "items": aw}
 
-    # ---------- 庭: 花壇・オベリスク・丸い天窓 ----------
-    if gi:
+    # ---------- 庭: 花壇・オベリスク・丸い天窓 (配置の指定 garden.layout が無いとき) ----------
+    if gi and not (site.get("garden") or {}).get("layout"):
         lo, hi, P = gi["lo"], gi["hi"], gi["P"]
         yaw = math.atan2(gi["ux"], gi["uz"])
         beds = []

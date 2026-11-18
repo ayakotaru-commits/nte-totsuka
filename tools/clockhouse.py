@@ -129,6 +129,12 @@ def main():
             site["gate"].pop(k, None)
         site["gate"].update({k: gt[k] for k in ("origin", "axis", "setback", "depth", "wide", "h", "roof_h", "roof_in", "passage", "clear_h", "back", "walls", "arch", "clockhouse", "color") if k in gt})
         site["gate"].update(info)
+        # 敷地のほかの設定 (庭の配置・道路側の柵・駐車場の入口) も appearance.json から写す (build_city.py を通しで実行できない環境用)
+        for k in ("garden", "fence", "plaza", "turrets", "awnings", "frontage", "carpark"):
+            if k in st:
+                site[k] = st[k]
+            else:
+                site.pop(k, None)
         print(f"clockhouse: {st['area_name']}: 正面 {gt['wide']} m, 道路から {gt['setback']} m 奥, 横の低い棟の中心 {info['wall_at']}")
     CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     import landmarks
