@@ -195,7 +195,7 @@ export function makeCharacter(opt = {}) {
     // 動きのデータを使う手順 (attack.js の MOCAP): データの骨の向きをそのまま渡す。読み込み前は手作りの姿勢
     const mc = MOCAP[act.step + ':' + act.ph];
     if (mc) {
-      const m = sampleMotion(mc.clip, act.t * mc.speed, st.mo || (st.mo = {}));
+      const m = sampleMotion(mc.clip, act.t * mc.speed, st.mo || (st.mo = {}), !!mc.mirror);
       if (m) { const X = pose(); X.q = m.q; st.hipOff = m.hips; st.atkId = -1; st.atkLast = null; return X; }
     }
     const X = pose();
