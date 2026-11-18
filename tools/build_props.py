@@ -1560,7 +1560,7 @@ def build_rail(city, world, H, col):
             "dims": {"platH": PLAT_H, "mastH": MAST_H}, "routes": routes}
 
 
-RAIL_TOP = 0.37      # 地面の線路のレールの上面 (地形からの高さ。city.js のバラスト 0.13 + レール 0.25 - 貼り付けのずれ)
+RAIL_TOP = 0.55      # 地面の線路のレールの上面 (地形からの高さ。detail/trackbed.js と同じ)
 RAIL_TOP_BRIDGE = 0.5  # 線路の橋のレールの上面 (ys からの高さ。bridges.js)
 ROUTE_STEP = 5.0     # 走る道筋の点の間隔 (m)
 

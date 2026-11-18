@@ -10,6 +10,7 @@ import { buildStation } from './station.js';
 import { buildWalkways } from './walkways.js';
 import { buildYard } from './yard.js';
 import { buildTrains } from './trains.js';
+import { buildTrackbed } from './trackbed.js';
 
 export async function loadDetail({ scene, city, world, built, props }) {
   const c = city.start || { x: 0, z: 0 };
@@ -69,6 +70,9 @@ export async function loadDetail({ scene, city, world, built, props }) {
   }
 
   if (DETAIL.shapes && props) {
+    const tb = buildTrackbed(city); // 線路のバラスト・枕木・レール
+    scene.add(tb.group);
+    parts.push({ set: (v) => { tb.group.visible = v; } });
     const tr = buildTrains(props); // 走る電車 (道筋は props.json の rail.routes)
     scene.add(tr.group);
     emissive.push(...tr.emissive);

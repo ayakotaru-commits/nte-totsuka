@@ -1100,12 +1100,11 @@ function buildGround(city, bridges) {
     }
   }
   addEdgeLines(gb, city, bridges);
-  // 線路: バラスト + 2本のレール
-  const ballast = col('#7a7068'), rail = col('#b0b5ba');
+  // 線路: バラスト (地面の色)。枕木・立体のレール・砕石の模様は detail/trackbed.js
+  const ballast = col('#7a7068');
   for (const r of city.rails) {
     if (r.ys) continue; // 線路の橋は bridges.js で描く
     addRibbon(gb, r.pts, 3.4, 0.13, ballast);
-    for (const off of [-0.72, 0.72]) addRibbon(gb, offsetLine(r.pts, off), 0.12, 0.25, rail, false);
   }
   // 車道の橋の部分の道路面は描かない (川底に沈むため。橋げたは bridges.js)
   // 地面・水面・道路面のマテリアルは模様 (map) を使わないので、uv は捨てる (頂点が多く、メモリを使うため)
