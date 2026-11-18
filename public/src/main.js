@@ -23,6 +23,7 @@ import { startMultiplayer } from './net/index.js';
 import { Look } from './look.js';
 import { useMocap } from './attack.js';
 import { loadMotion } from './motion.js';
+import { preloadVRM } from './character.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
 if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); loadMotion('ual_sword_attack_rm'); }
@@ -31,6 +32,7 @@ const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
 
 async function main() {
+  preloadVRM(); // キャラのモデル (15MB) を、地図データ・街の生成と並行して読み始める
   setLowMemory(TOUCH); // スマホ・タブレットはメモリが少ないので、頂点データを小さい型で持つ
   status('地図データを読み込み中…');
   const city = await (await fetch('data/city.json')).json();
@@ -142,6 +144,9 @@ async function main() {
 
   // ---- UI ----
   const overlay = $('overlay');
+  // キャラのモデルが届くまで待つ (開始直後に組み立て式のキャラから差し替わるのを防ぐ。無いとき・読めないときもここで解決する)
+  status('キャラを読み込み中…');
+  await player.model.ready;
   status('準備完了');
   // スクリーンショット確認用: ?shot&yaw=1.5&pitch=0.8&dist=60&t=2
   const qs = new URLSearchParams(location.search);
