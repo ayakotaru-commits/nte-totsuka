@@ -16,7 +16,8 @@ const LOCO = { idle: 'ual_idle', walk: 'ual_walk', jog: 'ual_jog', sprint: 'ual_
 // データの「進む速さ」の補正 (人形とこのキャラの脚の長さの比が違うため)。地面に着いた足が滑らないよう、
 // 足の速さを測って合わせた (足が後ろへ滑る = 速さを大きく)
 const LOCO_K = { walk: 1.36, jog: 1, sprint: 1.35 };
-const locoLoading = DATA_ON ? Promise.all(Object.values(LOCO).map(loadMotion)) : Promise.resolve();
+// 前転 (高い所からの着地。player.js の ROLL) は ?handmade でも使う (手作りの前転は無い)
+const locoLoading = Promise.all([...(DATA_ON ? Object.values(LOCO) : []), 'ual_roll'].map(loadMotion));
 
 const PI = Math.PI;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -415,6 +416,10 @@ export function makeCharacter(opt = {}) {
     if (act.type === 'atk') return atkPose(act);
     if (act.type === 'hurt' || act.type === 'down') return hitPose(act);
     if (act.type === 'door') return doorPose(act, G);
+    if (act.type === 'roll') { // 前転: データの骨の向きと、腰の高さ・左右のずれ (前後はキャラごと動く)
+      const m = sampleMotion('ual_roll', act.t, st.mo || (st.mo = {}));
+      if (m) { const X = pose(); X.q = m.q; st.hipOff = [m.hips[0], m.hips[1], 0]; st.hipAbs = true; return X; }
+    }
     const X = pose();
     const s = act.s, hy = IDLE_EXT + HIP_DROP;
     const leg = (th, kn, ft, h, k, side) => { X[th] = [-h, 0, side * 0.03]; X[kn] = [k, 0, 0]; X[ft] = [0.35, 0, 0]; };
@@ -679,7 +684,7 @@ export function makeCharacter(opt = {}) {
 
     // --- パルクールの姿勢 (終わった後は、最後の姿勢からふつうの姿勢へ戻す) ---
     st.anchor = null;
-    st.hipOff = null;
+    st.hipOff = null; st.hipAbs = false;
     if (act) st.actPose = actPose(act, Aa, G);
     st.trail = !!act && act.type === 'atk' && trailOn(act.step, act.ph, act.t);
     st.trailStyle = st.trail ? TRAIL_STYLE[act.step + ':' + act.ph] || null : null;
@@ -721,6 +726,9 @@ export function makeCharacter(opt = {}) {
     hips.position.y = mix(planted + runFloat + Math.sin(st.t * 1.6) * 0.003 * (1 - gw), airY, st.airW);
     // 動きのデータの腰の前後・左右の移動 (踏み込みで腰が前へ出る)。足は地面に残る
     const ho = st.hipOff, hk = ho ? (IDLE_EXT + HIP_DROP) * xw : 0;
+    // 前転: 腰の高さもデータのまま (転がっている間は足が地面から離れるので、脚から高さを決めない)
+    st.absW = (st.absW || 0) + ((st.hipAbs ? 1 : 0) - (st.absW || 0)) * k;
+    if (st.absW > 0.001) hips.position.y = mix(hips.position.y, (IDLE_EXT + HIP_DROP) * (1 + (st.hipAbs ? ho[1] : 0)), st.absW * xw);
     hips.position.x += ((ho ? ho[0] * hk : 0) - hips.position.x) * k;
     hips.position.z += ((ho ? ho[2] * hk : 0) - hips.position.z) * k;
     if (st.anchor && !vrmRig) { // 手を縁に合わせる (VRM のときは applyVRM が VRM の手で合わせる)
@@ -784,7 +792,7 @@ export function makeCharacter(opt = {}) {
     const fs = vrmRig.flip ? -1 : 1; // VRM 0.x は前後・左右が逆
     nodes.hips.position.x = vrmRig.hx0 + fs * hips.position.x / scale; nodes.hips.position.z = vrmRig.hz0 + fs * hips.position.z / scale;
     // この VRM の足の実際の位置から、いちばん低い足裏が地面 (y=0) に来るよう腰の高さを直す (空中では直さない)
-    const gnd = 1 - st.airW;
+    const gnd = (1 - st.airW) * (1 - (st.absW || 0)); // 前転中は足を地面に合わせない
     if (gnd > 0.01) {
       vrm.scene.updateMatrixWorld(true);
       const baseY = root.matrixWorld.elements[13]; // キャラの足元 (地形) の高さ。足の位置はここからの差で見る

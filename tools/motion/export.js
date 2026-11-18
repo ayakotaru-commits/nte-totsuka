@@ -29,7 +29,7 @@ const UAL_MAP = {
 // 書き出す動き: [元の名前, 書き出す名前]
 const CLIPS = [['Sword_Attack', 'ual_sword_attack'],
   ['Idle_Loop', 'ual_idle'], ['Walk_Loop', 'ual_walk'], ['Jog_Fwd_Loop', 'ual_jog'], ['Sprint_Loop', 'ual_sprint'],
-  ['Jump_Start', 'ual_jump_start'], ['Jump_Loop', 'ual_jump_loop'], ['Jump_Land', 'ual_jump_land']];
+  ['Jump_Start', 'ual_jump_start'], ['Jump_Loop', 'ual_jump_loop'], ['Jump_Land', 'ual_jump_land'], ['Roll_RM', 'ual_roll']];
 
 (async () => {
   if (!fs.existsSync(UAL)) { console.error('元のデータがありません。先に:\n  git clone --depth 1 https://github.com/J-Ponzo/gltf-universal-animation-library.git data/raw/ual'); process.exit(1); }
