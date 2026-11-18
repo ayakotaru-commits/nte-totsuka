@@ -6,7 +6,7 @@
 // 無い・読めないときは、下で作る組み立て式のキャラのまま動く。
 import * as THREE from 'three';
 import { shrinkTextures } from './lowmem.js';
-import { samplePose, trailOn, LEGS } from './attack.js';
+import { samplePose, trailOn, LEGS, LEGS_UNTIL, TRAIL_STYLE, FX, TWIRL } from './attack.js';
 
 const PI = Math.PI;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -182,15 +182,16 @@ export function makeCharacter(opt = {}) {
   const atkQ = { shL: new THREE.Quaternion(), shR: new THREE.Quaternion() };
   function atkPose(act) {
     const X = pose();
-    const [hy, cy, lean, roll, lx, ly, lz, rx, ry, rz, stance, crouch] = st.atkP = samplePose(act.step, act.ph, act.t);
+    st.atkP = samplePose(act.step, act.ph, act.t);
     // 前の手順の姿勢からなめらかにつなぐ (手順が変わった直後の短い間)
     const id = act.step * 10 + act.ph;
     if (st.atkId !== id) { st.atkId = id; st.atkFrom = st.atkLast ? st.atkLast.slice() : null; }
     const P = st.atkP;
     if (st.atkFrom) { const w = sstep(0, 0.1, act.t); for (let i = 0; i < P.length; i++) P[i] = st.atkFrom[i] + (P[i] - st.atkFrom[i]) * w; }
     st.atkLast = P;
-    const [Hy, Cy, Lean, Roll, Lx, Ly, Lz, Rx, Ry, Rz, Stance, Crouch] = P;
-    const legMode = LEGS[act.step + ':' + act.ph] || 0;
+    const [Hy, Cy, Lean, Roll, Lx, Ly, Lz, Rx, Ry, Rz, Stance, Crouch, LegYaw] = P;
+    const lk = act.step + ':' + act.ph;
+    const legMode = LEGS_UNTIL[lk] !== undefined && act.t > LEGS_UNTIL[lk] ? 0 : LEGS[lk] || 0;
     // 胴: 腰が回り、残りを背骨と胸が回す。頭は半分だけついていく
     X.hips = [Lean * (legMode === 2 ? 0.5 : 0.2), Hy, Roll * 0.5];
     X.spine = [Lean * 0.4, (Cy - Hy) * 0.4, Roll * 0.25];
@@ -203,8 +204,10 @@ export function makeCharacter(opt = {}) {
     X.elL = [-fl, 0, 0]; X.elR = [-fr, 0, 0];
     X.haL = [0, 0, 0.15]; X.haR = [0, 0, -0.15];
     // 脚。足は地面に対して平らに着ける (足首 = -(太もも + 膝))。腰をひねっても足先は向きを保つ
+    // (脚の向き LegYaw が 1 に近いほど、脚ごと腰の向きへ回る)
+    const legYaw = -Hy * 0.9 * (1 - (LegYaw || 0));
     const leg = (th, kn, ft, side, tx, kx, fx) => {
-      X[th] = [tx, -Hy * 0.9, side * 0.09]; X[kn] = [kx, 0, 0]; X[ft] = [fx === undefined ? -(tx + kx) : fx, 0, 0];
+      X[th] = [tx, legYaw, side * 0.09]; X[kn] = [kx, 0, 0]; X[ft] = [fx === undefined ? -(tx + kx) : fx, 0, 0];
     };
     if (legMode === 1) { leg('thL', 'knL', 'ftL', 1, -0.9, 1.3, 0.3); leg('thR', 'knR', 'ftR', -1, -0.55, 1.5, 0.4); } // 膝を抱える
     else if (legMode === 2) { leg('thL', 'knL', 'ftL', 1, 0.35, 0.5, 0.7); leg('thR', 'knR', 'ftR', -1, 0.5, 0.35, 0.7); } // 脚を後ろへ流す
@@ -212,8 +215,10 @@ export function makeCharacter(opt = {}) {
       leg('thL', 'knL', 'ftL', 1, -1.3, 0.05); leg('thR', 'knR', 'ftR', -1, 0.1, 2.0, 0.4); X.thR[2] = -0.2;
     } else {
       const a = Math.abs(Stance), lead = Stance >= 0 ? 'L' : 'R', back = Stance >= 0 ? 'R' : 'L', sg = (c) => c === 'L' ? 1 : -1;
-      leg('th' + lead, 'kn' + lead, 'ft' + lead, sg(lead), -(0.1 + 0.6 * a + 0.35 * Crouch), 0.1 + 0.55 * a + 0.5 * Crouch);
-      leg('th' + back, 'kn' + back, 'ft' + back, sg(back), 0.05 + 0.4 * a, 0.2 + 0.4 * a + 0.7 * Crouch);
+      // しゃがみが 1 を超えた分 (〜1.3) は片膝立ちへ寄せる: 前の脚はすねを立て、後ろの脚は膝を地面近くへ
+      const kn = clamp((Crouch - 1) / 0.3, 0, 1), c = Math.min(1, Crouch);
+      leg('th' + lead, 'kn' + lead, 'ft' + lead, sg(lead), mix(-(0.1 + 0.6 * a + 0.35 * c), -1.55, kn), mix(0.1 + 0.55 * a + 0.5 * c, 1.6, kn));
+      leg('th' + back, 'kn' + back, 'ft' + back, sg(back), mix(0.05 + 0.4 * a, -0.25, kn), mix(0.2 + 0.4 * a + 0.7 * c, 1.7, kn));
       X['th' + back][2] = sg(back) * 0.14; // 後ろ足は少し外へ開く
     }
     return X;
@@ -251,7 +256,9 @@ export function makeCharacter(opt = {}) {
     return { geo, samples: [] };
   });
   const _hp = new THREE.Vector3(), _ep = new THREE.Vector3(), _dir = new THREE.Vector3(), _qs = new THREE.Quaternion(), _o = new THREE.Vector3(), _t1 = new THREE.Vector3(), _t2 = new THREE.Vector3();
-  function updateSwords(dt, armed, trailing) {
+  function updateSwords(dt, armed, trailing, style) {
+    const life = style ? style.life : TRAIL_LIFE, alpha = style ? style.alpha : 0.5;
+    const t0 = style ? style.from : 0.2, t1 = style ? style.to : 0.88;
     if (!fx.parent && root.parent) root.parent.add(fx);
     st.sword = clamp(st.sword + (armed ? dt / 0.14 : -dt / 0.28), 0, 1);
     const S = st.sword;
@@ -267,25 +274,124 @@ export function makeCharacter(opt = {}) {
         _o.copy(_hp).addScaledVector(_dir, 0.05);
         sw.g.position.copy(_o);
         sw.g.quaternion.setFromUnitVectors(YAX, _dir);
+        if (st.twirl > 0 && st.twirl < 2 * PI) sw.g.quaternion.multiply(_qs.setFromAxisAngle(XAX, i === 0 ? st.twirl : -st.twirl)); // 手首の向きの軸でまわす
         const e = sstep(0, 1, S);
         sw.blade.scale.set(1 + 2.5 * (1 - e), e, 1 + 2.5 * (1 - e)); // 出るときは、短く太い光が伸びる
         if (trailing) { // 刃の先と根もとを世界座標で残す
-          _t1.copy(_o).addScaledVector(_dir, 0.88); _t2.copy(_o).addScaledVector(_dir, 0.2);
+          _t1.copy(_o).addScaledVector(_dir, t1); _t2.copy(_o).addScaledVector(_dir, t0);
           root.localToWorld(_t1); root.localToWorld(_t2);
-          tr.samples.unshift({ a: _t1.clone(), b: _t2.clone(), age: 0 });
+          tr.samples.unshift({ a: _t1.clone(), b: _t2.clone(), age: 0, life, alpha });
         }
       }
       // 古いものを消し、頂点を作り直す
       for (const sm of tr.samples) sm.age += dt;
-      while (tr.samples.length && (tr.samples[tr.samples.length - 1].age > TRAIL_LIFE || tr.samples.length > TRAIL_MAX)) tr.samples.pop();
+      while (tr.samples.length && (tr.samples[tr.samples.length - 1].age > tr.samples[tr.samples.length - 1].life || tr.samples.length > TRAIL_MAX)) tr.samples.pop();
       const n = tr.samples.length, pos = tr.geo.attributes.position.array, col = tr.geo.attributes.color.array, c = trailCols[i];
       for (let k = 0; k < n; k++) {
-        const sm = tr.samples[k], al = Math.pow(Math.max(0, 1 - sm.age / TRAIL_LIFE), 1.6) * 0.5;
+        const sm = tr.samples[k], al = Math.pow(Math.max(0, 1 - sm.age / sm.life), 1.6) * sm.alpha;
         pos.set([sm.a.x, sm.a.y, sm.a.z, sm.b.x, sm.b.y, sm.b.z], k * 6);
-        col.set([c[0], c[1], c[2], al, c[0], c[1], c[2], al * 0.08], k * 8);
+        col.set([c[0], c[1], c[2], al, c[0], c[1], c[2], al * (sm.alpha > 0.5 ? 0.25 : 0.08)], k * 8);
       }
       tr.geo.attributes.position.needsUpdate = true; tr.geo.attributes.color.needsUpdate = true;
       tr.geo.setDrawRange(0, Math.max(0, n - 1) * 6);
+    }
+  }
+
+  // ---- 攻撃の演出 (attack.js の FX): 土ぼこり (ぼかした丸の板)・十字の閃光・地面に広がる衝撃の輪 ----
+  const DUST_N = 48;
+  let dustTex = null, dustNext = 0, crossFx = null, shockFx = null;
+  const dusts = [];
+  function dustTexture() {
+    if (dustTex) return dustTex;
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.4)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    dustTex = new THREE.CanvasTexture(c); dustTex.colorSpace = THREE.SRGBColorSpace;
+    return dustTex;
+  }
+  const _fp = new THREE.Vector3(), _fw = new THREE.Vector3(), _fq = new THREE.Quaternion(), _fd = new THREE.Vector3();
+  // (cx, cz) のまわりに n 個。v = 外へ飛ぶ速さ、size = 大きさ、life = 消えるまでの秒数、r0 = 出る位置の半径
+  function spawnDust(cx, cy, cz, n, v, size, life, r0 = 0.12) {
+    if (!dusts.length) {
+      for (let i = 0; i < DUST_N; i++) {
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: dustTexture(), color: '#9a8f80', transparent: true, depthWrite: false, opacity: 0 }));
+        sp.visible = false; sp.frustumCulled = false; fx.add(sp);
+        dusts.push({ sp, age: 1, life: 1, vx: 0, vy: 0, vz: 0, s0: 0 });
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const d = dusts[dustNext]; dustNext = (dustNext + 1) % DUST_N;
+      const a = (i / n) * PI * 2 + Math.random() * 0.4, sp = v * (0.6 + Math.random() * 0.8);
+      d.age = Math.random() * 0.06; d.life = life; d.vx = Math.cos(a) * sp; d.vz = Math.sin(a) * sp; d.vy = 0.6 + Math.random() * 0.9;
+      d.s0 = size * (0.8 + Math.random() * 0.6);
+      d.sp.position.set(cx + Math.cos(a) * r0, cy, cz + Math.sin(a) * r0);
+      d.sp.visible = true;
+    }
+  }
+  // 地面に寝かせた光の板 (衝撃の輪) と、胸の前の X 形の光 (十字の閃光)。最初に使うときに作る
+  function makeFlash() {
+    const mat = () => new THREE.MeshBasicMaterial({ color: '#dff4ff', transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false, toneMapped: false });
+    const g = new THREE.Group(), m = mat(), m2 = mat(); // m = 細い芯、m2 = まわりのぼんやりした光
+    for (const r of [PI / 4, -PI / 4]) {
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.06), m); bar.rotation.z = r; g.add(bar);
+      const glow = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.2), m2); glow.rotation.z = r; g.add(glow);
+    }
+    g.visible = false; g.frustumCulled = false; fx.add(g);
+    crossFx = { g, m, m2, age: 1 };
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, 56), mat());
+    ring.rotation.x = -PI / 2; ring.visible = false; ring.frustumCulled = false; fx.add(ring);
+    shockFx = { ring, age: 1 };
+  }
+  function runFx(kind, arg) {
+    if (!root.parent || typeof document === 'undefined') return;
+    if (!crossFx) makeFlash();
+    root.updateMatrixWorld(true);
+    root.getWorldPosition(_fw);
+    const gy = _fw.y + 0.05; // 地面の高さ (キャラの足元)
+    if (kind === 'dust') {
+      const J = vrmRig && vrmRig.nodes.ftL ? vrmRig.nodes : BONE;
+      (arg === 'L' ? J.ftL : J.ftR).getWorldPosition(_fp);
+      spawnDust(_fp.x, gy, _fp.z, 14, 1.9, 0.25, 0.7);
+    } else if (kind === 'ring') { // 体のまわりに輪の形に広がる
+      spawnDust(_fw.x, gy, _fw.z, Math.round(14 + 8 * arg), 2.2 * arg, 0.24 + 0.06 * arg, 0.7 + 0.15 * arg, 0.35);
+    } else if (kind === 'puff') { // 滑っている体の後ろ
+      root.getWorldQuaternion(_fq); _fd.set(0, 0, -0.5).applyQuaternion(_fq);
+      spawnDust(_fw.x + _fd.x, gy, _fw.z + _fd.z, 4, 0.6, 0.22, 0.6, 0.15);
+    } else if (kind === 'cross') { // 胸の前
+      root.getWorldQuaternion(_fq); _fd.set(0, 1.0, 1.0).applyQuaternion(_fq);
+      crossFx.g.position.set(_fw.x + _fd.x, _fw.y + _fd.y, _fw.z + _fd.z);
+      crossFx.g.quaternion.copy(_fq); crossFx.age = 0; crossFx.g.visible = true;
+    } else if (kind === 'shock') {
+      shockFx.ring.position.set(_fw.x, gy + 0.03, _fw.z); shockFx.age = 0; shockFx.ring.visible = true;
+    }
+  }
+  function updateFx(dt, act) {
+    // 決めた時間をまたいだら 1 回だけ出す (同じ局面で 2 回出さない。時間が戻ったら別の一振り)
+    const key = act && act.type === 'atk' ? act.step + ':' + act.ph : null, L = key && FX[key];
+    if (st.fxKey !== key || (act && act.t < st.fxT)) st.fxDone = 0;
+    if (L) L.forEach(([t0, kind, arg], i) => { if (!(st.fxDone & (1 << i)) && act.t >= t0) { st.fxDone |= 1 << i; runFx(kind, arg); } });
+    st.fxKey = key; st.fxT = act ? act.t : 0;
+    for (const d of dusts) {
+      if (!d.sp.visible) continue;
+      d.age += dt;
+      if (d.age >= d.life) { d.sp.visible = false; continue; }
+      const k = Math.exp(-4 * dt);
+      d.vx *= k; d.vz *= k; d.vy *= Math.exp(-2 * dt);
+      d.sp.position.x += d.vx * dt; d.sp.position.y += d.vy * dt; d.sp.position.z += d.vz * dt;
+      const u = d.age / d.life;
+      d.sp.scale.setScalar(d.s0 * (1 + 1.8 * Math.sqrt(u)));
+      d.sp.material.opacity = 0.5 * Math.min(1, u * 8) * (1 - u) * (1 - u);
+    }
+    if (crossFx && crossFx.g.visible) { // 0.35 秒で広がりながら消える
+      crossFx.age += dt; const u = crossFx.age / 0.35;
+      if (u >= 1) crossFx.g.visible = false;
+      else { crossFx.g.scale.setScalar(0.7 + 0.6 * Math.sqrt(u)); crossFx.m.opacity = 0.85 * (1 - u) * (1 - u) * Math.min(1, u * 12); crossFx.m2.opacity = 0.35 * crossFx.m.opacity; }
+    }
+    if (shockFx && shockFx.ring.visible) { // 0.5 秒で半径 0.4 → 4 m に広がって消える
+      shockFx.age += dt; const u = shockFx.age / 0.5;
+      if (u >= 1) shockFx.ring.visible = false;
+      else { shockFx.ring.scale.setScalar(0.4 + 3.6 * Math.sqrt(u)); shockFx.ring.material.opacity = 0.8 * (1 - u); }
     }
   }
 
@@ -397,7 +503,8 @@ export function makeCharacter(opt = {}) {
   function update(dt, speed, onGround, vy, stair = 0, act = null, armed = false) {
     updateInner(dt, speed, onGround, vy, stair, act);
     if (vrmRig) applyVRM(dt);
-    updateSwords(Math.max(1e-4, Math.min(dt, 0.1)), armed, st.trail);
+    updateSwords(Math.max(1e-4, Math.min(dt, 0.1)), armed, st.trail, st.trailStyle);
+    updateFx(Math.max(1e-4, Math.min(dt, 0.1)), act);
   }
 
   function updateInner(dt, speed, onGround, vy, stair, act) {
@@ -494,6 +601,9 @@ export function makeCharacter(opt = {}) {
     st.anchor = null;
     if (act) st.actPose = actPose(act, Aa, G);
     st.trail = !!act && act.type === 'atk' && trailOn(act.step, act.ph, act.t);
+    st.trailStyle = st.trail ? TRAIL_STYLE[act.step + ':' + act.ph] || null : null;
+    const tw = act && act.type === 'atk' && TWIRL[act.step + ':' + act.ph];
+    st.twirl = tw ? 2 * PI * sstep(tw[0], tw[1], act.t) : 0; // 剣を手の中でまわす角度
     if (!act || act.type !== 'atk') { st.atkId = -1; st.atkLast = null; }
     st.actW += ((act ? 1 : 0) - st.actW) * rate(act ? 30 : 10);
     if (st.actW < 0.01 && !act) st.actPose = null;
@@ -557,7 +667,7 @@ export function makeCharacter(opt = {}) {
 
   // ---- VRM への差し替え ----
   let vrmRig = null;
-  const Q = THREE.Quaternion, ZAX = new THREE.Vector3(0, 0, 1), YAX = new THREE.Vector3(0, 1, 0);
+  const Q = THREE.Quaternion, ZAX = new THREE.Vector3(0, 0, 1), YAX = new THREE.Vector3(0, 1, 0), XAX = new THREE.Vector3(1, 0, 0);
   // VRM は T ポーズ (腕が真横)。腕を下ろした姿勢を基準にするための回転
   const HL = new Q().setFromAxisAngle(ZAX, -PI / 2), HR = new Q().setFromAxisAngle(ZAX, PI / 2);
   const DIRECT = { hips: 'hips', spine: 'spine', chest: 'chest', neck: 'neck', head: 'head',
@@ -677,6 +787,10 @@ export function makeCharacter(opt = {}) {
     fx.removeFromParent(); root.removeFromParent();
     root.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
     for (const t of trails) t.geo.dispose();
+    for (const d of dusts) d.sp.material.dispose();
+    if (dustTex) dustTex.dispose();
+    if (crossFx) { crossFx.m.dispose(); crossFx.m2.dispose(); crossFx.g.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+    if (shockFx) { shockFx.ring.geometry.dispose(); shockFx.ring.material.dispose(); }
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };

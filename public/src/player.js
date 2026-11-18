@@ -4,7 +4,7 @@ import { STEP } from './world.js';
 import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
-import { STEPS, LAUNCH, SPIN, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE } from './attack.js';
+import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, spinAt } from './attack.js';
 
 export const R = 0.35; // 体の半径 (m)
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
@@ -207,7 +207,7 @@ export class Player {
     this.comboGrace = 0;
     if (step === 5) {
       if (this.onGround) { this.atk.ph = 1; this.atk.v0 = DIVE.fwd * 0.9; } // 着地してから押した: そのまま滑る
-      else { this.vy = DIVE.vy; this.atk.v0 = DIVE.fwd; }
+      else this.vy = 0; // 空中: 頂点で振りかぶってから (DIVE.at) 急降下する
     }
   }
 
@@ -224,15 +224,24 @@ export class Player {
       this.startStep(this.comboGrace > 0 ? this.comboNext : 1, dir);
       a = this.atk;
     } else if (press && a.step !== 5) a.queued = true;
-    a.t += dt;
     const S = STEPS[a.step], dur = S.dur[a.ph];
-    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    let v = 0;
+    // 振り抜く・着地する瞬間 (S.stops) に、ほんの少しだけ時間を止める (ヒットストップ)。止まっている間は姿勢も体も動かない
+    const si = S.stops ? S.stops.findIndex(([ph, t0], i) => ph === a.ph && !(a.stopsDone & (1 << i)) && a.t <= t0 && a.t + dt >= t0) : -1;
+    if (si >= 0) { a.t = S.stops[si][1]; a.stopsDone = (a.stopsDone || 0) | (1 << si); a.hold = S.stops[si][2]; }
+    else if (a.hold > 0) a.hold -= dt;
+    else a.t += dt;
+    if (a.hold > 0) return this.finishAtk(dt, a, 0);
+    let v = 0, sv = 0;
     if (a.step <= 3) {
-      const [m0, m1, dist] = S.move;
-      if (a.t > m0 && a.t < m1) v = dist / (m1 - m0) * (Math.PI / 2) * Math.sin(Math.PI * (a.t - m0) / (m1 - m0)); // 踏み込む (進んだ距離が dist になる)
-      if (a.queued && a.t >= S.cancel) { this.startStep(a.step + 1, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
+      const [m0, m1, dist, side = 0] = S.move;
+      if (a.step === 3) this.spin = spinAt(3, 0, a.t); // 回転斬り: 体ごと回す
+      if (a.t > m0 && a.t < m1) { // 踏み込む (進んだ距離が dist・side になる)
+        const k = 1 / (m1 - m0) * (Math.PI / 2) * Math.sin(Math.PI * (a.t - m0) / (m1 - m0));
+        v = dist * k; sv = side * k;
+      }
+      if (a.queued && a.t >= S.cancel) { this.spin = 0; this.startStep(a.step + 1, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
       if (a.t >= dur) { this.endStep(a.step + 1); return this.finishAtk(dt, null, 0); }
+      return this.finishAtk(dt, a, v, sv);
     } else if (a.step === 4) {
       if (a.ph === 0) {
         if (a.t >= dur) { // 跳ぶ
@@ -240,7 +249,10 @@ export class Player {
         }
       } else if (a.ph === 1) {
         v = LAUNCH.fwd;
-        this.spin = Math.PI * 2 * Math.min(1, a.t / SPIN.dur);
+        this.spin = spinAt(4, 1, a.t);
+        // 頂点で一瞬浮く (落ち始めたら LAUNCH.hang 秒だけ、高さを保つ)
+        if (!a.hung && this.vy <= 0) { a.hung = true; a.hang = LAUNCH.hang; }
+        if (a.hang > 0) { a.hang -= dt; this.vy = 0; v *= 0.3; }
         if (this.onGround && a.t > 0.15) { a.ph = 2; a.t = 0; this.spin = 0; a.v0 = v; }
       } else {
         v = a.v0 * Math.exp(-12 * a.t);
@@ -253,8 +265,12 @@ export class Player {
       }
     } else { // 5
       if (a.ph === 0) {
-        v = DIVE.fwd;
-        if (this.spin > 0) { this.spin += (Math.PI * 2 - this.spin) * (1 - Math.exp(-16 * dt)); if (this.spin > Math.PI * 2 - 0.03) this.spin = 0; } // 4 の回転の続き
+        if (a.t < DIVE.at) { v = 1.5; this.vy = 0.3; } // 頂点で振りかぶる (少し浮いたまま)
+        else { if (!a.dove) { a.dove = true; this.vy = DIVE.vy; } v = DIVE.fwd; } // 急降下
+        if (this.spin > 0) { // 4 の回転の続き (次の 1 周の終わりまで回して 0 に戻す)
+          const end = Math.ceil(this.spin / (Math.PI * 2) - 1e-6) * Math.PI * 2;
+          this.spin += (end - this.spin) * (1 - Math.exp(-16 * dt)); if (this.spin > end - 0.03) this.spin = 0;
+        }
         if (this.onGround && a.t > 0.04) { a.ph = 1; a.t = 0; a.v0 = DIVE.fwd; this.spin = 0; }
       } else if (a.ph === 1) {
         v = a.v0 * Math.exp(-DIVE.slide * a.t);
@@ -267,12 +283,12 @@ export class Player {
     return this.finishAtk(dt, a, v);
   }
 
-  // 前へ踏み込む速さ v で体を動かし、姿勢を渡す
-  finishAtk(dt, a, v) {
+  // 前へ踏み込む速さ v・左へ動く速さ sv で体を動かし、姿勢を渡す
+  finishAtk(dt, a, v, sv = 0) {
     const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
-    if (a) this.vel.set(fx * v, fz * v);
+    if (a) this.vel.set(fx * v + fz * sv, fz * v - fx * sv); // 左 = (cos, -sin)
     else this.vel.multiplyScalar(Math.exp(-14 * dt));
-    this.moveBody(dt);
+    if (!(a && a.hold > 0)) this.moveBody(dt); // ヒットストップの間は空中でも止める
     this.stair = 0;
     this.show(dt, 0, a ? { type: 'atk', step: a.step, ph: a.ph, t: a.t } : null);
     return true;
