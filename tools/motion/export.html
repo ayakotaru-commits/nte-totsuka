@@ -32,7 +32,7 @@ window.exportClip = async (src, clipName, restName, map, fps) => {
   const hip0 = node(map.hips).getWorldPosition(new THREE.Vector3());
   const HL = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2), HR = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
   const clip = g.animations.find((c) => c.name === clipName);
-  const n = Math.max(2, Math.round(clip.duration * fps) + 1), out = {}, hipsPos = [];
+  const n = Math.max(2, Math.round(clip.duration * fps) + 1), out = {}, hipsPos = [], feet = [];
   for (const k in map) out[k] = [];
   for (let i = 0; i < n; i++) {
     pose(clipName, Math.min(clip.duration, i / fps));
@@ -51,8 +51,18 @@ window.exportClip = async (src, clipName, restName, map, fps) => {
     // 腰の移動 (T ポーズの腰からの差、人形の正面を +z にした向き。高さで割って、身長に依らない値にする)
     const hp = node(map.hips).getWorldPosition(new THREE.Vector3()).sub(hip0).applyQuaternion(F).divideScalar(hip0.y);
     hipsPos.push(+hp.x.toFixed(4), +hp.y.toFixed(4), +hp.z.toFixed(4));
+    // 足首の位置 (同じ単位。腰の真下からの差。地面を蹴る速さと、左足が前へ出る時を求めるのに使う)
+    const hw = node(map.hips).getWorldPosition(new THREE.Vector3());
+    for (const f of ['ftL', 'ftR']) { const v = node(map[f]).getWorldPosition(new THREE.Vector3()).sub(hw).applyQuaternion(F).divideScalar(hip0.y); feet.push(v.y, v.z); }
   }
-  return { fps, frames: n, dur: clip.duration, bones: out, hips: hipsPos };
+  // くり返しの動き (歩き・走り) の進む速さ (腰の高さ / 秒) = 2 歩 × 足の前後の開きの最大 ÷ 1 周の秒数。
+  // (着いている足の速さからも求めたが、走りは着いている時間が短く、足首の骨が浮くので当てにならなかった。歩きでは両者はほぼ同じ)
+  // phaseL = 左足がいちばん前へ出る時 (0〜1)。動きどうしの位相をそろえるのに使う
+  let sep = 0, zmax = -Infinity, phaseL = 0;
+  for (let i = 0; i < n; i++) sep = Math.max(sep, Math.abs(feet[i * 4 + 1] - feet[i * 4 + 3]));
+  for (let i = 0; i < n - 1; i++) if (feet[i * 4 + 1] > zmax) { zmax = feet[i * 4 + 1]; phaseL = i / (n - 1); }
+  const speed = 2 * sep / clip.duration;
+  return { fps, frames: n, dur: clip.duration, bones: out, hips: hipsPos, speed: +speed.toFixed(4), phaseL: +phaseL.toFixed(4) };
 };
 window.ready = true;
 </script>

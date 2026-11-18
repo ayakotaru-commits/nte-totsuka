@@ -5,7 +5,7 @@
     pose = 速さ m/s (0 立ち / 1.6 歩き / 5.5 走り / 10 ダッシュ)、t = 何秒ぶん動かしてから止めるか (歩行の位相を選ぶ)、air=1 で空中
   パルクールの姿勢: ?act=vault&h=0.85&s=0.5 / ?act=climb&h=1.8&s=0.4 (h = 障害物の高さ m、s = 進み具合 0〜1、thick = 奥行き m)。
     灰色の箱が障害物。画面は 真横 / 斜め前 / 真後ろ / 斜め後ろ になる。
-  攻撃の姿勢: ?atk=1&ph=0&t=0.26 (&mocap で 1 撃目を動きのデータに) (手順 1〜5、局面、局面の中の時間 秒)。ph 0 の頭から t まで 1/60 秒刻みで動かして止める (剣と軌跡も出る)。
+  攻撃の姿勢: ?atk=1&ph=0&t=0.26 (&handmade で手作りの動きに) (手順 1〜5、局面、局面の中の時間 秒)。ph 0 の頭から t まで 1/60 秒刻みで動かして止める (剣と軌跡も出る)。
     空中の局面 (4 の ph 1、5 の ph 0) は &air=1 を付ける。&spin=1.57 でその場で回した向き (3・4 の体ごとの回転はゲームと同じく足される)。画面は 正面 / 真横 / 真後ろ / 斜め後ろ。
   扉を開ける動き: ?door=0.45 (進み具合 0〜1)。&pose=1.6 で歩きながら。
   画面は 4 分割: 正面 / 真後ろ / 斜め後ろ / 左手のアップ。?live を付けると止めずに動かし続ける。?face で手の代わりに顔のアップ。 -->
@@ -33,7 +33,7 @@ import { spinAt, useMocap } from '../../public/src/attack.js';
 import { loadMotion } from '../../public/src/motion.js';
 
 const qs = new URLSearchParams(location.search);
-if (qs.has('mocap')) { useMocap(); await loadMotion('ual_sword_attack'); } // 攻撃の 1 撃目を動きのデータで (main.js の ?mocap と同じ)
+if (!qs.has('handmade')) { useMocap(); await loadMotion('ual_sword_attack'); } // 攻撃の 1 撃目を動きのデータで。&handmade で手作り (main.js と同じ)
 const atkStep = +(qs.get('atk') || 0), atkPh = +(qs.get('ph') || 0);
 const speed = +(qs.get('pose') || 0), T = atkStep ? 0 : +(qs.get('t') || 1), air = qs.has('air');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
