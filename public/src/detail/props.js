@@ -191,7 +191,7 @@ export function buildProps(props) {
   emissive.push(vendFront);
   const vendGeo = new THREE.BoxGeometry(1.0, 1.83, 0.75).translate(0, 0.915, 0);
   const bodies = ['#c8312a', '#1f5fae', '#f0f0ee'].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.5 }));
-  for (const v of props.vending) {
+  for (const v of props.vending.concat((props.rail && props.rail.platVending) || [])) { // 路上とホームの自販機
     const body = bodies[v.color] || bodies[0];
     const m = new THREE.Mesh(vendGeo, [body, body, body, body, vendFront, body]);
     m.position.set(v.x, v.y, v.z);

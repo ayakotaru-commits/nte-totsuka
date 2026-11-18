@@ -1556,8 +1556,94 @@ def build_rail(city, world, H, col):
             state["run"] += d
     print(f"platforms={len(platforms)} canopies={len(canopies)} columns={len(columns)} gantries={len(gantries)} catenary segs={len(catenary)}")
     routes = build_train_routes(city, H, platforms)
+    fixtures = build_station_fixtures(city, world, H, col, platforms)
     return {"platforms": platforms, "canopies": canopies, "columns": columns, "gantries": gantries, "catenary": catenary,
-            "dims": {"platH": PLAT_H, "mastH": MAST_H}, "routes": routes}
+            "dims": {"platH": PLAT_H, "mastH": MAST_H}, "routes": routes, **fixtures}
+
+
+def build_station_fixtures(city, world, H, col, platforms):
+    """駅の中: 駅舎 (線路の上の建物) を支える柱、ホームから駅舎へ上がる階段、ホームのベンチ・駅名標・自販機。
+    piers:    駅舎の柱 [x, z, 下端 y, 上端 y]。線路の中心から 2.4 m 以上離れた所に、約 9 m おき
+    stairs:   階段 {"x", "z" (下端の中央), "yaw" (上る向き), "w" 幅, "y0" 下端 (ホームの上面), "y1" 上端 (駅舎の床), "len" 長さ}
+    benches:  ベンチ {x, y, z, yaw}  正面 (局所 +Z) が線路を向く
+    nameSigns: 駅名標 {x, y, z, yaw}  板の面が線路を向く (両面)
+    platVending: ホームの自販機 {x, y, z, yaw}"""
+    rails = [r["pts"] for r in city.get("rails") or []]
+    rail_grid = PointGrid(5)
+    for p in rails:
+        for i in range(len(p) - 1):
+            (ax, az), (bx, bz) = p[i][:2], p[i + 1][:2]
+            n = max(1, int(math.hypot(bx - ax, bz - az) * 2))
+            for k in range(n + 1):
+                rail_grid.add(ax + (bx - ax) * k / n, az + (bz - az) * k / n)
+    station = [b for b in city["buildings"] if b.get("look") == "totsuka_station" and (b.get("minH") or 0) > 0]
+    under = lambda x, z: next((b for b in station if pip(x, z, b["outer"])), None)
+
+    piers = []
+    for b in station:
+        xs, zs = [q[0] for q in b["outer"]], [q[1] for q in b["outer"]]
+        y1 = (b.get("y") or 0) + b["minH"]
+        x = min(xs) + 4.5
+        while x < max(xs):
+            z = min(zs) + 4.5
+            while z < max(zs):
+                if pip(x, z, b["outer"]) and not rail_grid.near(x, z, 2.4) and not any(math.hypot(x - q[0], z - q[1]) < 6 for q in piers):
+                    y0 = H(x, z)
+                    piers.append([r2(x), r2(z), r2(y0), r2(y1)])
+                    col.add_circle(x, z, 0.45, y0, y1 - y0)
+                z += 9
+            x += 9
+
+    stairs, benches, signs, vend = [], [], [], []
+    for pf in platforms:
+        L, R, Y = pf["left"], pf["right"], pf["y"]
+        C = [((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, y, math.hypot(a[0] - b[0], a[1] - b[1])) for a, b, y in zip(L, R, Y)]
+        n = len(C)
+        # 駅舎の下にある所 (ホームの点の番号の範囲)
+        inside = [i for i, c in enumerate(C) if under(c[0], c[1])]
+        if inside:
+            i0 = max(inside)                       # 駅舎の南の端 (番号の大きい側) から、南へ下りる階段
+            j = min(n - 1, i0 + 3)
+            (x0, z0), (x1, z1) = C[i0][:2], C[j][:2]
+            d = math.hypot(x1 - x0, z1 - z0) or 1
+            ux, uz = (x0 - x1) / d, (z0 - z1) / d     # 上る向き (駅舎の方へ)
+            b = under(C[i0][0], C[i0][1])
+            y1 = (b.get("y") or 0) + b["minH"]
+            y0 = C[i0][2]                           # ホームの上面
+            rise = y1 - y0
+            ln = rise / 0.55                        # 勾配 約 29° (蹴上げ 16 cm・踏面 29 cm)
+            sx, sz = C[i0][0] - ux * (ln - 2.0), C[i0][1] - uz * (ln - 2.0)   # 上端が駅舎の中へ 2 m 入るように
+            w = min(3.0, max(1.8, C[i0][3] - 4.5))
+            stairs.append({"x": r2(sx), "z": r2(sz), "yaw": r3(math.atan2(ux, uz)), "w": r2(w), "y0": r2(y0), "y1": r2(y1), "len": r2(ln)})
+            col.add_box(sx + ux * ln / 2, sz + uz * ln / 2, math.atan2(ux, uz), w / 2 + 0.1, ln / 2, y0, rise)
+            stair_zone = [(sx + ux * t, sz + uz * t) for t in range(0, int(ln) + 4, 2)]
+        else:
+            stair_zone = []
+        busy = lambda x, z: under(x, z) or any(math.hypot(x - q[0], z - q[1]) < 3.5 for q in stair_zone)
+        for i in range(2, n - 2):
+            x, z, y, wd = C[i]
+            if wd < 5 or busy(x, z):
+                continue
+            a, b2 = C[i - 1], C[i + 1]
+            dx, dz = b2[0] - a[0], b2[1] - a[1]
+            d = math.hypot(dx, dz) or 1
+            nx, nz = -dz / d, dx / d                # ホームに直角 (左の線路の側)
+            yaw_along = math.atan2(dx / d, dz / d)
+            if i % 6 == 0:                          # ベンチ (約 24 m おき。背中合わせに 2 脚)
+                for s_ in (1, -1):
+                    bx, bz = x + nx * s_ * 0.45, z + nz * s_ * 0.45
+                    benches.append({"x": r2(bx), "y": r2(y), "z": r2(bz), "yaw": r3(math.atan2(nx * s_, nz * s_))})
+                col.add_box(x, z, yaw_along, 0.9, 0.9, y, 0.45)
+            elif i % 15 == 3:                       # 駅名標 (約 60 m おき)
+                signs.append({"x": r2(x), "y": r2(y), "z": r2(z), "yaw": r3(math.atan2(nx, nz))})
+                col.add_circle(x, z, 0.1, y, 2.3)
+            elif i % 40 == 10:                      # 自販機 (背中合わせ)
+                for s_ in (1, -1):
+                    vx, vz = x + nx * s_ * 0.45, z + nz * s_ * 0.45
+                    vend.append({"x": r2(vx), "y": r2(y), "z": r2(vz), "yaw": r3(math.atan2(nx * s_, nz * s_)), "color": 0})
+                col.add_box(x, z, yaw_along, 0.5, 0.8, y, 1.83)
+    print(f"station: piers={len(piers)} stairs={len(stairs)} benches={len(benches)} name signs={len(signs)} vending={len(vend)}")
+    return {"piers": piers, "stairs": stairs, "benches": benches, "nameSigns": signs, "platVending": vend}
 
 
 RAIL_TOP = 0.55      # 地面の線路のレールの上面 (地形からの高さ。detail/trackbed.js と同じ)
