@@ -6,7 +6,8 @@
 // 無い・読めないときは、下で作る組み立て式のキャラのまま動く。
 import * as THREE from 'three';
 import { shrinkTextures } from './lowmem.js';
-import { samplePose, trailOn, LEGS, LEGS_UNTIL, TRAIL_STYLE, FX, TWIRL } from './attack.js';
+import { samplePose, trailOn, LEGS, LEGS_UNTIL, TRAIL_STYLE, FX, TWIRL, MOCAP } from './attack.js';
+import { sampleMotion } from './motion.js';
 
 const PI = Math.PI;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -181,6 +182,12 @@ export function makeCharacter(opt = {}) {
   const _eu = new THREE.Euler(), _qn = new THREE.Quaternion();
   const atkQ = { shL: new THREE.Quaternion(), shR: new THREE.Quaternion() };
   function atkPose(act) {
+    // 動きのデータを使う手順 (attack.js の MOCAP): データの骨の向きをそのまま渡す。読み込み前は手作りの姿勢
+    const mc = MOCAP[act.step + ':' + act.ph];
+    if (mc) {
+      const m = sampleMotion(mc.clip, act.t * mc.speed, st.mo || (st.mo = {}));
+      if (m) { const X = pose(); X.q = m.q; st.hipOff = m.hips; st.atkId = -1; st.atkLast = null; return X; }
+    }
     const X = pose();
     st.atkP = samplePose(act.step, act.ph, act.t);
     // 前の手順の姿勢からなめらかにつなぐ (手順が変わった直後の短い間)
@@ -599,6 +606,7 @@ export function makeCharacter(opt = {}) {
 
     // --- パルクールの姿勢 (終わった後は、最後の姿勢からふつうの姿勢へ戻す) ---
     st.anchor = null;
+    st.hipOff = null;
     if (act) st.actPose = actPose(act, Aa, G);
     st.trail = !!act && act.type === 'atk' && trailOn(act.step, act.ph, act.t);
     st.trailStyle = st.trail ? TRAIL_STYLE[act.step + ':' + act.ph] || null : null;
@@ -638,6 +646,10 @@ export function makeCharacter(opt = {}) {
     const runFloat = runK * gw * 0.08 * Math.abs(Math.sin(st.phase)); // 走りの浮き
     const airY = IDLE_EXT + HIP_DROP;
     hips.position.y = mix(planted + runFloat + Math.sin(st.t * 1.6) * 0.003 * (1 - gw), airY, st.airW);
+    // 動きのデータの腰の前後・左右の移動 (踏み込みで腰が前へ出る)。足は地面に残る
+    const ho = st.hipOff, hk = ho ? (IDLE_EXT + HIP_DROP) * xw : 0;
+    hips.position.x += ((ho ? ho[0] * hk : 0) - hips.position.x) * k;
+    hips.position.z += ((ho ? ho[2] * hk : 0) - hips.position.z) * k;
     if (st.anchor && !vrmRig) { // 手を縁に合わせる (VRM のときは applyVRM が VRM の手で合わせる)
       root.updateMatrixWorld(true);
       const baseY = root.matrixWorld.elements[13];
@@ -696,6 +708,8 @@ export function makeCharacter(opt = {}) {
     // VRM 0.x は骨の座標系が前後逆 (モデルごと 180° 回して前向きにしている) なので、前後・左右の軸まわりの回転を逆にする
     if (vrmRig.flip) for (const n in nodes) { const q = nodes[n].quaternion; q.x = -q.x; q.z = -q.z; }
     nodes.hips.position.y = hips.position.y / scale + vrmRig.minY;
+    const fs = vrmRig.flip ? -1 : 1; // VRM 0.x は前後・左右が逆
+    nodes.hips.position.x = vrmRig.hx0 + fs * hips.position.x / scale; nodes.hips.position.z = vrmRig.hz0 + fs * hips.position.z / scale;
     // この VRM の足の実際の位置から、いちばん低い足裏が地面 (y=0) に来るよう腰の高さを直す (空中では直さない)
     const gnd = 1 - st.airW;
     if (gnd > 0.01) {
@@ -772,7 +786,7 @@ export function makeCharacter(opt = {}) {
         ARM_A = wp('shL').distanceTo(wp('elL')) * scale; ARM_B = wp('elL').distanceTo(wp('haL')) * scale;
         console.info(`VRM の寸法: 腰→肩 ${SH_UP.toFixed(2)} m、上腕 ${ARM_A.toFixed(2)} m、前腕 ${ARM_B.toFixed(2)} m`);
       }
-      vrmRig = { vrm, scale, nodes, minY, soles, fingers, flip: vrm.meta?.metaVersion === '0' }; // 腰の高さは、以後 applyVRM が毎フレーム決める
+      vrmRig = { vrm, scale, nodes, minY, soles, fingers, flip: vrm.meta?.metaVersion === '0', hx0: nodes.hips.position.x, hz0: nodes.hips.position.z }; // 腰の高さは、以後 applyVRM が毎フレーム決める
       body.visible = false;
       root.add(vrm.scene);
       console.info('VRM を読み込みました: ' + url);

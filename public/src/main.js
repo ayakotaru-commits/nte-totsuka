@@ -21,6 +21,11 @@ import { TOUCH, setupTouch } from './touch.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
 import { startMultiplayer } from './net/index.js';
 import { Look } from './look.js';
+import { useMocap } from './attack.js';
+import { loadMotion } from './motion.js';
+
+// お試し: URL に ?mocap で、攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) に替える
+if (new URLSearchParams(location.search).has('mocap')) { useMocap(); loadMotion('ual_sword_attack'); }
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
