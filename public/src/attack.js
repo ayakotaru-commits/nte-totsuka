@@ -18,6 +18,8 @@
 
 export const SWORD_IDLE = 5;   // 攻撃しなくなってから剣が消えるまでの秒数
 export const COMBO_GRACE = 0.3; // 1 つの手順が終わってから、続きの入力を受け付ける秒数
+// 連撃の最後の手順。持ち主の希望で 3 (回転斬り) まで (2026-11)。4・5 の動きの表と処理は残してあり、5 にすれば戻る
+export const COMBO_MAX = 3;
 
 // 手順ごとの動き。dur = その局面の長さ、cancel = これ以降に押した入力で次へ移れる時間、
 // move = [始め, 終わり, 前へ進む距離 m, 横へ進む距離 m (+ = 左)] (この間に踏み込む)
@@ -67,12 +69,17 @@ export const TWIRL = { '5:2': [0.3, 0.62] };
 // 標準では空 (手作りの姿勢)。useMocap() で試せる (URL に ?mocap)
 export const MOCAP = {};
 export function useMocap() {
-  // 1 撃目を Quaternius の Sword_Attack (1.5 秒。右手で斜め上から振り下ろし、大きく踏み込んで沈む) に替える
+  // 1 撃目を Quaternius の Sword_Attack (1.5 秒。右手で斜め上から振り下ろし、大きく踏み込んで沈む) に、2 撃目をその左右反転に替える
   const sp = 1.36;
   MOCAP['1:0'] = { clip: 'ual_sword_attack', speed: sp };
   STEPS[1] = { dur: [1.5 / sp], cancel: 0.9 / sp, move: [0.35 / sp, 0.65 / sp, 1.4, 0], stops: [[0, 0.52 / sp, 0.06]] };
   TRAIL['1:0'] = [0.4 / sp, 0.7 / sp];
   FX['1:0'] = [[0.55 / sp, 'dust', 'R']];
+  // 2 撃目は 1 撃目の左右反転 (左手で振り下ろし、左足で踏み込む)
+  MOCAP['2:0'] = { clip: 'ual_sword_attack', speed: sp, mirror: true };
+  STEPS[2] = { ...STEPS[1], stops: STEPS[1].stops.map((s) => s.slice()) };
+  TRAIL['2:0'] = TRAIL['1:0'].slice();
+  FX['2:0'] = [[0.55 / sp, 'dust', 'L']];
 }
 
 const sm = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };

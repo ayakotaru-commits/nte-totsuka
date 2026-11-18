@@ -5,7 +5,7 @@ import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
 import { getMotion } from './motion.js';
-import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, spinAt } from './attack.js';
+import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, COMBO_MAX, spinAt } from './attack.js';
 
 export const R = 0.35; // 体の半径 (m)
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
@@ -248,8 +248,9 @@ export class Player {
         const k = 1 / (m1 - m0) * (Math.PI / 2) * Math.sin(Math.PI * (a.t - m0) / (m1 - m0));
         v = dist * k; sv = side * k;
       }
-      if (a.queued && a.t >= S.cancel) { this.spin = 0; this.startStep(a.step + 1, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
-      if (a.t >= dur) { this.endStep(a.step + 1); return this.finishAtk(dt, null, 0); }
+      const next = a.step < COMBO_MAX ? a.step + 1 : 1; // 最後の手順 (COMBO_MAX) の次は 1 から
+      if (a.queued && a.t >= S.cancel && next > 1) { this.spin = 0; this.startStep(next, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
+      if (a.t >= dur) { this.endStep(next); return this.finishAtk(dt, null, 0); }
       return this.finishAtk(dt, a, v, sv);
     } else if (a.step === 4) {
       if (a.ph === 0) {

@@ -19,18 +19,21 @@ export function loadMotion(name) {
 export const getMotion = (name) => CLIPS[name];
 
 const _a = new THREE.Quaternion(), _b = new THREE.Quaternion();
-// 時間 t (秒) の姿勢を out.q (骨の名前 → Quaternion) と out.hips ([x, y, z]) に入れて返す
-export function sampleMotion(name, t, out) {
+// 左右反転: 骨の左右を入れ替え (shL ↔ shR など)、回転は左右 (x) の鏡に映す = (x, -y, -z, w)、腰の左右のずれは逆
+const other = (n) => n.endsWith('L') ? n.slice(0, -1) + 'R' : n.endsWith('R') ? n.slice(0, -1) + 'L' : n;
+// 時間 t (秒) の姿勢を out.q (骨の名前 → Quaternion) と out.hips ([x, y, z]) に入れて返す。mirror = 左右反転
+export function sampleMotion(name, t, out, mirror = false) {
   const c = CLIPS[name];
   if (!c) return null;
   const f = Math.max(0, Math.min(c.frames - 1, t * c.fps)), i = Math.min(c.frames - 2, Math.floor(f)), u = f - i;
   out.q = out.q || {};
   for (const n in c.bones) {
-    const B = c.bones[n];
+    const B = c.bones[mirror ? other(n) : n];
     _a.fromArray(B, i * 4); _b.fromArray(B, i * 4 + 4);
-    (out.q[n] = out.q[n] || new THREE.Quaternion()).slerpQuaternions(_a, _b, u);
+    const q = (out.q[n] = out.q[n] || new THREE.Quaternion()).slerpQuaternions(_a, _b, u);
+    if (mirror) { q.y = -q.y; q.z = -q.z; }
   }
   const H = c.hips, k = (j) => H[i * 3 + j] + (H[i * 3 + 3 + j] - H[i * 3 + j]) * u;
-  out.hips = [k(0), k(1), k(2)];
+  out.hips = [mirror ? -k(0) : k(0), k(1), k(2)];
   return out;
 }
