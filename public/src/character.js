@@ -36,6 +36,30 @@ function gradientMap() {
   return t;
 }
 
+// VRM のファイルの取得と解読 (形を組み立てる前まで)。main.js がページを開いた直後に preloadVRM() で始めておき、
+// 街を作っている間に済ませる (以前は街の生成の後に始まり、開始直後は組み立て式のキャラが出てから差し替わっていた)。
+// 先読みした結果は 1 回だけ使う (2 体目からは読み直す。同じ形を 2 か所に置けないため)
+const VRM_URL = new URL('../models/player.vrm', import.meta.url).href;
+let vrmPreload = null;
+async function fetchVRM(url) {
+  const head = await fetch(url, { method: 'HEAD' });
+  if (!head.ok) return null;
+  const [{ GLTFLoader }, { VRMLoaderPlugin }] = await Promise.all([
+    import('three/addons/loaders/GLTFLoader.js'), import('@pixiv/three-vrm'),
+  ]);
+  const loader = new GLTFLoader();
+  loader.register((parser) => new VRMLoaderPlugin(parser));
+  return loader.loadAsync(url);
+}
+export function preloadVRM() {
+  if (!vrmPreload) { vrmPreload = fetchVRM(VRM_URL); vrmPreload.catch(() => {}); }
+  return vrmPreload;
+}
+function takeVRM(url) {
+  if (url === VRM_URL && vrmPreload) { const p = vrmPreload; vrmPreload = false; return p; }
+  return fetchVRM(url);
+}
+
 // opt.vrm = false で VRM を読まない (ほかのプレイヤー用。軽い組み立て式のまま)。opt.colors = { jacket, accent, hair } で服の色を変える
 export function makeCharacter(opt = {}) {
   const gm = gradientMap();
@@ -818,14 +842,9 @@ export function makeCharacter(opt = {}) {
 
   async function loadVRM(url) {
     try {
-      const head = await fetch(url, { method: 'HEAD' });
-      if (!head.ok) return; // モデルが置かれていなければ何もしない
-      const [{ GLTFLoader }, { VRMLoaderPlugin, VRMUtils }] = await Promise.all([
-        import('three/addons/loaders/GLTFLoader.js'), import('@pixiv/three-vrm'),
-      ]);
-      const loader = new GLTFLoader();
-      loader.register((parser) => new VRMLoaderPlugin(parser));
-      const gltf = await loader.loadAsync(url);
+      const gltf = await takeVRM(url);
+      if (!gltf) return; // モデルが置かれていなければ何もしない
+      const { VRMUtils } = await import('@pixiv/three-vrm');
       const vrm = gltf.userData.vrm;
       if (!vrm) throw new Error('VRM ではないファイル');
       VRMUtils.removeUnnecessaryVertices?.(gltf.scene);
@@ -875,7 +894,7 @@ export function makeCharacter(opt = {}) {
       console.warn('VRM を読み込めなかったので、組み立て式のキャラのままにします:', e);
     }
   }
-  const ready = Promise.all([opt.vrm === false ? Promise.resolve() : loadVRM(new URL('../models/player.vrm', import.meta.url).href), locoLoading]); // VRM・動きのデータの読み込み (有無にかかわらず) が済むと解決する
+  const ready = Promise.all([opt.vrm === false ? Promise.resolve() : loadVRM(VRM_URL), locoLoading]); // VRM・動きのデータの読み込み (有無にかかわらず) が済むと解決する
 
   // 片づけ (ほかのプレイヤーが居なくなったとき)
   const dispose = () => {

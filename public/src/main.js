@@ -23,6 +23,7 @@ import { startMultiplayer } from './net/index.js';
 import { Look } from './look.js';
 import { useMocap } from './attack.js';
 import { loadMotion } from './motion.js';
+import { preloadVRM } from './character.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
 if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); loadMotion('ual_sword_attack_rm'); }
@@ -31,18 +32,22 @@ const $ = (id) => document.getElementById(id);
 const status = (t) => { $('status').textContent = t; };
 
 async function main() {
+  preloadVRM(); // キャラのモデル (8MB) を、地図データ・街の生成と並行して読み始める
   setLowMemory(TOUCH); // スマホ・タブレットはメモリが少ないので、頂点データを小さい型で持つ
   status('地図データを読み込み中…');
-  const city = await (await fetch('data/city.json')).json();
-  // 地形 (無ければ平らな地面)
-  try { const r = await fetch('data/terrain.json'); if (r.ok) setTerrain(await r.json()); } catch { /* 平らなまま */ }
-  // 地面の種類 (tools/lidar_cover.py が作る。無ければ地面は一色。見比べ用に URL に ?nocover で使わない)
-  if (!new URLSearchParams(location.search).has('nocover')) try { const r = await fetch('data/cover.json'); if (r.ok) setCover(await r.json()); } catch { /* 無し */ }
-  // 擁壁 (tools/lidar_walls.py --osm が作る。まだ見た目が不十分なので、URL に ?walls を付けたときだけ置く)
-  if (new URLSearchParams(location.search).has('walls')) try { const r = await fetch('data/walls.json'); if (r.ok) city.walls = (await r.json()).walls; } catch { /* 無し */ }
-  // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py が作る。無ければそれらを置かない)
-  let props = null;
-  try { const r = await fetch('data/props.json'); if (r.ok) props = await r.json(); } catch { /* 無し */ }
+  // 地図データは 4〜5 個を同時に取り始める (以前は 1 つずつ順に取っていたので、通信の往復待ちが重なっていた)。
+  // 使う順番 (地形 → 地面の種類) は以前と同じ。city.json 以外は、無い・読めないときは使わない
+  const QS = new URLSearchParams(location.search);
+  const getJSON = (url, on = true) => on ? fetch(url).then((r) => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
+  const cityP = fetch('data/city.json').then((r) => r.json());
+  const terrainP = getJSON('data/terrain.json');                      // 地形 (無ければ平らな地面)
+  const coverP = getJSON('data/cover.json', !QS.has('nocover'));      // 地面の種類 (tools/lidar_cover.py。見比べ用に ?nocover で使わない)
+  const wallsP = getJSON('data/walls.json', QS.has('walls'));         // 擁壁 (tools/lidar_walls.py --osm。見た目が不十分なので ?walls のときだけ)
+  const propsP = getJSON('data/props.json');                          // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py)
+  const [city, terrain, cover, walls, props] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP]);
+  if (terrain) setTerrain(terrain);
+  if (cover) setCover(cover);
+  if (walls) city.walls = walls.walls;
 
   $('credit').textContent = '地図データ ' + city.attribution;
 
@@ -142,6 +147,25 @@ async function main() {
 
   // ---- UI ----
   const overlay = $('overlay');
+  // キャラのモデルが届くまで待つ (開始直後に組み立て式のキャラから差し替わるのを防ぐ。無いとき・読めないときもここで解決する)
+  // 待つ間に、見た目の計算プログラム (シェーダ) を作っておく。以前は最初の 1 コマでまとめて作っていたので、
+  // 「準備完了」の直後に数秒止まり、歩いて新しい物が画面に入るたびにも引っかかっていた。
+  // 画面外・遠くの物も含めて、表示中の物を全部作る (?nocompile で以前どおり)
+  status('キャラを読み込み中…');
+  const precompile = () => {
+    if (Q.has('nocompile')) return Promise.resolve();
+    // 光と空気感 (look.js) が有効なときは、街を描画先 (sceneRT) に描くので、その条件で作る (色の仕上げの有無でプログラムが別になる)
+    renderer.setRenderTarget(look.post ? look.sceneRT : null);
+    const p = renderer.compileAsync(scene, camera).catch((e) => console.warn('シェーダの先読みに失敗:', e));
+    renderer.setRenderTarget(null);
+    return p;
+  };
+  const compiling = precompile();
+  await player.model.ready;
+  status('見た目を準備中…');
+  await compiling;
+  await precompile(); // キャラのモデルの分 (作り済みのものは飛ばされる)
+  look.render(); // 最初の 1 コマを読み込み画面の裏で描いておく (影・物の陰・にじみの処理もここで作られる)
   status('準備完了');
   // スクリーンショット確認用: ?shot&yaw=1.5&pitch=0.8&dist=60&t=2
   const qs = new URLSearchParams(location.search);
