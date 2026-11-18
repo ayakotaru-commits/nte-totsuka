@@ -4,12 +4,17 @@ import { STEP } from './world.js';
 import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
+import { getMotion } from './motion.js';
 import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, spinAt } from './attack.js';
 
 export const R = 0.35; // 体の半径 (m)
 const SPEED = { walk: 1.6, run: 5.5, dash: 10 }; // 何も押さないと走り。C で歩きに切り替え
-const DOOR_T = 0.9;   // 扉を開ける動きの長さ (秒)
-export const ACT_ID = { atk: 1, vault: 2, climb: 3, hurt: 4, down: 5, door: 6 }; // 動きの種類の番号 (通信用)
+const DOOR_T = 0.9;
+// 高い所から着地したときの前転 (動きのデータ ual_roll = Quaternius の Roll_RM)。この速さ (m/s) より速く落ちて、
+// 横に ROLL_MIN_SP より速く動いていたら前転する。データの 0〜ROLL.to 秒を ROLL.rate 倍で再生し、前へ進む距離もデータから
+// (2 段ジャンプで平らな所に降りただけでは前転しない: 約 2.6 m の高さ = 11.2 m/s)
+export const ROLL = { vy: 11.5, minSp: 2.5, to: 1.2, rate: 1.5 };   // 扉を開ける動きの長さ (秒)
+export const ACT_ID = { atk: 1, vault: 2, climb: 3, hurt: 4, down: 5, door: 6, roll: 7 }; // 動きの種類の番号 (通信用)
 const PUSH_RATE = 10; // 押し合いで離れる速さ (1/秒。重なりの約 6 割を 0.1 秒で戻す)
 const GRAVITY = 24, JUMP_V = 8.2, JUMP2_V = 7.6;
 
@@ -103,7 +108,10 @@ export class Player {
     }
 
     const sp = this.vel.length();
+    const air0 = !this.onGround, vy0 = this.vy;
     this.moveBody(dt);
+    // 高い所から着地: 前転する
+    if (air0 && this.onGround && vy0 < -ROLL.vy && sp > ROLL.minSp && getMotion('ual_roll')) return this.startRoll(sp);
 
     // 扉を開ける動き (doors.js が startDoor を呼ぶ)。上半身だけの動きで、移動は止めない
     if (this.doorT >= 0) {
@@ -169,6 +177,7 @@ export class Player {
     if (a) {
       d[9] = ACT_ID[a.type] || 0;
       if (a.type === 'atk') { d[10] = a.step; d[11] = a.ph; d[12] = r(a.t); }
+      else if (a.type === 'roll') d[10] = r(a.t);
       else { d[10] = r(a.s); d[11] = r(a.ly || 0); d[12] = r(a.lz || 0); }
     }
     return d;
@@ -294,6 +303,31 @@ export class Player {
     return true;
   }
 
+  // 前転を始める (着地した瞬間)。動いていた向きへ転がる
+  startRoll(sp) {
+    this.facing = Math.atan2(this.vel.x, this.vel.y);
+    this.act = { type: 'roll', t: 0, c: 0, carry: Math.max(0, sp - 6) };
+    this.atk = null; this.spin = 0;
+    return this.updateRoll(0);
+  }
+  // 前転中: 操作は受け付けない。データの腰の進み方で前へ動き、着地の勢いの残り (carry) を足す
+  updateRoll(dt) {
+    const a = this.act, c = getMotion('ual_roll'), hipH = 0.94; // hipH = キャラの腰の高さ (character.js の IDLE_EXT + HIP_DROP)
+    const z = (t) => { const f = Math.min(c.frames - 1, t * c.fps), i = Math.min(c.frames - 2, Math.floor(f)), u = f - i; return c.hips[i * 3 + 2] + (c.hips[i * 3 + 5] - c.hips[i * 3 + 2]) * u; };
+    a.t += dt;
+    const c1 = Math.min(ROLL.to, a.t * ROLL.rate);
+    const v = dt > 0 ? (z(c1) - z(a.c)) * hipH / dt + a.carry * Math.exp(-3 * a.t) : 0;
+    a.c = c1;
+    const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+    this.vel.set(fx * v, fz * v);
+    this.moveBody(dt);
+    this.stair = 0;
+    const done = c1 >= ROLL.to;
+    this.show(dt, 0, { type: 'roll', t: c1 });
+    if (done) { this.act = null; this.actCool = 0.1; this.vel.multiplyScalar(0.5); }
+    return true;
+  }
+
   // 目の前の障害物を調べ、越えられるなら動きを始める
   tryParkour(dx, dz) {
     const W = this.world, sp = this.vel.length();
@@ -326,6 +360,7 @@ export class Player {
   // パルクール中: 操作を受け付けず、決めた道筋の上を動かす
   updateAct(dt) {
     const a = this.act;
+    if (a.type === 'roll') return this.updateRoll(dt);
     a.t += dt;
     const s = Math.min(1, a.t / a.dur), m = sample(a, s);
     const px = this.pos.x, pz = this.pos.z, py = this.pos.y;

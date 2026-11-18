@@ -7,7 +7,17 @@
 import * as THREE from 'three';
 import { shrinkTextures } from './lowmem.js';
 import { samplePose, trailOn, LEGS, LEGS_UNTIL, TRAIL_STYLE, FX, TWIRL, MOCAP } from './attack.js';
-import { sampleMotion } from './motion.js';
+import { sampleMotion, loadMotion, getMotion } from './motion.js';
+
+// 歩き・走り・待機・空中・着地を、動きのデータ (Quaternius の Universal Animation Library、CC0) で動かす。
+// URL に ?handmade で、以前の手作りの動きに戻す。階段は手作りのまま (データに階段の動きが無いため)
+const DATA_ON = typeof location === 'undefined' || !new URLSearchParams(location.search).has('handmade');
+const LOCO = { idle: 'ual_idle', walk: 'ual_walk', jog: 'ual_jog', sprint: 'ual_sprint', start: 'ual_jump_start', loop: 'ual_jump_loop', land: 'ual_jump_land' };
+// データの「進む速さ」の補正 (人形とこのキャラの脚の長さの比が違うため)。地面に着いた足が滑らないよう、
+// 足の速さを測って合わせた (足が後ろへ滑る = 速さを大きく)
+const LOCO_K = { walk: 1.36, jog: 1, sprint: 1.35 };
+// 前転 (高い所からの着地。player.js の ROLL) は ?handmade でも使う (手作りの前転は無い)
+const locoLoading = Promise.all([...(DATA_ON ? Object.values(LOCO) : []), 'ual_roll'].map(loadMotion));
 
 const PI = Math.PI;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -406,6 +416,10 @@ export function makeCharacter(opt = {}) {
     if (act.type === 'atk') return atkPose(act);
     if (act.type === 'hurt' || act.type === 'down') return hitPose(act);
     if (act.type === 'door') return doorPose(act, G);
+    if (act.type === 'roll') { // 前転: データの骨の向きと、腰の高さ・左右のずれ (前後はキャラごと動く)
+      const m = sampleMotion('ual_roll', act.t, st.mo || (st.mo = {}));
+      if (m) { const X = pose(); X.q = m.q; st.hipOff = [m.hips[0], m.hips[1], 0]; st.hipAbs = true; return X; }
+    }
     const X = pose();
     const s = act.s, hy = IDLE_EXT + HIP_DROP;
     const leg = (th, kn, ft, h, k, side) => { X[th] = [-h, 0, side * 0.03]; X[kn] = [k, 0, 0]; X[ft] = [0.35, 0, 0]; };
@@ -514,6 +528,66 @@ export function makeCharacter(opt = {}) {
     updateFx(Math.max(1e-4, Math.min(dt, 0.1)), act);
   }
 
+  // 歩き・走り・待機 (地上 G) と、跳ぶ・落ちる (空中 Aa) の姿勢を、動きのデータに置き換える (dw = 置き換える度合い)
+  //   地上: 速さで 歩き・ジョギング・全力疾走 の 3 つを混ぜ、足が滑らないよう「1 周で進む距離」に合わせて位相を進める
+  //         (3 つは左足がいちばん前へ出る時をそろえてある)。止まると待機の動きへ。着地の直後は着地の動きを重ねる
+  //   空中: 上がっている間は踏み切りの動きの後半、落ちている間は空中の動き
+  const _lq = {}, _lt = new THREE.Quaternion(), _le = new THREE.Euler();
+  const locoS = {};
+  function locoSample(key, t) {
+    const c = getMotion(LOCO[key]);
+    return c ? sampleMotion(LOCO[key], t, locoS[key] || (locoS[key] = {})) : null;
+  }
+  function locoData(G, Aa, dt, sp, onGround, vy, dw) {
+    const C = {}; for (const k in LOCO) { C[k] = getMotion(LOCO[k]); if (!C[k]) return; } // 読み込み前は手作り
+    if (dw < 0.01) return;
+    const hipH = IDLE_EXT + HIP_DROP, wrap = (x) => x - Math.floor(x);
+    const keys = ['walk', 'jog', 'sprint'], v = keys.map((k) => C[k].speed * hipH * LOCO_K[k]);
+    // 速さ → 混ぜる割合
+    let w;
+    if (sp <= v[0]) w = [1, 0, 0];
+    else if (sp <= v[1]) { const u = (sp - v[0]) / (v[1] - v[0]); w = [1 - u, u, 0]; }
+    else if (sp <= v[2]) { const u = (sp - v[1]) / (v[2] - v[1]); w = [0, 1 - u, u]; }
+    else w = [0, 0, 1];
+    st.lw = st.lw || [1, 0, 0];
+    for (let i = 0; i < 3; i++) st.lw[i] += (w[i] - st.lw[i]) * (1 - Math.exp(-dt * 10));
+    const ws = st.lw[0] + st.lw[1] + st.lw[2];
+    let cyc = 0; keys.forEach((k, i) => { cyc += st.lw[i] / ws * v[i] * C[k].dur; }); // 1 周で進む距離 (m)
+    if (onGround && sp > 0.05) st.lp = wrap((st.lp || 0) + dt * sp / cyc);
+    // 地上: 歩き・走りを混ぜる
+    let acc = 0, Q = null;
+    keys.forEach((k, i) => {
+      const wi = st.lw[i] / ws; if (wi < 0.01) return;
+      const m = locoSample(k, wrap((st.lp || 0) + C[k].phaseL) * C[k].dur);
+      acc += wi;
+      if (!Q) { Q = {}; for (const n in m.q) Q[n] = (_lq[n] || (_lq[n] = new THREE.Quaternion())).copy(m.q[n]); }
+      else for (const n in m.q) Q[n].slerp(m.q[n], wi / acc);
+    });
+    // 止まっているとき: 待機の動き (gw = 動いている度合い)
+    const idle = locoSample('idle', st.t % C.idle.dur);
+    for (const n in Q) { const tmp = _lt.copy(Q[n]); Q[n].copy(idle.q[n]).slerp(tmp, st.gw); }
+    // 着地の直後: 着地の動き (しゃがんで起きる) を重ねる。強く落ちたほど深く、走っているときは浅く
+    if (st.landT < 0.55) {
+      const ld = locoSample('land', 0.1 + st.landT * 1.3);
+      const lw = (st.landAmp || 0) * (1 - sstep(0.22, 0.55, st.landT)) * (1 - 0.65 * st.gw);
+      for (const n in Q) Q[n].slerp(ld.q[n], lw);
+    }
+    // 空中: 上がっている間は踏み切りの後半 (脚を抱える)、落ちている間は空中の動き
+    const up = locoSample('start', 0.45 + 0.4 * clamp(1 - vy / 8, 0, 1)), fall = locoSample('loop', st.t % C.loop.dur);
+    const fw = sstep(1.5, -2, vy);
+    for (const n in Q) {
+      _lt.slerpQuaternions(up.q[n], fall.q[n], fw);
+      for (const [P, q] of [[G, Q[n]], [Aa, _lt]]) {
+        if (!P[n]) continue;
+        const p = P[n];
+        _le.set(p[0], p[1], p[2], 'XYZ');
+        _lq.tmp = (_lq.tmp || new THREE.Quaternion()).setFromEuler(_le).slerp(q, dw);
+        _le.setFromQuaternion(_lq.tmp, 'XYZ');
+        P[n] = [_le.x, _le.y, _le.z];
+      }
+    }
+  }
+
   function updateInner(dt, speed, onGround, vy, stair, act) {
     dt = Math.max(1e-4, Math.min(dt, 0.1));
     const sdt = Math.min(dt, 1 / 30); // ばね用 (大きすぎる dt で暴れないように)
@@ -523,7 +597,8 @@ export function makeCharacter(opt = {}) {
 
     // --- 状態 ---
     if (!onGround) { st.lastVy = vy; st.wasAir = true; }
-    else if (st.wasAir) { st.land = clamp(-st.lastVy / 14, 0.2, 1); st.wasAir = false; }
+    else if (st.wasAir) { st.land = clamp(-st.lastVy / 14, 0.2, 1); st.landAmp = st.land; st.landT = 0; st.wasAir = false; }
+    st.landT = (st.landT ?? 9) + dt;
     st.land *= Math.exp(-dt * 7);
     st.airW += ((onGround ? 0 : 1) - st.airW) * rate(onGround ? 14 : 18);
     st.gw += ((onGround ? sstep(0.08, 0.7, sp) : 0) - st.gw) * rate(12);
@@ -604,9 +679,12 @@ export function makeCharacter(opt = {}) {
     Aa.elL = [-0.5, 0, 0]; Aa.elR = [-0.5, 0, 0];
     Aa.haL = [0, 0, 0.5]; Aa.haR = [0, 0, -0.5];
 
+    // --- 動きのデータで置き換える (階段では手作りのまま) ---
+    if (DATA_ON) locoData(G, Aa, dt, sp, onGround, vy, 1 - sstep(0.1, 0.5, stK));
+
     // --- パルクールの姿勢 (終わった後は、最後の姿勢からふつうの姿勢へ戻す) ---
     st.anchor = null;
-    st.hipOff = null;
+    st.hipOff = null; st.hipAbs = false;
     if (act) st.actPose = actPose(act, Aa, G);
     st.trail = !!act && act.type === 'atk' && trailOn(act.step, act.ph, act.t);
     st.trailStyle = st.trail ? TRAIL_STYLE[act.step + ':' + act.ph] || null : null;
@@ -648,6 +726,9 @@ export function makeCharacter(opt = {}) {
     hips.position.y = mix(planted + runFloat + Math.sin(st.t * 1.6) * 0.003 * (1 - gw), airY, st.airW);
     // 動きのデータの腰の前後・左右の移動 (踏み込みで腰が前へ出る)。足は地面に残る
     const ho = st.hipOff, hk = ho ? (IDLE_EXT + HIP_DROP) * xw : 0;
+    // 前転: 腰の高さもデータのまま (転がっている間は足が地面から離れるので、脚から高さを決めない)
+    st.absW = (st.absW || 0) + ((st.hipAbs ? 1 : 0) - (st.absW || 0)) * k;
+    if (st.absW > 0.001) hips.position.y = mix(hips.position.y, (IDLE_EXT + HIP_DROP) * (1 + (st.hipAbs ? ho[1] : 0)), st.absW * xw);
     hips.position.x += ((ho ? ho[0] * hk : 0) - hips.position.x) * k;
     hips.position.z += ((ho ? ho[2] * hk : 0) - hips.position.z) * k;
     if (st.anchor && !vrmRig) { // 手を縁に合わせる (VRM のときは applyVRM が VRM の手で合わせる)
@@ -711,7 +792,7 @@ export function makeCharacter(opt = {}) {
     const fs = vrmRig.flip ? -1 : 1; // VRM 0.x は前後・左右が逆
     nodes.hips.position.x = vrmRig.hx0 + fs * hips.position.x / scale; nodes.hips.position.z = vrmRig.hz0 + fs * hips.position.z / scale;
     // この VRM の足の実際の位置から、いちばん低い足裏が地面 (y=0) に来るよう腰の高さを直す (空中では直さない)
-    const gnd = 1 - st.airW;
+    const gnd = (1 - st.airW) * (1 - (st.absW || 0)); // 前転中は足を地面に合わせない
     if (gnd > 0.01) {
       vrm.scene.updateMatrixWorld(true);
       const baseY = root.matrixWorld.elements[13]; // キャラの足元 (地形) の高さ。足の位置はここからの差で見る
@@ -794,7 +875,7 @@ export function makeCharacter(opt = {}) {
       console.warn('VRM を読み込めなかったので、組み立て式のキャラのままにします:', e);
     }
   }
-  const ready = opt.vrm === false ? Promise.resolve() : loadVRM(new URL('../models/player.vrm', import.meta.url).href); // VRM の読み込み (有無にかかわらず) が済むと解決する
+  const ready = Promise.all([opt.vrm === false ? Promise.resolve() : loadVRM(new URL('../models/player.vrm', import.meta.url).href), locoLoading]); // VRM・動きのデータの読み込み (有無にかかわらず) が済むと解決する
 
   // 片づけ (ほかのプレイヤーが居なくなったとき)
   const dispose = () => {

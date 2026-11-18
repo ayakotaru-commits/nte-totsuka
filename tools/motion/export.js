@@ -9,6 +9,7 @@
 // 書き出す形: { name, source, license, fps, frames, dur, bones: { hips: [x,y,z,w, ...], ... }, hips: [x,y,z, ...] }
 //   bones = キャラの骨 (character.js の BONE。腕は下ろした姿勢が基準) の、親から見た向き (コマごと)
 //   hips = 腰の移動 (T ポーズからの差 ÷ 腰の高さ。正面 +z、左 +x)
+//   speed = くり返しの動きで進む速さ (腰の高さ / 秒)、phaseL = 左足がいちばん前へ出る時 (0〜1)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -26,7 +27,9 @@ const UAL_MAP = {
   thL: 'DEF-thigh.L', knL: 'DEF-shin.L', ftL: 'DEF-foot.L', thR: 'DEF-thigh.R', knR: 'DEF-shin.R', ftR: 'DEF-foot.R',
 };
 // 書き出す動き: [元の名前, 書き出す名前]
-const CLIPS = [['Sword_Attack', 'ual_sword_attack']];
+const CLIPS = [['Sword_Attack', 'ual_sword_attack'],
+  ['Idle_Loop', 'ual_idle'], ['Walk_Loop', 'ual_walk'], ['Jog_Fwd_Loop', 'ual_jog'], ['Sprint_Loop', 'ual_sprint'],
+  ['Jump_Start', 'ual_jump_start'], ['Jump_Loop', 'ual_jump_loop'], ['Jump_Land', 'ual_jump_land'], ['Roll_RM', 'ual_roll']];
 
 (async () => {
   if (!fs.existsSync(UAL)) { console.error('元のデータがありません。先に:\n  git clone --depth 1 https://github.com/J-Ponzo/gltf-universal-animation-library.git data/raw/ual'); process.exit(1); }
@@ -48,7 +51,7 @@ const CLIPS = [['Sword_Attack', 'ual_sword_attack']];
     const r = await page.evaluate(([s, m, map]) => window.exportClip('/ual/' + s, m, 'A_TPose', map, 30), [path.basename(UAL), src, UAL_MAP]);
     const out = { name, source: 'Quaternius Universal Animation Library (Standard) / ' + src, license: 'CC0 1.0', ...r };
     fs.writeFileSync(path.join(OUT, name + '.json'), JSON.stringify(out));
-    console.log(name, `${r.frames} コマ ${r.dur.toFixed(2)} 秒`);
+    console.log(name, `${r.frames} コマ ${r.dur.toFixed(2)} 秒 速さ ${r.speed} 位相 ${r.phaseL}`);
   }
   await browser.close(); server.close();
 })();

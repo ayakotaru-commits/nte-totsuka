@@ -15,6 +15,9 @@ export function loadMotion(name) {
   return loading[name];
 }
 
+// 読み込み済みのデータ (無ければ undefined)。speed・phaseL・dur などを見るのに使う
+export const getMotion = (name) => CLIPS[name];
+
 const _a = new THREE.Quaternion(), _b = new THREE.Quaternion();
 // 時間 t (秒) の姿勢を out.q (骨の名前 → Quaternion) と out.hips ([x, y, z]) に入れて返す
 export function sampleMotion(name, t, out) {

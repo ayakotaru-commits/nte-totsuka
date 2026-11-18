@@ -9,7 +9,7 @@ const DELAY = 0.22;      // 見せるのを遅らせる時間 (秒)。届く間�
 const SHOW_DIST = 220;   // これより遠い人は描かない (m)
 const NAME_DIST = 70;    // これより遠い人の名前は出さない (m)
 const WARP_DIST = 15;    // 一度にこれ以上動いたら、間をつながずに飛ばす (地図からのワープ)
-const ACT_NAME = [null, 'atk', 'vault', 'climb', 'hurt', 'down', 'door'];
+const ACT_NAME = [null, 'atk', 'vault', 'climb', 'hurt', 'down', 'door', 'roll'];
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const lerpAngle = (a, b, t) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
@@ -95,6 +95,8 @@ export class Remotes {
       if (type === 'atk') {
         const step = A[10], ph = A[11], S = STEPS[step];
         if (S && S.dur[ph] !== undefined) act = { type, step, ph, t: Math.min(A[12] + Math.min(since, 0.4), S.dur[ph] + 0.2) };
+      } else if (type === 'roll') { // 前転: データの時間を進める (player.js の ROLL.rate 倍)
+        act = { type, t: Math.min(A[10] + Math.min(since, 0.4) * 1.5, 1.2) };
       } else if (type === 'vault' || type === 'climb') {
         const same = Bd[9] === A[9] && Bd[10] >= A[10];
         act = { type, s: same ? lerp(A[10], Bd[10], u) : A[10], ly: same ? lerp(A[11], Bd[11], u) : A[11], lz: same ? lerp(A[12], Bd[12], u) : A[12] };
