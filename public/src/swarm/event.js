@@ -263,8 +263,8 @@ export class Swarm {
       }
     }
 
-    // 出す: 一度に ALIVE 体まで、全部で TOTAL 体
-    if (this.state === 'run') {
+    // 出す: 一度に ALIVE 体まで、全部で TOTAL 体 (やられた後も、まわりに集まってくるよう出し続ける)
+    if (this.running) {
       this.nextAt -= dt;
       if (this.nextAt <= 0 && this.list.length < ALIVE && this.spawned < TOTAL) {
         this.spawn();
@@ -331,7 +331,8 @@ export class Swarm {
           let d = want - e.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
           e.yaw += d * (1 - Math.exp(-8 * dt));
           if (this.state === 'run' && !pl.dead && td < 1.45 && e.cd <= 0 && Math.abs(p.y - e.y) < 1.5) { this.setState(e, 'wind'); break; }
-          const sp = this.state === 'run' && td > 1.0 ? e.speed : 0;
+          // やられた後は、山のまわりに集まり続ける (攻撃はしない。押し合いで山を囲む)
+          const sp = (this.state === 'run' && td > 1.0) || (this.state === 'down' && td > 0.9) ? e.speed : 0;
           e.vx += (tx / td * sp - e.vx) * (1 - Math.exp(-6 * dt));
           e.vz += (tz / td * sp - e.vz) * (1 - Math.exp(-6 * dt));
           e.ph += dt * (4 + Math.hypot(e.vx, e.vz) * 2.6);
@@ -386,7 +387,7 @@ export class Swarm {
       this.downT += dt;
       if (!this.overShown && this.downT > this.pileEnd + 0.8) {
         this.overShown = true; this.answer = null;
-        if (this.ui.overText) this.ui.overText.textContent = `${this.killed} 体たおした（残り ${TOTAL - this.killed} 体）`;
+        if (this.ui.overText) this.ui.overText.textContent = `${this.killed} 体たおした`;
         if (this.ui.over) this.ui.over.hidden = false;
         this.ui.box.hidden = true;
       }

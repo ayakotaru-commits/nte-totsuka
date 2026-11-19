@@ -73,10 +73,12 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
         overAt = +t.toFixed(1);
         const P = S.list.filter(e => e.st === 'pile');
         pile = { n: P.length, top: +(Math.max(...P.map(e => e.y)) - pl.pos.y).toFixed(2), spread: +Math.max(...P.map(e => Math.hypot(e.x - pl.pos.x, e.z - pl.pos.z))).toFixed(2) };
+        pile.aroundAtOver = S.list.filter(e => e.st !== 'pile' && Math.hypot(e.x - pl.pos.x, e.z - pl.pos.z) < 3).length;
       }
       if (S.state === 'down' && takenAtDown === null) takenAtDown = S.taken;
       // やられた表示が出てから 1 秒は待つ (勝手に閉じないこと)、その後 Enter
-      tick(over && t - overAt > 1 ? mk([], ['Enter']) : mk()); t += dt; chk();
+      if (over && t - overAt > 4 && pile.aroundAfter4s === undefined) pile.aroundAfter4s = S.list.filter(e => e.st !== 'pile' && Math.hypot(e.x - pl.pos.x, e.z - pl.pos.z) < 3).length;
+      tick(over && t - overAt > 4.1 ? mk([], ['Enter']) : mk()); t += dt; chk();
       maxAlive = Math.max(maxAlive, S.list.length);
       for (const e of S.list) if (e.st === 'splat' && !seen.has(e)) { seen.add(e); landed.push([e.x, e.z, e.y, e.ring.x, e.ring.z]); }
       if (firstHit === null && S.hp < 100) firstHit = +t.toFixed(1);
@@ -162,7 +164,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
         pl.update(1 / 30, inp, g.cam); S.update(1 / 30);
         if (s.atk && k > n - 40 && S.list.some(e => e.tint > 0.6)) break; // 斬った瞬間で止める
       }
-      if (s.pile) { S.hp = 20; for (let k = 0; k < 900 && !S.overShown; k++) { pl.update(1 / 30, mk(), g.cam); S.update(1 / 30); } }
+      if (s.pile) { S.hp = 20; for (let k = 0; k < 900 && !S.overShown; k++) { pl.update(1 / 30, mk(), g.cam); S.update(1 / 30); } for (let k = 0; k < 120; k++) { pl.update(1 / 30, mk(), g.cam); S.update(1 / 30); } }
       g.look.render = g.renderSave;
       if (s.cam) {
         g.cam.update = () => {};
