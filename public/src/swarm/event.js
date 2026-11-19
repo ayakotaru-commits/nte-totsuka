@@ -1,11 +1,12 @@
-// イベント「ミズタマン大量発生クエスト」: グランシティの時計の棟の門をくぐって中庭に入ると、受けるかどうかを聞く表示が出る。
+// イベント「うな○ー大量発生クエスト」: グランシティの時計の棟の門をくぐって中庭に入ると、受けるかどうかを聞く表示が出る。
 // 「はい」(Y / Enter / 画面のボタン) で始まり、まわりの棟の屋上から
-// 敵キャラ「ミズタマン」(見た目は swarm/model.js) が大の字で次々に落ちてきて、起き上がって襲ってくる。
+// 敵キャラ「うな○ー」(見た目は swarm/model.js) が大の字で次々に落ちてきて、起き上がって襲ってくる。
 //   ・一度に出るのは ALIVE 体まで。倒すと次が屋上から落ちてくる。全部で TOTAL 体倒すとクリア
 //   ・落ちてくる所には地面に赤い輪が出る
 //   ・攻撃 (J / クリック / 「攻撃」) の剣の軌跡が出ている間に、届く範囲 (REACH・ARC) にいる敵に当たる。
 //     1・2 撃目は 1、3 撃目 (回転斬り) は 2 のダメージ。敵の体力は 2
-//   ・敵は近づくと、ためてから体当たりしてくる。当たると体力が減る。0 になるとやられて、門の外からやり直し
+//   ・敵は近づくと、ためてから体当たりしてくる。5 回当たるとやられる。やられると、近くの敵が次々に飛び乗って山のように重なり、
+//     「やられた」の表示が出る。OK (Enter / Space / 画面のボタン) で門の外へ戻る (門をくぐると再挑戦)
 //   ・中庭から遠く (DIST_GIVEUP m) 離れて数秒たつと、敵はいなくなる (R でスタート地点に戻ったときも)
 // 自分の画面だけの出来事 (マルチプレイのほかの人には見えない)。
 // 「いいえ」(N / 画面のボタン) を選ぶか、聞いている間に中庭から出ると、いったん中庭の外へ出るまでは聞かない。
@@ -14,14 +15,15 @@ import { H } from '../terrain.js';
 import { trailOn } from '../attack.js';
 import { Herd, Fx, BODY } from './model.js';
 
-export const TOTAL = 100, ALIVE = 30;
+export const TOTAL = 100, ALIVE = 50;
 const G = 24;                                  // 重力 (player.js と同じ)
 const R_E = 0.38;                              // 敵の体の半径
 const HP_E = 2, DMG_E = [0, 1, 1, 2, 2, 2];    // 敵の体力、プレイヤーの攻撃の手順ごとのダメージ
 const REACH = [0, 2.4, 2.4, 2.8, 2.8, 2.9];    // 剣が届く距離 (server/room.js より少し長め: 敵の体が平たく横に広いため)
 const ARC = [0, 1.75, 1.75, 3.2, 3.2, 1.6];    // 正面から左右にこの角度 (rad) まで当たる (server/room.js と同じ)
-const HP_P = 100, DMG_P = 7, INVULN = 0.7;     // プレイヤーの体力、体当たり 1 回で減る量、当たった後に当たらない時間
-const HEAL_KILL = 1;                           // 1 体倒すと戻る体力
+const HP_P = 100, DMG_P = 20, INVULN = 1.0;    // プレイヤーの体力、体当たり 1 回で減る量 (5 回でやられる。持ち主の希望)、当たった後に当たらない時間
+const HEAL_KILL = 0;                           // 1 体倒すと戻る体力 (5 回でやられるよう、戻さない)
+const PILE_N = 16, PILE_DT = 0.09, PILE_H = 0.26; // やられたとき上に飛び乗って重なる数、飛び乗る間隔 (秒)、1 段の厚さ (m)
 const DIST_GIVEUP = 80, T_GIVEUP = 4;
 
 // 場所 (グランシティ。data/appearance.json の garden.layout と、住棟 g5317b7beb1 の輪郭から)
@@ -88,6 +90,12 @@ export function poseOf(e, t = e.t) {
       const u = t / DUR.hurt;
       return Object.assign(p, { pitch: -0.55 * Math.sin(Math.min(1, u * 1.6) * Math.PI / 2) * (1 - sm(u)), arm: 2.5, leg: 0.4, sq: -0.1 * (1 - u) });
     }
+    case 'pile': { // やられたプレイヤーの上へ飛び乗る: 待つ間は身がまえ、飛んでいる間は大の字、乗ったらうつぶせでぴくぴく
+      if (t < 0) return Object.assign(p, { pitch: -0.3, arm: 2.5 + w * 0.08, sq: 0.12, leg: 0.2 });
+      if (t < e.dur) return Object.assign(p, { pitch: Math.min(Math.PI / 2, 0.3 + t / e.dur * 1.6), arm: 2.25 + w * 0.15, leg: 0.6 - w * 0.1 });
+      const tw = Math.sin(t * 9 + e.seed * 3) * 0.15;
+      return Object.assign(p, { pitch: Math.PI / 2, arm: 2.3 + tw, leg: 0.6 - tw, sq: t - e.dur < 0.2 ? Math.sin((t - e.dur) / 0.2 * Math.PI) * 0.15 : 0 });
+    }
     case 'die': // 吹き飛んでくるくる回る
       return Object.assign(p, { pitch: -t * 14, arm: 2.6 + w * 0.2, leg: 0.8, tint: 0.5 });
   }
@@ -106,11 +114,11 @@ export class Swarm {
     this.armed = true;              // 中庭の外へ出たら、また始められる
     this.asking = false;            // 受けるかどうかを聞いている
     this.answer = null;             // 画面のボタンで選んだ答え ('yes' / 'no')
-    this.ui = { ask: $('swarm-ask'), box: $('swarm'), left: $('swarm-left'), hp: $('swarm-hp'), banner: $('swarm-banner'), hurt: $('mp-hurt'), time: $('swarm-time') };
+    this.ui = { over: $('swarm-over'), overText: $('swarm-over-text'), ask: $('swarm-ask'), box: $('swarm'), left: $('swarm-left'), hp: $('swarm-hp'), banner: $('swarm-banner'), hurt: $('mp-hurt'), time: $('swarm-time') };
     this.spawns = this.findSpawns();
     this.lastSpawnAt = new Map();
     this.clock = 0;
-    for (const [id, a] of [['swarm-yes', 'yes'], ['swarm-no', 'no']]) {
+    for (const [id, a] of [['swarm-yes', 'yes'], ['swarm-no', 'no'], ['swarm-ok', 'ok']]) {
       const b = $(id);
       if (b) b.addEventListener('pointerdown', (ev) => { ev.preventDefault(); ev.stopPropagation(); this.answer = a; });
     }
@@ -142,10 +150,10 @@ export class Swarm {
   get running() { return this.state === 'run' || this.state === 'down'; }
 
   start() {
-    this.state = 'run'; this.armed = false;
+    this.state = 'run'; this.armed = false; this.taken = 0; this.overShown = false;
     this.killed = 0; this.spawned = 0; this.hp = HP_P; this.inv = 0; this.time = 0; this.queue = 0; this.nextAt = 1.2; this.away = 0;
     this.lastSerial = -1;
-    this.banner('ミズタマンが屋上から降ってくる！', 2.5);
+    this.banner('うな○ーが屋上から降ってくる！', 2.5);
     this.ui.box.hidden = false;
     this.draw();
   }
@@ -156,6 +164,7 @@ export class Swarm {
     this.list.length = 0;
     this.state = 'idle';
     this.ui.box.hidden = true;
+    if (this.ui.over) this.ui.over.hidden = true;
   }
 
   banner(text, sec) {
@@ -234,12 +243,12 @@ export class Swarm {
         else if (key('KeyN') || this.answer === 'no') this.ask(false);
       }
     }
-    if (this.running) this.step(dt);
+    if (this.running) this.step(dt, input);
     this.herd.flush();
     this.fx.update(dt, this.camera, this.list.map((e) => (e.st === 'perch' || e.st === 'fall') ? e.ring : null).filter(Boolean));
   }
 
-  step(dt) {
+  step(dt, input) {
     const pl = this.player, p = pl.pos, W = this.world;
     if (this.state === 'run') this.time += dt;
     this.inv -= dt;
@@ -250,7 +259,7 @@ export class Swarm {
       const far = Math.hypot(p.x - SITE.center[0], p.z - SITE.center[1]) > DIST_GIVEUP;
       this.away = far ? this.away + dt : 0;
       if (this.away > T_GIVEUP || (far && Math.hypot(p.x - SITE.center[0], p.z - SITE.center[1]) > 400)) {
-        this.stop(false); this.banner('ミズタマンたちは帰っていった', 3); return;
+        this.stop(false); this.banner('うな○ーたちは帰っていった', 3); return;
       }
     }
 
@@ -259,7 +268,7 @@ export class Swarm {
       this.nextAt -= dt;
       if (this.nextAt <= 0 && this.list.length < ALIVE && this.spawned < TOTAL) {
         this.spawn();
-        this.nextAt = this.spawned < ALIVE ? 0.32 + Math.random() * 0.12 : 0.4 + Math.random() * 0.8;
+        this.nextAt = this.spawned < ALIVE ? 0.22 + Math.random() * 0.1 : 0.4 + Math.random() * 0.8;
       }
     }
 
@@ -347,6 +356,14 @@ export class Swarm {
           e.vx *= Math.exp(-7 * dt); e.vz *= Math.exp(-7 * dt); this.move(e, dt);
           if (e.t >= DUR.hurt) { this.setState(e, 'chase'); e.cd = 0.4 + Math.random() * 0.6; }
           break;
+        case 'pile': {
+          if (e.t < 0) { e.yaw = Math.atan2(tx, tz); break; }
+          const u = Math.min(1, e.t / e.dur);
+          e.x = e.fx + (e.tx - e.fx) * u; e.z = e.fz + (e.tz - e.fz) * u;
+          e.y = e.fy + (e.ty - e.fy) * u + Math.sin(u * Math.PI) * e.arc;
+          if (u >= 1 && !e.landed) { e.landed = true; this.fx.dust(e.x, e.y, e.z, 5, 0.6); }
+          break;
+        }
         case 'die': {
           e.vy -= G * dt;
           e.x += e.vx * dt; e.z += e.vz * dt; e.y += e.vy * dt;
@@ -364,14 +381,22 @@ export class Swarm {
     }
     this.separate();
 
-    // やられた → 少し待って、門の外へ戻る
+    // やられた → 敵が上に重なり終わったら「やられた」の表示。OK で門の外へ戻る
     if (this.state === 'down') {
       this.downT += dt;
-      if (this.downT > 2.6) {
+      if (!this.overShown && this.downT > this.pileEnd + 0.8) {
+        this.overShown = true; this.answer = null;
+        if (this.ui.overText) this.ui.overText.textContent = `${this.killed} 体たおした（残り ${TOTAL - this.killed} 体）`;
+        if (this.ui.over) this.ui.over.hidden = false;
+        this.ui.box.hidden = true;
+      }
+      const key = (k) => input && input.pressed(k);
+      if (this.overShown && (key('Enter') || key('Space') || key('KeyY') || this.answer === 'ok')) {
+        this.answer = null;
         this.stop(true);
         this.player.revive();
         this.onRespawn(SITE.out[0], SITE.out[1], Math.atan2(SITE.outFace[0] - SITE.out[0], SITE.outFace[1] - SITE.out[1]));
-        this.banner(`やられた…　${this.killed} 体撃破。門をくぐると再挑戦`, 4);
+        this.banner('門をくぐると再挑戦できます', 3);
       }
     } else if (this.state === 'run' && this.killed >= TOTAL) {
       this.stop(false);
@@ -388,12 +413,28 @@ export class Swarm {
     e.struck = true;
     if (this.state !== 'run' || this.inv > 0 || pl.dead) return;
     this.inv = INVULN;
-    this.hp -= DMG_P;
+    this.hp -= DMG_P; this.taken++;
     pl.hurt(dx / (d || 1), dz / (d || 1), 1);
     const h = this.ui.hurt; h.classList.remove('on'); void h.offsetWidth; h.classList.add('on');
     this.fx.burst(p.x, p.y + 1.1, p.z, 6, ['#ff6b6b', '#ffd166'], 3.5, 0.14, 0.4, 8);
-    if (this.hp <= 0) { this.hp = 0; this.state = 'down'; this.downT = 0; pl.down(); this.banner('やられた…', 2.5); }
+    if (this.hp <= 0) { this.hp = 0; this.state = 'down'; this.downT = 0; pl.down(); this.startPile(); }
     this.draw();
+  }
+
+  // やられた: 近くの敵から順に、プレイヤーの上へ飛び乗って重なる (山になる)
+  startPile() {
+    const p = this.player.pos, gy = this.world.groundAt(p.x, p.z, p.y + 0.5);
+    const cand = this.list.filter((e) => e.st !== 'die' && e.st !== 'perch' && e.st !== 'fall')
+      .sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)).slice(0, PILE_N);
+    this.pileEnd = 0;
+    cand.forEach((e, k) => {
+      const d = Math.hypot(e.x - p.x, e.z - p.z), a = Math.random() * Math.PI * 2, r = 0.15 + Math.random() * 0.35 * Math.max(0.3, 1 - k / PILE_N);
+      Object.assign(e, { st: 'pile', t: -k * PILE_DT - Math.random() * 0.05, fx: e.x, fy: e.y, fz: e.z,
+        tx: p.x + Math.cos(a) * r, tz: p.z + Math.sin(a) * r, ty: gy + 0.32 + k * PILE_H,
+        dur: 0.45 + Math.min(0.5, d * 0.05), arc: 1.6 + k * 0.12 + Math.min(2, d * 0.15), landed: false, tint: 0, hold: 0 });
+      e.yaw = Math.random() * Math.PI * 2;
+      this.pileEnd = Math.max(this.pileEnd, -e.t + e.dur);
+    });
   }
 
   // 地面の上を動かす (建物・柵には当たる)。段差は吸い付く
@@ -410,10 +451,10 @@ export class Swarm {
     const L = this.list, p = this.player.pos;
     for (let i = 0; i < L.length; i++) {
       const a = L[i];
-      if (a.st === 'perch' || a.st === 'fall' || a.st === 'die') continue;
+      if (a.st === 'perch' || a.st === 'fall' || a.st === 'die' || a.st === 'pile') continue;
       for (let j = i + 1; j < L.length; j++) {
         const b = L[j];
-        if (b.st === 'perch' || b.st === 'fall' || b.st === 'die') continue;
+        if (b.st === 'perch' || b.st === 'fall' || b.st === 'die' || b.st === 'pile') continue;
         const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz), m = R_E * 2;
         if (d >= m || d < 1e-4) continue;
         const k = (m - d) / d * 0.5;

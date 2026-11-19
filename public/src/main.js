@@ -143,7 +143,7 @@ async function main() {
     Object.assign(cam, { yaw: restore.yaw, pitch: restore.pitch, dist: restore.dist });
   }
 
-  // イベント「ミズタマン大量発生クエスト」(グランシティの中庭に入ると、受けるか聞く。swarm/event.js)。?noswarm で無効、?swarm で開いてすぐ始める (確認用)
+  // イベント「うな○ー大量発生クエスト」(グランシティの中庭に入ると、受けるか聞く。swarm/event.js)。?noswarm で無効、?swarm で開いてすぐ始める (確認用)
   const swarm = new Swarm({ scene, world, player, camera, onRespawn: (x, z, face) => {
     const p = findFree(world, x, z); player.teleport(p.x, p.z); player.facing = face; cam.yaw = face + Math.PI; cam.update(0, player.pos, true);
   } });
