@@ -979,6 +979,9 @@ def main():
     # 目印になる大きな建物の外観 (data/appearance.json の landmarks)。上の段にも付けるので、形を直した後に行う
     import landmarks
     looks = landmarks.apply(buildings, roads)
+    # 神社の社殿 (data/appearance.json の shrines)。PLATEAU の箱を描かない印 (hide) を付ける。社殿は public/src/shrine.js が描く
+    import shrine
+    shrine.apply(buildings, roads)
 
     # 名前付き建物を POI に追加
     for b in buildings:

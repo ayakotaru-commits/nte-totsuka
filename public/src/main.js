@@ -26,6 +26,7 @@ import { loadMotion } from './motion.js';
 import { preloadVRM } from './character.js';
 import { Swarm, SITE as SWARM_SITE } from './swarm/event.js';
 import { Rhythm, SITE as RHYTHM_SITE } from './rhythm/event.js';
+import { buildShrines } from './shrine.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
 if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); loadMotion('ual_sword_attack_rm'); }
@@ -97,9 +98,11 @@ async function main() {
   // ---- world ----
   status('街を生成中…');
   await new Promise(r => setTimeout(r, 0));
-  const world = new World(city.buildings, city.bounds);
+  // 外観を別に描く建物・道 (hide。神社の社殿と参道 = tools/shrine.py → shrine.js) は、街の形・当たり判定・階段から外す (ミニマップには残す)
+  const shown = city.buildings.some((b) => b.hide) || city.roads.some((r) => r.hide) ? { ...city, buildings: city.buildings.filter((b) => !b.hide), roads: city.roads.filter((r) => !r.hide) } : city;
+  const world = new World(shown.buildings, city.bounds);
   const t0 = performance.now();
-  const built = buildCity(city, world, props);
+  const built = buildCity(shown, world, props);
   scene.add(built.group);
   if (new URLSearchParams(location.search).has('perf')) { // 計測用: 街の生成時間と三角形の数
     let tris = 0; const per = {};
@@ -107,7 +110,9 @@ async function main() {
     console.info('[perf] buildCity ms=' + Math.round(performance.now() - t0) + ' tris=' + Math.round(tris) + ' ' + JSON.stringify(per));
   }
   if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
-  const detail = await loadDetail({ scene, city, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
+  const shrineG = props ? buildShrines(props.shrines, scene, world) : null; // 神社の社殿 (shrine.js。V キーに関係なく描く)
+  const detail = await loadDetail({ scene, city: shown, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
+  if (shrineG) built.windowMats.push(...(shrineG.userData.emissive || [])); // 灯籠・提灯の明かり (夜に光る。time.js)
   const doors = new DoorControl(world); // 開け閉めできる扉 (時計の棟。形は detail が作って登録する)
 
   releaseGeometryAfterUpload(scene); // スマホ・タブレットだけ: 頂点データの JS 側の控えを、GPU に送った後に手放す
