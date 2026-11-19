@@ -28,11 +28,15 @@ const SECTIONS = [
 ];
 const SILENT = new Set([10, 12]);        // 拍子木の伴奏が止まる小節
 // 手本の打ち方の候補 (1 小節を 8 分音符 8 つに分けた位置。0, 2, 4, 6 が表拍)。[1 回目の候補, 2 回目の候補]
+// 手本の小節の 4 拍目 (6・7) は空けておき、そこで「はい！」の合図を出す (返す小節の 1 打目に備えられるように)
 const POOLS = {
-  uchiwa: [[[0, 2, 4, 6], [0, 2, 4], [0, 4, 6]], [[0, 2, 3, 4], [0, 1, 2, 4], [0, 2, 4, 5, 6]]],
-  ofuda: [[[1, 3, 5, 7], [0, 3, 4, 7], [0, 2, 3, 6]], [[0, 1, 3, 5], [1, 3, 4, 6], [2, 3, 5, 7]]],
-  stop: [[[0, 2, 4, 6], [0, 2, 4], [0, 2, 6]], [[0, 3, 4, 6], [0, 2, 5, 6], [0, 1, 4, 6]]],
+  uchiwa: [[[0, 2, 4], [0, 4], [0, 2, 4]], [[0, 2, 3, 4], [0, 1, 2, 4], [0, 2, 3, 4]]],
+  ofuda: [[[1, 3, 4], [0, 3, 4], [0, 1, 3]], [[0, 1, 3, 4], [1, 2, 3, 4], [0, 1, 2, 3]]],
+  stop: [[[0, 2, 4], [0, 1, 2, 4], [0, 2, 3]], [[0, 3, 4], [0, 2, 3, 4], [0, 1, 4]]],
 };
+const CUE = 6;                           // 「はい！」の合図を出す位置 (手本の小節の 4 拍目)
+const RING = BEAT * 1.5;                 // 次に打つ升目のまわりの輪が、この秒数前から縮み始める
+const AUDIO_WAIT = 1.5;                  // 音の準備を待つ長さ (秒)。過ぎたら音なしで始める
 
 // 場所 (八坂神社。city.json の境内の輪郭と、社殿 gc2537e880a の北の空き地)
 export const SITE = {
@@ -187,15 +191,32 @@ export class Rhythm {
     const pl = this.player, [mx, mz] = SITE.me;
     pl.teleport(mx, mz); pl.facing = this.faceMe;
     this.chart = makeChart();
-    this.useAudio = A.audioOn();
-    this.t0 = this.clock() + LEAD_IN;
     this.state = 'play'; this.armed = false;
+    this.t0 = null;                               // 音の準備ができたら begin() で決める
+    this.useAudio = false; this.waitUntil = this.clock() + AUDIO_WAIT;
+    if (A.wake()) this.begin();
     this.hype = 0; this.lastLead = -9; this.lastMe = -9; this.bannerOff = null;
     this.calls = this.chart.calls.slice();
     this.banners = [
       [0, 'せーの！'], ...SECTIONS.map((s) => [s.bar * BAR, s.name]), [12 * BAR + 2 * BEAT, '最後は いっしょに！'],
     ];
-    // 音はまとめて予約する (前奏 = 太鼓 4 つ、伴奏 = 拍子木、手本 = 太鼓、区切り = 鈴)
+    this.cues = this.callBars().map((b) => b * BAR + CUE * SLOT); // 「はい！」を出す時刻
+    for (const c of this.crowd) c.root.visible = true;
+    pl.perf = () => ({ type: 'fan', u: this.clock() - this.lastMe, lift: this.lift() });
+    this.show(this.ui.hud, true); this.show(this.ui.hint, true); this.show(this.ui.tap, true);
+    if (this.ui.touch) this.ui.touch.style.visibility = 'hidden';
+    document.body.classList.add('rh-on'); // 地図の名前の札を隠す (style.css)
+    this.setBanner('');
+    if (this.ui.label) this.ui.label.textContent = '準備中…';
+    this.cellEls.forEach((el) => { el.className = ''; el.style.outlineOffset = ''; });
+  }
+
+  // 曲を始める (音の時計がそろってから。音が出ないときは performance.now() の時計で)
+  begin() {
+    this.useAudio = A.audioOn();
+    this.t0 = this.clock() + LEAD_IN;
+    if (this.ui.hint) this.ui.hint.classList.toggle('mute', !this.useAudio);
+    // 音はまとめて予約する (前奏 = 太鼓 4 つ、伴奏 = 拍子木、手本 = 太鼓、区切り = 鈴、返す前の合図 = 鈴を小さく)
     const T = this.t0;
     for (let b = 0; b < 4; b++) A.play('taiko', T + b * BEAT, 0.55);
     for (let bar = 1; bar < FINAL; bar++) {
@@ -204,24 +225,21 @@ export class Rhythm {
     }
     for (const c of this.chart.calls) A.play('taiko', T + c.t, c.kind === 'final' ? 1.3 : 1);
     for (const s of SECTIONS) A.play('bell', T + s.bar * BAR, 0.6);
-    for (const c of this.crowd) c.root.visible = true;
-    pl.perf = () => ({ type: 'fan', u: this.clock() - this.lastMe, lift: this.lift() });
-    this.show(this.ui.hud, true); this.show(this.ui.hint, true); this.show(this.ui.tap, true);
-    if (this.ui.touch) this.ui.touch.style.visibility = 'hidden';
-    document.body.classList.add('rh-on'); // 地図の名前の札を隠す (style.css)
-    this.setBanner('');
+    for (const b of this.callBars()) A.play('cue', T + b * BAR + CUE * SLOT);
   }
+  // 手本の小節の番号
+  callBars() { return [...new Set(this.chart.calls.filter((c) => c.kind !== 'final').map((c) => c.bar))]; }
 
   // 締めの一打の前に、うちわを高く掲げる度合い
   lift() {
-    if (this.state !== 'play') return 0;
+    if (this.state !== 'play' || this.t0 == null) return 0;
     const t = this.songT();
     return t > 12 * BAR + 2 * BEAT && t < FINAL * BAR + 0.05 ? Math.min(1, (t - 12 * BAR - 2 * BEAT) / BEAT) : 0;
   }
 
   // 打った (時刻 t。clock() の基準)
   hit(t) {
-    if (this.state !== 'play') return;
+    if (this.state !== 'play' || this.t0 == null) return;
     const st = t - this.t0;
     this.lastMe = t;
     A.play('fan');
@@ -324,6 +342,10 @@ export class Rhythm {
   }
 
   updatePlay() {
+    if (this.t0 == null) { // 音の準備を待っている
+      if (A.wake() || this.clock() > this.waitUntil) this.begin();
+      else return;
+    }
     const t = this.songT(), T = this.chart.targets;
     // 自動で打つ (?rhythm=auto。確認用): 拍の時刻ちょうどに
     if (this.autoPlay) for (const g of T) if (!g.res && t >= g.t) this.hit(this.t0 + g.t + (Math.random() - 0.5) * 0.03);
@@ -334,26 +356,36 @@ export class Rhythm {
     while (this.calls.length && this.calls[0].t <= t) { this.lastLead = this.t0 + this.calls.shift().t; }
     // 表示
     while (this.banners.length && this.banners[0][0] <= t) { this.setBanner(this.banners.shift()[1]); this.bannerOff = t + 1.6; }
+    while (this.cues.length && this.cues[0] <= t) { this.cues.shift(); this.flash('はい！', 'cue'); }
     if (this.bannerOff != null && t > this.bannerOff) { this.setBanner(''); this.bannerOff = null; }
     this.drawCells(t);
     if (this.ui.prog) this.ui.prog.style.width = Math.max(0, Math.min(100, t / (BARS * BAR) * 100)) + '%';
     if (t > BARS * BAR + 0.6) this.finish();
   }
 
-  // 8 つの升目: 手本の小節は手本役が打つと光り、返す小節は自分の結果の色になる。今の位置の印も (伴奏が止まる小節では出さない)
+  // 8 つの升目: 手本の小節は手本役が打つと光り、返す小節は自分の結果の色になる。今の位置の印も (伴奏が止まる小節では出さない)。
+  // 手本の小節の 4 拍目 (「はい！」の合図) からは、次に返す小節の升目を先に見せる。
+  // 次に打つ升目のまわりには輪が出て、打つ瞬間に向けて縮む (音が出なくても、打つ時刻が分かるように)
   drawCells(t) {
-    const bar = Math.floor(t / BAR);
+    let bar = Math.floor(t / BAR);
+    const isCallBar = (b) => this.chart.calls.some((c) => c.bar === b && c.kind !== 'final');
+    const preview = isCallBar(bar) && t >= bar * BAR + CUE * SLOT; // 合図の後: 次の小節を見せる
+    if (preview) bar += 1;
     const call = this.chart.calls.filter((c) => c.bar === bar && c.kind !== 'final');
     const resp = this.chart.targets.filter((g) => g.bar === bar);
     const isCall = call.length > 0, slotNow = Math.floor((t - bar * BAR) / SLOT);
-    if (this.ui.label) this.ui.label.textContent = bar < 1 ? '前奏' : bar >= FINAL ? '締め' : isCall ? 'お手本' : 'あなたの番';
+    if (this.ui.label) this.ui.label.textContent = bar < 1 ? '前奏' : bar >= FINAL ? '締め' : isCall ? 'お手本' : preview ? 'つぎは あなたの番' : 'あなたの番';
     if (this.ui.hud) this.ui.hud.dataset.mode = isCall ? 'call' : resp.length ? 'resp' : '';
+    const next = this.chart.targets.find((g) => !g.res && g.t - t > -OK && g.t - t < RING);
     this.cellEls.forEach((el, i) => {
       let cls = '';
       if (isCall) { const c = call.find((c) => c.slot === i); if (c) cls = t >= c.t ? 'lit' : 'mark'; }
       else { const g = resp.find((g) => g.slot === i); if (g) cls = g.res ? g.res : 'mark'; }
-      if (i === slotNow && t >= 0 && bar < FINAL && !SILENT.has(bar)) cls += ' now';
+      if (!preview && i === slotNow && t >= 0 && bar < FINAL && !SILENT.has(bar)) cls += ' now';
+      const ring = next && next.bar === bar && next.slot === i;
+      if (ring) cls += ' ring';
       el.className = cls;
+      el.style.outlineOffset = ring ? Math.max(0, (next.t - t) / RING * 16).toFixed(1) + 'px' : '';
     });
   }
 
@@ -365,7 +397,7 @@ export class Rhythm {
     const now = this.clock();
     this.lead.update(dt, 0, true, 0, 0, play ? { type: 'fan', u: now - this.lastLead, lift: this.lift() } : null, false);
     if (play) {
-      const ph = (this.state === 'play' ? this.songT() : now) / BEAT * Math.PI;
+      const ph = (this.state === 'play' && this.t0 != null ? this.songT() : now) / BEAT * Math.PI;
       const e = this.state === 'result' ? (this.last && this.last.score >= 0.55 ? 1 : 0.2) : this.hype;
       this.crowd.forEach((c, i) => {
         c.update(dt, 0, true, 0, 0, e > 0.15 ? { type: 'cheer', e, ph: ph + i * 0.7 } : null, false);

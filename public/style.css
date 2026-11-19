@@ -161,6 +161,9 @@ body.touch #swarm-over .tbtn b { display: none; }
 #rh-cells i.ok { border-color: #c9f0b0; background: #6cbf5a; }
 #rh-cells i.miss { border-color: #777; background: #444; }
 #rh-cells i.now { box-shadow: 0 0 0 3px rgba(255,255,255,.55); }
+#rh-cells i.ring { outline: 3px solid #ffd27a; }
+#rh-judge.cue { color: #fff; font-size: 30px; }
+#rh-hint .mu { display: none; margin-left: 8px; color: #ffd27a; } #rh-hint.mute .mu { display: inline; }
 #rh-bar { margin: 8px auto 0; height: 4px; background: rgba(0,0,0,.45); border-radius: 2px; overflow: hidden; }
 #rh-bar i { display: block; height: 100%; width: 0; background: #f0c060; }
 #rh-banner { position: fixed; left: 50%; top: 215px; transform: translateX(-50%); z-index: 7; font-size: 30px; font-weight: 800; color: #fff; text-shadow: 0 2px 8px #000, 0 0 2px #000; pointer-events: none; white-space: nowrap; }
