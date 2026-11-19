@@ -22,6 +22,7 @@ CITY = ROOT / "public" / "data" / "city.json"
 TERRAIN = ROOT / "public" / "data" / "terrain.json"
 DST = ROOT / "public" / "data" / "props.json"
 LOTS = ROOT / "data" / "lots.json"  # 点群から読んだ木の位置・広い舗装 (tools/lidar_cover.py が作る。無ければ使わない)
+APPEARANCE = ROOT / "data" / "appearance.json"
 SMALL = ROOT / "data" / "small.json"  # 点群から読んだ塀・生け垣・物置と、室外機の位置 (tools/lidar_small.py が作る。無ければ使わない)
 
 RADIUS = 3000  # スタート地点からの半径 (m)。3000 = マップ全体 (旧 detail/config.js の radius)
@@ -2398,8 +2399,48 @@ def build_area_extras(city, world, H, col, sites=()):
 
 
 # =====================================================================
+def build_shrines(H, hidden):
+    """神社の社殿の配置 (data/appearance.json の shrines。形は public/src/shrine.js)。地面の高さと当たり判定を足して返す。
+    当たり判定は小物の表示 (V キー) に関係なく効くよう、colliders ではなく各社殿に持たせる (main.js が登録する)。
+    hidden = city.json で hide の付いた建物の ID。PLATEAU の建物を隠していない社殿 (tools/shrine.py --undo の後) は出さない"""
+    ap = json.loads(APPEARANCE.read_text(encoding="utf-8")) if APPEARANCE.exists() else {}
+    out = []
+    for s in ap.get("shrines", []):
+        if not set(s.get("hide", [])) <= hidden:
+            continue
+        ox, oz = s["origin"]
+        a = math.radians(s["facing"])
+        fx, fz = math.cos(a), math.sin(a)            # 正面の向き (局所 +Z)
+        yaw = math.atan2(fx, fz)
+        rx, rz = fz, -fx                             # 局所 +X (正面に向かって右手)
+        y = H(ox, oz)
+        W = lambda lx, lz: (ox + rx * lx + fx * lz, oz + rz * lx + fz * lz)
+        hl, box, circle = s["hall"], [], []
+        def add_box(lx, lz, hx, hz, top):
+            x, z = W(lx, lz)
+            box.append([r2(x), r2(z), r3(yaw), r2(hx), r2(hz), r2(y - 1), r2(y + top)])
+        rd, kh = hl["roof_d"], hl["kohai"]
+        add_box(0, -0.35, 2.45, 2.6, hl["floor"] + 0.04)                     # 基壇と浜縁 (上に乗れる)
+        add_box(0, hl["body_z"], hl["body_w"] / 2 + 0.05, hl["body_d"] / 2 + 0.05, hl["ridge"] - 0.3)  # 身舎 (屋根の中まで)
+        add_box(0, rd / 2 + kh / 2 - 0.2, 1.45, kh / 2 + 0.35, 0.22)        # 向拝の下の基壇
+        add_box(0, 2.75, 0.95, 0.5, 0.5)                                     # 階段 (1 段目の高さ)
+        add_box(0, rd / 2 + 0.35, 0.6, 0.32, 0.82)                           # 賽銭箱
+        for sx in (-1, 1):                                                   # 向拝の柱
+            x, z = W(sx * 1.3, rd / 2 + kh - 0.45)
+            circle.append([r2(x), r2(z), 0.16, r2(y - 1), r2(y + hl["eave"])])
+        an = s.get("annex")
+        if an:
+            add_box(an["at"][0], an["at"][1], an["w"] / 2, an["d"] / 2, an["ridge"])
+        out.append({**{k: v for k, v in s.items() if not k.startswith("_") and k != "hide"},
+                    "yaw": r3(yaw), "y": r2(y), "colliders": {"box": box, "circle": circle}})
+    return out
+
+
 def build(city):
     H = load_terrain()
+    # 外観を別に描く建物 (hide。神社の社殿 = tools/shrine.py) は無いものとして扱う (ベランダ・看板を付けない、道の当たりにも使わない)
+    hidden = {b["id"] for b in city["buildings"] if b.get("hide")}
+    city = {**city, "buildings": [b for b in city["buildings"] if not b.get("hide")]}
     world = World(city["buildings"])
     st = city.get("start") or {"x": 0, "z": 0}
     cx, cz = st["x"], st["z"]
@@ -2432,6 +2473,7 @@ def build(city):
         "rail": rail,
         "walk": walk,
         "cars": cars,
+        "shrines": build_shrines(H, hidden),
         **yard,
         **extras,
         "colliders": {"circle": col.circle, "box": col.box, "line": col.line, "tree": col.tree},
