@@ -66,9 +66,17 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     for (let k = 0; k < 2; k++) tick(mk());
     out.started = S.state;
     const landed = []; const seen = new Set();
-    let t = 0, firstHit = null, maxAlive = 0;
+    let t = 0, firstHit = null, maxAlive = 0, overAt = null, pile = null, takenAtDown = null;
     while (S.state !== 'idle' && t < 120) {
-      tick(mk()); t += dt; chk();
+      const over = !document.getElementById('swarm-over').hidden;
+      if (over && overAt === null) {
+        overAt = +t.toFixed(1);
+        const P = S.list.filter(e => e.st === 'pile');
+        pile = { n: P.length, top: +(Math.max(...P.map(e => e.y)) - pl.pos.y).toFixed(2), spread: +Math.max(...P.map(e => Math.hypot(e.x - pl.pos.x, e.z - pl.pos.z))).toFixed(2) };
+      }
+      if (S.state === 'down' && takenAtDown === null) takenAtDown = S.taken;
+      // やられた表示が出てから 1 秒は待つ (勝手に閉じないこと)、その後 Enter
+      tick(over && t - overAt > 1 ? mk([], ['Enter']) : mk()); t += dt; chk();
       maxAlive = Math.max(maxAlive, S.list.length);
       for (const e of S.list) if (e.st === 'splat' && !seen.has(e)) { seen.add(e); landed.push([e.x, e.z, e.y, e.ring.x, e.ring.z]); }
       if (firstHit === null && S.hp < 100) firstHit = +t.toFixed(1);
@@ -77,7 +85,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       landedInYard: landed.filter(l => inPoly(SITE.yard, l[0], l[1])).length,
       landedHigh: landed.filter(l => l[2] > +out.groundY + 1.2).length,
       ringErr: +(landed.map(l => Math.hypot(l[0] - l[3], l[1] - l[4])).sort((a, b) => a - b)[Math.floor(landed.length / 2)] || 0).toFixed(2),
-      backAtGate: +Math.hypot(pl.pos.x - SITE.out[0], pl.pos.z - SITE.out[1]).toFixed(1), dead: pl.dead };
+      hitsToDown: takenAtDown, overShownAt: overAt, pile, backAtGate: +Math.hypot(pl.pos.x - SITE.out[0], pl.pos.z - SITE.out[1]).toFixed(1), dead: pl.dead };
 
     // 3: 中庭に戻って、近い敵の方を向いて連打
     for (let k = 0; k < 5; k++) tick(mk()); // 門の外にいる (中庭の外に出たので、また始められる)
@@ -127,6 +135,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     { name: 'fall', run: 2.2, cam: [-232, 1.5, 1452, -232, 9, 1440] },   // 中庭から南の棟の屋上を見上げる
     { name: 'swarm', run: 14, follow: true },
     { name: 'hit', run: 9, follow: true, atk: true },
+    { name: 'pile', run: 12, follow: true, pile: true },
   ];
   for (const s of shots) {
     await page.evaluate(async (s) => {
@@ -153,6 +162,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
         pl.update(1 / 30, inp, g.cam); S.update(1 / 30);
         if (s.atk && k > n - 40 && S.list.some(e => e.tint > 0.6)) break; // 斬った瞬間で止める
       }
+      if (s.pile) { S.hp = 20; for (let k = 0; k < 900 && !S.overShown; k++) { pl.update(1 / 30, mk(), g.cam); S.update(1 / 30); } }
       g.look.render = g.renderSave;
       if (s.cam) {
         g.cam.update = () => {};

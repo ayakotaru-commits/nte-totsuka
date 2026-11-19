@@ -107,7 +107,7 @@ body.touch #mp-join { padding: 8px 14px; }
 body.touch #mp-hp { width: 150px; }
 body.touch #mp-down { font-size: 20px; }
 
-/* イベント「ミズタマンの襲来」(src/swarm/event.js) */
+/* イベント「うな○ー大量発生クエスト」(src/swarm/event.js) */
 #swarm { position: fixed; left: 50%; top: 110px; transform: translateX(-50%); z-index: 6; padding: 6px 14px 8px; border-radius: 8px; background: rgba(10,20,35,.6); color: #fff; font-size: 15px; text-align: center; text-shadow: 0 1px 3px #000; pointer-events: none; }
 #swarm b { font-size: 20px; color: #ffe08a; }
 #swarm-time { opacity: .8; font-size: 13px; }
@@ -117,14 +117,22 @@ body.touch #mp-down { font-size: 20px; }
 body.touch #swarm { top: 96px; font-size: 13px; }
 body.touch #swarm-hp { width: 160px; }
 body.touch #swarm-banner { font-size: 19px; white-space: normal; width: 86vw; text-align: center; }
-#swarm-ask { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%); z-index: 8; padding: 16px 22px 14px; border-radius: 12px; background: rgba(10,20,35,.82); border: 2px solid #ffe08a; color: #fff; text-align: center; text-shadow: 0 1px 3px #000; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
-#swarm-ask .q-title { font-size: 22px; font-weight: 700; color: #ffe08a; letter-spacing: .05em; }
-#swarm-ask .q-body { margin: 8px 0 12px; font-size: 14px; line-height: 1.6; }
-#swarm-ask .q-btns { display: flex; gap: 12px; justify-content: center; }
-#swarm-ask .tbtn { min-width: 96px; height: 40px; font-size: 15px; background: rgba(255,255,255,.12); cursor: pointer; }
+#swarm-ask, #swarm-over { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%); z-index: 8; padding: 16px 22px 14px; border-radius: 12px; background: rgba(10,20,35,.82); border: 2px solid #ffe08a; color: #fff; text-align: center; text-shadow: 0 1px 3px #000; box-shadow: 0 6px 24px rgba(0,0,0,.4); }
+#swarm-ask .q-title, #swarm-over .q-title { font-size: 22px; font-weight: 700; color: #ffe08a; letter-spacing: .05em; }
+#swarm-ask .q-body, #swarm-over .q-body { margin: 8px 0 12px; font-size: 14px; line-height: 1.6; }
+#swarm-ask .q-btns, #swarm-over .q-btns { display: flex; gap: 12px; justify-content: center; }
+#swarm-ask .tbtn, #swarm-over .tbtn { min-width: 96px; height: 40px; font-size: 15px; background: rgba(255,255,255,.12); cursor: pointer; }
 #swarm-ask #swarm-yes { background: rgba(255,170,60,.55); }
 #swarm-ask .tbtn b { margin-right: 6px; padding: 0 5px; border: 1px solid rgba(255,255,255,.7); border-radius: 4px; font-size: 12px; }
 body.touch #swarm-ask { width: 82vw; padding: 12px 14px; }
 body.touch #swarm-ask .q-title { font-size: 18px; }
 body.touch #swarm-ask .tbtn { min-width: 110px; height: 46px; }
 body.touch #swarm-ask .tbtn b { display: none; }
+#swarm-over { border-color: #ff6b6b; }
+#swarm-over .q-title { color: #ff8b8b; font-size: 26px; }
+#swarm-ok { background: rgba(255,107,107,.5) !important; }
+#swarm-over .tbtn b { margin-right: 6px; padding: 0 5px; border: 1px solid rgba(255,255,255,.7); border-radius: 4px; font-size: 12px; }
+body.touch #swarm-over { width: 82vw; padding: 12px 14px; }
+body.touch #swarm-over .tbtn { min-width: 110px; height: 46px; }
+body.touch #swarm-over .tbtn b { display: none; }
+#swarm-over { top: auto; bottom: 8%; transform: translateX(-50%); }   /* 重なった山が見えるよう、下に出す */
