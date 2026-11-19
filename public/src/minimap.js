@@ -1,4 +1,5 @@
 import { ROAD_STYLE } from './city.js';
+import { drawEventMark } from './eventmarks.js';
 
 const S = 1.5; // 下絵の px/m
 export const MAP_PX_PER_M = S;
@@ -10,6 +11,7 @@ export class Minimap {
     this.ctx = canvas.getContext('2d');
     this.B = city.bounds;
     this.waypoints = city.waypoints || [];
+    this.events = [];   // イベントの場所 ({ name, x, z, color, active() }。main.js が入れる)
     const B = this.B;
     const m = document.createElement('canvas');
     m.width = Math.ceil((B.maxX - B.minX) * S);
@@ -84,6 +86,13 @@ export class Minimap {
       c.beginPath(); c.moveTo(0, -9); c.lineTo(7, 0); c.lineTo(0, 9); c.lineTo(-7, 0); c.closePath();
       c.fill(); c.stroke();
       c.restore();
+    }
+
+    // イベントの場所 (見えている範囲にあるときだけ)
+    for (const e of this.events) {
+      const [sx, sy] = this.toScreen(e.x - px, e.z - pz, yaw);
+      if (Math.hypot(sx, sy) > R - 9) continue;
+      drawEventMark(c, R + sx, R + sy, 7, e.color, e.active());
     }
 
     // ほかのプレイヤー (戦闘オンの人は赤)

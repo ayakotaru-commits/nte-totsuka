@@ -43,6 +43,7 @@ export class Player {
     this.hurtT = 0;        // 攻撃を受けてからの秒数
     this.lastAct = null;   // 最後に見せた動き (マルチプレイで他の人へ送る)
     this.lastSp = 0;
+    this.perf = null;      // イベントで踊っている間: 姿勢を返す関数 (rhythm/event.js)。その場から動かず、操作も受け付けない
     this.model = makeCharacter();
     scene.add(this.model.root);
   }
@@ -54,6 +55,7 @@ export class Player {
 
   update(dt, input, cam) {
     if (input.pressed('KeyC')) this.walkMode = !this.walkMode;
+    if (this.perf) { this.vel.set(0, 0); this.vy = 0; this.stair = 0; return this.show(dt, 0, this.perf()); }
     if (this.dead || this.stun > 0) return this.updateHurt(dt);
     if (this.act) return this.updateAct(dt);
     this.actCool -= dt;

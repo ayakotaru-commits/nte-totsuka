@@ -1,0 +1,387 @@
+// イベント「お札まき 合いの手」: 八坂神社 (旧東海道沿い) の境内に入ると、参加するかを聞く。
+// 「はい」(Y / Enter / 画面のボタン) で、社殿の前で手本役と向かい合い、約 30 秒の 1 曲が始まる。
+//   ・手本役が 1 小節うちわで打って見せ (太鼓の音)、次の 1 小節で同じリズムを返す (Space / J / クリック / タップ)
+//   ・1 曲 = テンポ 110 の 14 小節: 前奏 1 → うちわ打ち 4 → お札まき 4 (裏拍が入る) → 伴奏が止まる 4 → 締めの一打 1
+//     手本の打ち方は毎回、候補 (POOLS) から選び直す
+//   ・判定はずれの大きさで 良 (±GOOD) / 可 (±OK)。外れるか打たないとミス。ずれ合わせ (遅れの測定) は無い (持ち主の希望)。
+//     音が出ているときは、ブラウザが知らせる出力の遅れだけは自動で差し引く (audio.js の now())
+//   ・終わると「名人」「まずまず」「もう一回」と、良・可・ミスの数。Y でもう一回、N でやめる
+// 音はブラウザの中で合成する (audio.js)。音が出ないとき (消音・未操作) も、画面の合図 (手本役の動き・升目) だけで遊べる。
+// 自分の画面だけの出来事 (マルチプレイのほかの人には見えない)。
+// URL: ?rhythm 開いてすぐ境内で始める (聞かずに。確認用) / ?rhythm=auto さらに自動で打つ (確認用) / ?norhythm 無効に
+import * as THREE from 'three';
+import { makeCharacter } from '../character.js';
+import { H } from '../terrain.js';
+import * as A from './audio.js';
+
+export const BPM = 110;
+const BEAT = 60 / BPM, SLOT = BEAT / 2, BAR = BEAT * 4;
+export const GOOD = 0.07, OK = 0.13;     // 判定の幅 (秒)。ずれ合わせが無いので広め
+const NEAR = 0.25;                       // この範囲で外れた打ちは、近い拍のミスとして数える (連打でごまかせないように)
+const LEAD_IN = 0.9;                     // 「はい」から前奏の 1 拍目まで (秒)
+const BARS = 14, FINAL = 13;             // 小節の数、締めの一打の小節
+// 区切り: 手本の小節 (bar, bar + 2)、返す小節 (bar + 1, bar + 3)
+const SECTIONS = [
+  { bar: 1, kind: 'uchiwa', name: 'うちわ打ち' },
+  { bar: 5, kind: 'ofuda', name: 'お札まき' },
+  { bar: 9, kind: 'stop', name: '音が止まっても 続けて！' },
+];
+const SILENT = new Set([10, 12]);        // 拍子木の伴奏が止まる小節
+// 手本の打ち方の候補 (1 小節を 8 分音符 8 つに分けた位置。0, 2, 4, 6 が表拍)。[1 回目の候補, 2 回目の候補]
+const POOLS = {
+  uchiwa: [[[0, 2, 4, 6], [0, 2, 4], [0, 4, 6]], [[0, 2, 3, 4], [0, 1, 2, 4], [0, 2, 4, 5, 6]]],
+  ofuda: [[[1, 3, 5, 7], [0, 3, 4, 7], [0, 2, 3, 6]], [[0, 1, 3, 5], [1, 3, 4, 6], [2, 3, 5, 7]]],
+  stop: [[[0, 2, 4, 6], [0, 2, 4], [0, 2, 6]], [[0, 3, 4, 6], [0, 2, 5, 6], [0, 1, 4, 6]]],
+};
+
+// 場所 (八坂神社。city.json の境内の輪郭と、社殿 gc2537e880a の北の空き地)
+export const SITE = {
+  area: [[-401.6, 604.8], [-375.3, 610.0], [-369.3, 635.2], [-362.4, 637.5], [-364.6, 647.4], [-375.5, 643.8], [-379.3, 644.4], [-382.2, 651.7], [-392.1, 636.1], [-399.6, 616.5]],
+  lead: [-386.0, 627.6],   // 手本役 (社殿を背に、北を向く)
+  me: [-386.0, 623.4],     // 自分
+  crowd: [[-390.3, 622.6], [-390.6, 625.0], [-390.1, 627.4], [-381.8, 622.6], [-381.5, 625.0], [-381.9, 627.4]], // 見物人 (両脇)
+};
+const CROWD_COL = [
+  { hair: '#2a2226', jacket: '#3d5a8a', accent: '#f2e6c8' }, { hair: '#4a3328', jacket: '#8a3d4a', accent: '#f6d06a' },
+  { hair: '#1f1c22', jacket: '#4f7a5a', accent: '#ffffff' }, { hair: '#3a2a20', jacket: '#7a5a8f', accent: '#f2c6d2' },
+  { hair: '#262028', jacket: '#2f4f6f', accent: '#ffd36e' }, { hair: '#5a3a2a', jacket: '#a0563a', accent: '#f2ead8' },
+];
+
+const inPoly = (poly, x, z) => {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+};
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const $ = (id) => document.getElementById(id);
+
+// 1 曲の譜面を作る: calls = 手本役が打つ時刻、targets = 返す時刻 (曲の頭からの秒)
+export function makeChart() {
+  const calls = [], targets = [];
+  for (const s of SECTIONS) {
+    for (let k = 0; k < 2; k++) {
+      const bar = s.bar + 2 * k, slots = pick(POOLS[s.kind][k]);
+      for (const sl of slots) {
+        calls.push({ t: bar * BAR + sl * SLOT, bar, slot: sl, kind: s.kind });
+        targets.push({ t: (bar + 1) * BAR + sl * SLOT, bar: bar + 1, slot: sl, kind: s.kind, res: null });
+      }
+    }
+  }
+  calls.push({ t: FINAL * BAR, bar: FINAL, slot: 0, kind: 'final' });  // 締めの一打は手本役もいっしょに打つ
+  targets.push({ t: FINAL * BAR, bar: FINAL, slot: 0, kind: 'final', res: null });
+  return { calls, targets };
+}
+
+// お札 (紙吹雪)。小さな板を InstancedMesh 1 つで
+class Ofuda {
+  constructor(scene, n = 260) {
+    const cv = document.createElement('canvas'); cv.width = 16; cv.height = 24;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#fbf7ec'; c.fillRect(0, 0, 16, 24);
+    c.fillStyle = '#c8282e'; c.fillRect(3, 4, 10, 2); c.fillRect(6, 8, 4, 12);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    this.mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.13, 0.2), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }), n);
+    this.mesh.frustumCulled = false; this.mesh.count = 0;
+    scene.add(this.mesh);
+    this.p = []; this.n = n;
+    this.m = new THREE.Matrix4(); this.q = new THREE.Quaternion(); this.e = new THREE.Euler(); this.s = new THREE.Vector3(1, 1, 1); this.v = new THREE.Vector3();
+  }
+  // (x, y, z) から、向き (dx, dz) へ広がりながら舞い上がる
+  burst(x, y, z, dx, dz, k, spread = 1) {
+    for (let i = 0; i < k; i++) {
+      if (this.p.length >= this.n) this.p.shift();
+      const a = Math.atan2(dx, dz) + (Math.random() - 0.5) * 1.6 * spread, sp = 1.5 + Math.random() * 2.5;
+      this.p.push({ x, y, z, vx: Math.sin(a) * sp, vy: 2.5 + Math.random() * 3 * spread, vz: Math.cos(a) * sp,
+        rx: Math.random() * 6, ry: Math.random() * 6, wr: 3 + Math.random() * 6, age: 0, life: 2.5 + Math.random(), g: null });
+    }
+  }
+  update(dt, groundAt) {
+    this.p = this.p.filter((p) => (p.age += dt) < p.life);
+    let i = 0;
+    for (const p of this.p) {
+      if (p.g == null) p.g = groundAt(p.x, p.z);
+      if (p.y > p.g + 0.02) {
+        p.vy = Math.max(p.vy - 7 * dt, -0.9);                // ひらひら落ちる (落ちる速さに上限)
+        const k = Math.exp(-1.8 * dt); p.vx *= k; p.vz *= k;
+        p.x += (p.vx + Math.sin(p.age * p.wr) * 0.5) * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+        p.rx += p.wr * dt; p.ry += p.wr * 0.7 * dt;
+      } else { p.y = p.g + 0.02; p.rx = Math.PI / 2; }
+      this.e.set(p.rx, p.ry, 0); this.q.setFromEuler(this.e);
+      this.m.compose(this.v.set(p.x, p.y, p.z), this.q, this.s);
+      this.mesh.setMatrixAt(i++, this.m);
+    }
+    this.mesh.count = i;
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+export class Rhythm {
+  constructor({ scene, world, player, camera, cam }) {
+    this.world = world; this.player = player; this.camera = camera; this.cam = cam;
+    this.state = 'idle';        // idle / ask / play / result
+    this.armed = true;          // 境内の外へ出たら、また聞く
+    this.answer = null;         // 画面のボタンで選んだ答え
+    this.useAudio = false;
+    this.ground = (x, z) => world.groundAt(x, z, H(x, z));
+    // 手本役 (いつも境内に立っている) と見物人 (曲の間だけ)
+    const mk = (colors, x, z, face) => {
+      const m = makeCharacter({ vrm: false, colors });
+      m.root.position.set(x, this.ground(x, z), z); m.root.rotation.y = face;
+      scene.add(m.root);
+      return m;
+    };
+    const [lx, lz] = SITE.lead, [mx, mz] = SITE.me;
+    this.faceMe = Math.atan2(lx - mx, lz - mz);            // 自分 → 手本役 の向き
+    this.lead = mk({ hair: '#1e1a1c', jacket: '#7d1f2b', accent: '#ffffff' }, lx, lz, this.faceMe + Math.PI);
+    this.crowd = SITE.crowd.map(([x, z], i) => {
+      const m = mk(CROWD_COL[i % CROWD_COL.length], x, z, Math.atan2((lx + mx) / 2 - x, (lz + mz) / 2 - z));
+      m.root.visible = false;
+      return m;
+    });
+    this.ofuda = new Ofuda(scene);
+    this.hype = 0;
+    this.ui = {
+      ask: $('rh-ask'), hud: $('rh-hud'), label: $('rh-label'), cells: $('rh-cells'), prog: $('rh-prog'), banner: $('rh-banner'),
+      judge: $('rh-judge'), hint: $('rh-hint'), tap: $('rh-tap'), result: $('rh-result'), rank: $('rh-rank'), count: $('rh-count'),
+      touch: $('touch-ui'),
+    };
+    this.cellEls = this.ui.cells ? [...this.ui.cells.children] : [];
+    for (const [id, a] of [['rh-yes', 'yes'], ['rh-no', 'no'], ['rh-again', 'yes'], ['rh-quit', 'no']]) {
+      const b = $(id);
+      if (b) b.addEventListener('pointerdown', (ev) => { ev.preventDefault(); ev.stopPropagation(); this.answer = a; });
+    }
+    // 打つ入力は、キー・クリック・タップの瞬間の時刻 (ev.timeStamp) で判定する (1 コマの長さに左右されない)
+    const onKey = (ev) => {
+      if (this.state !== 'play' || ev.repeat || !(ev.code === 'Space' || ev.code === 'KeyJ')) return;
+      this.hit(this.evTime(ev.timeStamp));
+    };
+    const onPtr = (ev) => {
+      if (this.state !== 'play' || (ev.pointerType === 'mouse' && ev.button !== 0)) return;
+      if (ev.target && ev.target.closest && ev.target.closest('button')) return;
+      this.hit(this.evTime(ev.timeStamp));
+    };
+    addEventListener('keydown', onKey, { capture: true });
+    addEventListener('pointerdown', onPtr, { capture: true });
+    if (this.ui.tap) this.ui.tap.addEventListener('pointerdown', (ev) => ev.preventDefault());
+    this.lastLead = -9; this.lastMe = -9;
+  }
+
+  get playing() { return this.state === 'play' || this.state === 'result'; }
+  // 時計 (秒)。曲の間は、始めたときに選んだ時計を使い続ける (途中で音が出るようになっても飛ばない)
+  clock() { return this.useAudio ? A.now() : performance.now() / 1000; }
+  evTime(stamp) { return this.clock() - (performance.now() - stamp) / 1000; }
+  songT() { return this.clock() - this.t0; }
+
+  show(el, on) { if (el) el.hidden = !on; }
+  ask(on) {
+    this.answer = null;
+    if (on) this.state = 'ask'; else if (this.state === 'ask') this.state = 'idle';
+    this.show(this.ui.ask, on);
+  }
+
+  start() {
+    this.ask(false); this.show(this.ui.result, false);
+    const pl = this.player, [mx, mz] = SITE.me;
+    pl.teleport(mx, mz); pl.facing = this.faceMe;
+    this.chart = makeChart();
+    this.useAudio = A.audioOn();
+    this.t0 = this.clock() + LEAD_IN;
+    this.state = 'play'; this.armed = false;
+    this.hype = 0; this.lastLead = -9; this.lastMe = -9; this.bannerOff = null;
+    this.calls = this.chart.calls.slice();
+    this.banners = [
+      [0, 'せーの！'], ...SECTIONS.map((s) => [s.bar * BAR, s.name]), [12 * BAR + 2 * BEAT, '最後は いっしょに！'],
+    ];
+    // 音はまとめて予約する (前奏 = 太鼓 4 つ、伴奏 = 拍子木、手本 = 太鼓、区切り = 鈴)
+    const T = this.t0;
+    for (let b = 0; b < 4; b++) A.play('taiko', T + b * BEAT, 0.55);
+    for (let bar = 1; bar < FINAL; bar++) {
+      if (SILENT.has(bar)) continue;
+      for (let b = 0; b < 4; b++) A.play('clap', T + bar * BAR + b * BEAT, b === 0 ? 1.2 : 0.8);
+    }
+    for (const c of this.chart.calls) A.play('taiko', T + c.t, c.kind === 'final' ? 1.3 : 1);
+    for (const s of SECTIONS) A.play('bell', T + s.bar * BAR, 0.6);
+    for (const c of this.crowd) c.root.visible = true;
+    pl.perf = () => ({ type: 'fan', u: this.clock() - this.lastMe, lift: this.lift() });
+    this.show(this.ui.hud, true); this.show(this.ui.hint, true); this.show(this.ui.tap, true);
+    if (this.ui.touch) this.ui.touch.style.visibility = 'hidden';
+    document.body.classList.add('rh-on'); // 地図の名前の札を隠す (style.css)
+    this.setBanner('');
+  }
+
+  // 締めの一打の前に、うちわを高く掲げる度合い
+  lift() {
+    if (this.state !== 'play') return 0;
+    const t = this.songT();
+    return t > 12 * BAR + 2 * BEAT && t < FINAL * BAR + 0.05 ? Math.min(1, (t - 12 * BAR - 2 * BEAT) / BEAT) : 0;
+  }
+
+  // 打った (時刻 t。clock() の基準)
+  hit(t) {
+    if (this.state !== 'play') return;
+    const st = t - this.t0;
+    this.lastMe = t;
+    A.play('fan');
+    // まだ判定していない拍のうち、いちばん近いもの
+    let best = null, bd = 1e9;
+    for (const g of this.chart.targets) {
+      if (g.res) continue;
+      const d = st - g.t;
+      if (Math.abs(d) < Math.abs(bd)) { bd = d; best = g; }
+    }
+    if (!best || Math.abs(bd) > NEAR) { this.flash('×', 'stray'); return; }
+    const ad = Math.abs(bd);
+    best.d = bd;
+    best.res = ad <= GOOD ? 'good' : ad <= OK ? 'ok' : 'miss';
+    this.judged(best);
+  }
+  judged(g) {
+    const [mx, mz] = SITE.me, [lx, lz] = SITE.lead;
+    const y = this.ground(mx, mz) + 1.6, dx = lx - mx, dz = lz - mz;
+    if (g.res === 'miss') {
+      A.play('miss'); this.flash(g.d == null ? 'ミス' : g.d < 0 ? 'はやい' : 'おそい', 'miss');
+      this.hype = Math.max(0, this.hype - 0.25);
+      return;
+    }
+    this.flash(g.res === 'good' ? '良！' : '可', g.res);
+    this.hype = Math.min(1, this.hype + (g.res === 'good' ? 0.3 : 0.15));
+    if (g.kind === 'ofuda') this.ofuda.burst(mx, y, mz, dx, dz, g.res === 'good' ? 10 : 5);
+    if (g.kind === 'final') {
+      this.ofuda.burst(mx, y, mz, dx, dz, 40, 2.2);
+      this.ofuda.burst(lx, y, lz, -dx, -dz, 40, 2.2);
+    }
+  }
+
+  flash(text, cls) {
+    const j = this.ui.judge;
+    if (!j) return;
+    j.textContent = text; j.className = cls;
+    void j.offsetWidth; j.classList.add('pop');
+  }
+  setBanner(text) {
+    if (!this.ui.banner) return;
+    this.ui.banner.textContent = text; this.ui.banner.hidden = !text;
+  }
+
+  finish() {
+    this.state = 'result';
+    const T = this.chart.targets, n = T.length;
+    const c = { good: 0, ok: 0, miss: 0 };
+    for (const g of T) c[g.res || 'miss']++;
+    const score = (c.good + 0.6 * c.ok) / n;
+    const rank = score >= 0.85 ? '名人！' : score >= 0.55 ? 'まずまず' : 'もう一回…';
+    this.last = { ...c, n, score, rank };
+    if (this.ui.rank) { this.ui.rank.textContent = rank; this.ui.rank.className = score >= 0.85 ? 'top' : score >= 0.55 ? 'mid' : 'low'; }
+    if (this.ui.count) this.ui.count.textContent = `良 ${c.good}　可 ${c.ok}　ミス ${c.miss}`;
+    this.show(this.ui.hud, false); this.show(this.ui.hint, false); this.show(this.ui.tap, false);
+    this.show(this.ui.result, true); this.setBanner('');
+    if (score >= 0.55) A.play('cheer', null, score >= 0.85 ? 1.2 : 0.7);
+    this.answer = null;
+  }
+
+  stop() {
+    if (this.state === 'idle') return;
+    if (this.state === 'ask') return this.ask(false);
+    this.state = 'idle';
+    this.player.perf = null;
+    for (const c of this.crowd) c.root.visible = false;
+    for (const el of [this.ui.hud, this.ui.hint, this.ui.tap, this.ui.result]) this.show(el, false);
+    this.setBanner('');
+    if (this.ui.touch) this.ui.touch.style.visibility = '';
+    document.body.classList.remove('rh-on');
+    const p = this.player;
+    this.cam.yaw = p.facing + Math.PI; this.cam.update(0, p.pos, true);
+  }
+
+  update(dt, input) {
+    if (this.disabled) return;
+    const p = this.player, key = (k) => input && input.pressed(k);
+    const inside = inPoly(SITE.area, p.pos.x, p.pos.z);
+    if (this.state === 'idle' || this.state === 'ask') {
+      if (!inside) { this.armed = true; if (this.state === 'ask') this.ask(false); }
+      else if (this.armed && this.state === 'idle') {
+        if (this.auto) { this.auto = false; this.start(); }
+        else { this.armed = false; this.ask(true); }
+      }
+      if (this.state === 'ask') {
+        if (key('KeyY') || key('Enter') || this.answer === 'yes') this.start();
+        else if (key('KeyN') || this.answer === 'no') this.ask(false);
+      }
+    } else if (Math.hypot(p.pos.x - SITE.me[0], p.pos.z - SITE.me[1]) > 2) {
+      this.stop(); // R でスタート地点に戻った・地図でワープした
+    }
+
+    if (this.state === 'play') this.updatePlay();
+    else if (this.state === 'result') {
+      if (key('KeyY') || key('Enter') || this.answer === 'yes') this.start();
+      else if (key('KeyN') || key('Escape') || this.answer === 'no') this.stop();
+    }
+    this.hype = Math.max(0, this.hype - dt * 0.12);
+    this.updateActors(dt);
+  }
+
+  updatePlay() {
+    const t = this.songT(), T = this.chart.targets;
+    // 自動で打つ (?rhythm=auto。確認用): 拍の時刻ちょうどに
+    if (this.autoPlay) for (const g of T) if (!g.res && t >= g.t) this.hit(this.t0 + g.t + (Math.random() - 0.5) * 0.03);
+    // 過ぎてしまった拍はミス
+    // (少し待ってから。重い端末で、キーの知らせが 1 コマ遅れて届いても、正しく判定できるように)
+    for (const g of T) if (!g.res && t > g.t + OK + 0.08) { g.res = 'miss'; g.d = null; this.judged(g); }
+    // 手本役が打った (音は予約済み。動きだけ)
+    while (this.calls.length && this.calls[0].t <= t) { this.lastLead = this.t0 + this.calls.shift().t; }
+    // 表示
+    while (this.banners.length && this.banners[0][0] <= t) { this.setBanner(this.banners.shift()[1]); this.bannerOff = t + 1.6; }
+    if (this.bannerOff != null && t > this.bannerOff) { this.setBanner(''); this.bannerOff = null; }
+    this.drawCells(t);
+    if (this.ui.prog) this.ui.prog.style.width = Math.max(0, Math.min(100, t / (BARS * BAR) * 100)) + '%';
+    if (t > BARS * BAR + 0.6) this.finish();
+  }
+
+  // 8 つの升目: 手本の小節は手本役が打つと光り、返す小節は自分の結果の色になる。今の位置の印も (伴奏が止まる小節では出さない)
+  drawCells(t) {
+    const bar = Math.floor(t / BAR);
+    const call = this.chart.calls.filter((c) => c.bar === bar && c.kind !== 'final');
+    const resp = this.chart.targets.filter((g) => g.bar === bar);
+    const isCall = call.length > 0, slotNow = Math.floor((t - bar * BAR) / SLOT);
+    if (this.ui.label) this.ui.label.textContent = bar < 1 ? '前奏' : bar >= FINAL ? '締め' : isCall ? 'お手本' : 'あなたの番';
+    if (this.ui.hud) this.ui.hud.dataset.mode = isCall ? 'call' : resp.length ? 'resp' : '';
+    this.cellEls.forEach((el, i) => {
+      let cls = '';
+      if (isCall) { const c = call.find((c) => c.slot === i); if (c) cls = t >= c.t ? 'lit' : 'mark'; }
+      else { const g = resp.find((g) => g.slot === i); if (g) cls = g.res ? g.res : 'mark'; }
+      if (i === slotNow && t >= 0 && bar < FINAL && !SILENT.has(bar)) cls += ' now';
+      el.className = cls;
+    });
+  }
+
+  // 手本役・見物人・お札・カメラ
+  updateActors(dt) {
+    const p = this.player, dx = p.pos.x - SITE.lead[0], dz = p.pos.z - SITE.lead[1];
+    if (dx * dx + dz * dz > 90 * 90) return; // 遠いときは動かさない
+    const play = this.playing;
+    const now = this.clock();
+    this.lead.update(dt, 0, true, 0, 0, play ? { type: 'fan', u: now - this.lastLead, lift: this.lift() } : null, false);
+    if (play) {
+      const ph = (this.state === 'play' ? this.songT() : now) / BEAT * Math.PI;
+      const e = this.state === 'result' ? (this.last && this.last.score >= 0.55 ? 1 : 0.2) : this.hype;
+      this.crowd.forEach((c, i) => {
+        c.update(dt, 0, true, 0, 0, e > 0.15 ? { type: 'cheer', e, ph: ph + i * 0.7 } : null, false);
+      });
+    }
+    this.ofuda.update(dt, this.ground);
+    if (play) this.view();
+  }
+
+  // 自分の右後ろの少し上から、手本役と自分を見る
+  view() {
+    const [mx, mz] = SITE.me, [lx, lz] = SITE.lead;
+    const ux = (lx - mx), uz = (lz - mz), L = Math.hypot(ux, uz), fx = ux / L, fz = uz / L;
+    const g = this.ground(mx, mz);
+    const eye = new THREE.Vector3(mx - fx * 4.4 - fz * 1.8, g + 2.9, mz - fz * 4.4 + fx * 1.8);
+    this.camera.position.copy(eye);
+    this.camera.lookAt((mx + lx) / 2, g + 1.15, (mz + lz) / 2);
+  }
+}
