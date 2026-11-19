@@ -67,9 +67,16 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     out.nTargets = R.chart.targets.length;
     out.songSec = +(Math.max(...R.chart.targets.map(t => t.t))).toFixed(2);
     out.kinds = R.chart.targets.reduce((a, t) => (a[t.kind] = (a[t.kind] || 0) + 1, a), {});
+    // 手本の小節の最後の打ちから、返す小節の 1 打目までの間 (秒)。いちばん短いもの
+    { const bars = [...new Set(R.chart.calls.filter(c => c.kind !== 'final').map(c => c.bar))];
+      const B = 4 * 60 / M.BPM, gaps = bars.map(b => { const last = Math.max(...R.chart.calls.filter(c => c.bar === b).map(c => c.t)); const first = Math.min(...R.chart.targets.filter(g => g.bar === b + 1).map(g => g.t)); return first - last; });
+      out.minGapCallToResp = +Math.min(...gaps).toFixed(2); out.beatSec = +(B / 4).toFixed(3); }
     // 1 曲を、決まった打ち方で通す
     const run = (how) => {
       if (R.state !== 'play') { R.answer = 'yes'; tick(); }
+      // 音の準備を待つ間 (この確認では音が出ないので AUDIO_WAIT 秒待って、音なしで始まる)
+      let w = 0; while (R.t0 == null && w++ < 200) tick();
+      out.waitSec = +(w * dt).toFixed(2);
       const tg = R.chart.targets, hits = [];
       if (how.mash) for (let t = 0; t < 31; t += how.mash) hits.push(t);
       else if (how.off != null || how.jit != null) for (const x of tg) hits.push(x.t + (how.off || 0) + (how.jit ? (Math.random() * 2 - 1) * how.jit : 0));
@@ -131,9 +138,10 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   // ---- 6: 画面。描画が遅い (1 コマ 1〜2 秒) ので、時計を差し替えて曲の決まった瞬間で止めて撮る (自動で打つ) ----
   if (!noShots) {
     const p2 = await open('?shot&rhythm=auto');
-    await p2.evaluate(() => { const R = window.__g.rhythm; window.__T = 5000; R.clock = () => window.__T; R.stop(); R.autoPlay = true; R.start(); });
+    await p2.evaluate(() => { const R = window.__g.rhythm; window.__T = 5000; R.clock = () => window.__T; R.stop(); R.autoPlay = true; R.start();
+      while (R.t0 == null) { window.__T += 0.05; R.update(0.05, null); } });
     // [名前, 曲の頭からの秒 (関数で譜面から決める)]
-    const moments = [['01_call', 'c => c.calls.find(x => x.bar === 3).t + 0.03'], ['02_resp', 'c => c.targets.find(x => x.bar === 4).t + 0.03'],
+    const moments = [['01_call', 'c => c.calls.find(x => x.bar === 3).t + 0.03'], ['01b_cue', 'c => 3 * 4 * 60 / 110 + 6.6 * 60 / 220'], ['02_resp', 'c => c.targets.find(x => x.bar === 4).t + 0.03'],
       ['03_ofuda', 'c => c.targets.find(x => x.kind === "ofuda" && x.bar === 8).t + 0.25'], ['04_lift', 'c => 12 * 4 * 60 / 110 + 3.4 * 60 / 110'],
       ['05_final', 'c => 13 * 4 * 60 / 110 + 0.35'], ['06_result', 'c => 14 * 4 * 60 / 110 + 2']];
     for (const [n, f] of moments) {

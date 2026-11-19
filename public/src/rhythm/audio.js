@@ -16,11 +16,37 @@ function make() {
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   return ctx;
 }
+// iPhone (Safari・Chrome とも中身は Safari) は、消音スイッチ (マナーモード) が入っていると Web Audio の音を消す。
+// 音楽の再生と同じ扱いにして、消音スイッチに関係なく鳴らす:
+//   ・navigator.audioSession.type = 'playback' (iOS 16.4 以降)
+//   ・それより古い iOS 向けに、無音の短い音を <audio> で 1 回鳴らす (<audio> の再生で、音の扱いが「再生」に切り替わる)
+function silentWav() {
+  const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer), w = (o, s) => [...s].forEach((c, i) => b[o + i] = c.charCodeAt(0));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+  b.fill(128, 44);
+  let bin = ''; for (const x of b) bin += String.fromCharCode(x);
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+let mediaTried = false;
+function playbackMode() {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* 使えない端末 */ }
+  if (mediaTried) return;
+  mediaTried = true;
+  try { const a = new Audio(silentWav()); a.setAttribute('playsinline', ''); a.play().catch(() => { mediaTried = false; }); } catch (e) { mediaTried = false; }
+}
 // 触った瞬間に作る・再開する (iPhone は触った処理の中で resume しないと鳴らない)
-const unlock = () => { const c = make(); if (c && c.state !== 'running') c.resume().catch(() => {}); };
-if (typeof window !== 'undefined') for (const t of ['pointerdown', 'keydown', 'touchend']) window.addEventListener(t, unlock, { capture: true, passive: true });
+const unlock = () => {
+  const c = make();
+  if (!c) return;
+  playbackMode();
+  if (c.state !== 'running') c.resume().catch(() => {});
+};
+if (typeof window !== 'undefined') for (const t of ['pointerdown', 'keydown', 'touchend', 'click']) window.addEventListener(t, unlock, { capture: true, passive: true });
 
 export const audioOn = () => !!ctx && ctx.state === 'running';
+// 音の準備ができていない (まだ触っていない・再開の途中) とき、もう一度頼む。触った処理の外なので効かない端末もある
+export function wake() { if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); return audioOn(); }
 
 // 今の時刻 (秒)。音が出ているときは「いま耳に届いている音」の時刻 (出力の遅れを含む) にそろえる
 export function now() {
@@ -81,6 +107,10 @@ export function play(kind, t = null, v = 1) {
       for (const [f, a] of [[2637, 0.12], [3520, 0.08], [5274, 0.05]]) {
         for (let k = 0; k < 3; k++) osc('sine', f * (1 + k * 0.003), f, T + k * 0.03, 0.5, env(T + k * 0.03, 0.003, a * v, 0.5));
       }
+      break;
+    }
+    case 'cue': { // 「はい！」の合図: 拍子木を 2 つ (カカッ)
+      for (const k of [0, 0.09]) osc('square', 2300, 2250, T + k, 0.035, env(T + k, 0.001, 0.13 * v, 0.04));
       break;
     }
     case 'miss': { // ぽこ
