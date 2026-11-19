@@ -25,6 +25,7 @@ import { useMocap } from './attack.js';
 import { loadMotion } from './motion.js';
 import { preloadVRM } from './character.js';
 import { Swarm } from './swarm/event.js';
+import { Rhythm } from './rhythm/event.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
 if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); loadMotion('ual_sword_attack_rm'); }
@@ -67,6 +68,7 @@ async function main() {
   const labelRenderer = new CSS2DRenderer();
   labelRenderer.setSize(innerWidth, innerHeight);
   Object.assign(labelRenderer.domElement.style, { position: 'fixed', inset: '0', pointerEvents: 'none' });
+  labelRenderer.domElement.id = 'labels';
   document.body.appendChild(labelRenderer.domElement);
 
   const scene = new THREE.Scene();
@@ -149,6 +151,12 @@ async function main() {
   } });
   if (Q.has('noswarm') || (Q.has('shot') && !Q.has('swarm'))) swarm.disabled = true;
   if (Q.has('swarm')) { swarm.auto = true; const p = findFree(world, -246, 1449); player.teleport(p.x, p.z); player.facing = Math.PI / 2; cam.yaw = player.facing + Math.PI; cam.update(0, player.pos, true); }
+
+  // イベント「お札まき 合いの手」(八坂神社の境内に入ると、参加するか聞く。rhythm/event.js)。?norhythm で無効、?rhythm で開いてすぐ始める、?rhythm=auto で自動で打つ (確認用)
+  const rhythm = new Rhythm({ scene, world, player, camera, cam });
+  if (Q.has('norhythm') || (Q.has('shot') && !Q.has('rhythm'))) rhythm.disabled = true;
+  if (Q.has('rhythm')) { rhythm.auto = true; rhythm.autoPlay = Q.get('rhythm') === 'auto'; player.teleport(-386, 623.4); }
+  window.__rhythm = rhythm; // 確認用 (tools/dev/rhythmcheck.js)
 
   // マルチプレイ (サーバーが設定されているときだけ。net/config.js)
   const mp = startMultiplayer({ scene, player, respawn, bigmapOpen: () => bigmap.open });
@@ -245,7 +253,7 @@ async function main() {
     if (input.pressed('KeyH')) $('help').hidden = !$('help').hidden;
     if (input.pressed('KeyG')) exportGLB(built.group);
 
-    if (input.pressed('KeyM')) toggleMap();
+    if (input.pressed('KeyM')) { rhythm.stop(); toggleMap(); }
     if (bigmap.open && input.pressed('KeyF')) bigmap.centerOnPlayer();
 
     // マップ表示中はキャラを止める
@@ -254,8 +262,10 @@ async function main() {
       const n = Math.ceil(dt / (1 / 30) - 1e-6) || 1;
       doors.update(dt, player, input);   // 扉の開け閉め (F)。押した瞬間を player より先に見る
       swarm.update(dt, input);           // イベント (受けるか聞く表示の Y / N も、押した瞬間を player より先に見る)
+      rhythm.update(dt, input);          // イベント「お札まき」(同上。曲の間のカメラもここで決めるので、cam.update の後でもう一度)
       for (let i = 0; i < n; i++) { player.update(dt / n, input, cam); if (n > 1) input.endFrame(); }
       cam.update(dt, player.pos, false, player);
+      if (rhythm.playing) rhythm.view();
     }
     if (mp) mp.update(dt, input);
     tod.update(dt);

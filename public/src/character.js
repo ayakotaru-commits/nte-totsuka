@@ -283,6 +283,34 @@ export function makeCharacter(opt = {}) {
     g.visible = false; root.add(g);
     return { g, blade };
   });
+  // うちわ (お札まきのイベントで右手に持つ。act.type === 'fan' の間だけ見える)
+  const fan = (() => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#fbf6ea'; c.beginPath(); c.arc(32, 32, 31, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(150,120,80,.35)'; c.lineWidth = 1.2;
+    for (let a = -1.2; a <= 1.21; a += 0.3) { c.beginPath(); c.moveTo(32, 62); c.lineTo(32 + Math.sin(a) * 30, 32 - Math.cos(a) * 30); c.stroke(); }
+    c.fillStyle = '#c8282e'; c.beginPath(); c.arc(32, 30, 13, 0, 7); c.fill();
+    c.strokeStyle = '#c8282e'; c.lineWidth = 3; c.beginPath(); c.arc(32, 32, 29.5, 0, 7); c.stroke();
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const g = new THREE.Group();
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.15, 20), new THREE.MeshToonMaterial({ map: tex, gradientMap: gm, side: THREE.DoubleSide }));
+    face.position.y = 0.27; g.add(face);
+    g.add(shape(new THREE.CylinderGeometry(0.012, 0.012, 0.2, 6), M.hair, [0, 0.07, 0], 0.012, true)); // 柄
+    g.visible = false; root.add(g);
+    return g;
+  })();
+  function updateFan(act) {
+    fan.visible = !!act && act.type === 'fan';
+    if (!fan.visible) return;
+    root.updateMatrixWorld(true);
+    const J = vrmRig && vrmRig.nodes.haR ? vrmRig.nodes : BONE;
+    J.haR.getWorldPosition(_hp); J.elR.getWorldPosition(_ep);
+    root.worldToLocal(_hp); root.worldToLocal(_ep);
+    _dir.subVectors(_hp, _ep).normalize();
+    fan.position.copy(_hp).addScaledVector(_dir, 0.04);
+    fan.quaternion.setFromUnitVectors(YAX, _dir);
+  }
   // 軌跡: 刃の先と根もとの世界座標を残し、古いものほど薄くするリボン
   const TRAIL_LIFE = 0.18, TRAIL_MAX = 56;
   const fx = new THREE.Group(); fx.frustumCulled = false;
@@ -440,6 +468,7 @@ export function makeCharacter(opt = {}) {
     if (act.type === 'atk') return atkPose(act);
     if (act.type === 'hurt' || act.type === 'down') return hitPose(act);
     if (act.type === 'door') return doorPose(act, G);
+    if (act.type === 'fan' || act.type === 'cheer') return festPose(act, G);
     if (act.type === 'roll') { // 前転: データの骨の向きと、腰の高さ・左右のずれ (前後はキャラごと動く)
       const m = sampleMotion('ual_roll', act.t, st.mo || (st.mo = {}));
       if (m) { const X = pose(); X.q = m.q; st.hipOff = [m.hips[0], m.hips[1], 0]; st.hipAbs = true; return X; }
@@ -498,6 +527,32 @@ export function makeCharacter(opt = {}) {
     }
     return X;
   }
+  // お札まき (rhythm/event.js)。脚と腰はふつうの姿勢 (G) のまま、上半身だけ
+  //   fan:   右手のうちわを頭の上に構え、打つ瞬間に前へ振り下ろす (act.u = 最後に打ってからの秒数。大きいほど構えに戻っている)
+  //          act.lift = 最後の一打の前に、うちわを高く掲げる度合い (0〜1)
+  //   cheer: 見物人。両手を上げて弾む (act.e = 盛り上がり 0〜1、act.ph = 弾む位相)
+  function festPose(act, G) {
+    const X = pose();
+    for (const n of NAMES) X[n] = G[n].slice();
+    if (act.type === 'fan') {
+      const u = act.u ?? 9;
+      const hit = u < 0.05 ? sstep(0, 0.05, u) : 1 - sstep(0.1, 0.42, u); // 振り下ろしている度合い
+      const lift = act.lift || 0;
+      X.spine[0] += 0.12 * hit; X.chest[0] += 0.1 * hit; X.head[0] += 0.05 * hit;
+      X.shR = [mix(mix(-2.35, -2.85, lift), -0.75, hit), 0, mix(-0.32, -0.1, hit)];
+      X.elR = [mix(-0.85 + 0.6 * lift, -0.2, hit), 0, 0];
+      X.haR = [mix(0.35, -0.55, hit), 0, -0.1];
+      X.shL = [-0.55 - 0.15 * hit, 0, 0.3]; X.elL = [-1.55, 0, 0]; X.haL = [0, 0, 0.2]; // 左手は胸の前
+    } else {
+      // 両手を V の字に上げ、拍に合わせて交互に振る
+      const e = act.e || 0, b = Math.sin(act.ph || 0);
+      X.shL = [-2.9 - 0.15 * b * e, 0, 0.55 + 0.1 * e]; X.shR = [-2.9 + 0.15 * b * e, 0, -0.55 - 0.1 * e];
+      X.elL = [-0.25 - 0.3 * Math.max(0, b) * e, 0, 0]; X.elR = [-0.25 - 0.3 * Math.max(0, -b) * e, 0, 0];
+      X.haL = [0, 0, 0.3]; X.haR = [0, 0, -0.3];
+      X.head[0] += -0.12 * e;
+    }
+    return X;
+  }
   // 攻撃を受けたとき (act = { type: 'hurt' | 'down', s: 0〜1 })。hurt = のけぞる、down = 膝をついてうなだれる (倒された)
   function hitPose(act) {
     const X = pose(), s = act.s;
@@ -549,6 +604,7 @@ export function makeCharacter(opt = {}) {
     updateInner(dt, speed, onGround, vy, stair, act);
     if (vrmRig) applyVRM(dt);
     updateSwords(Math.max(1e-4, Math.min(dt, 0.1)), armed, st.trail, st.trailStyle);
+    updateFan(act);
     updateFx(Math.max(1e-4, Math.min(dt, 0.1)), act);
   }
 
