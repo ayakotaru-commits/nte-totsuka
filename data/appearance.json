@@ -234,7 +234,23 @@
                    "top_z": 16.1, "top_y": 2.1, "steps": 9, "plate_to": 12.0,
                    "torii": {"z": 23.0, "span": 3.1, "h": 4.3},
                    "walls": {"top_y": 2.1, "side": 1.55, "out": [3.6, 3.4]}},
-      "hide_roads": [{"kind": "steps", "near": [-364.6, 642.9]}]
+      "hide_roads": [{"kind": "steps", "near": [-364.6, 642.9]}],
+      "_note_items": "境内の小物。at = 社殿の局所座標 [x, z]、world = 地図の位置 (OSM の点)。level = landing (踊り場) / top (石段の上の高さ。台座を地面まで伸ばす)、無ければ地形の高さ。face = 向き (度。0 = 道路側 +z、90 = +x)、無ければ参道の筋の方を向く。写真 (鳥居の下から) に写っている物: 狛犬 (石段の上)・手水舎 (緑の屋根。右上)・石灯籠と掲示板と石の車止め (右手前)・石 (左手前)。石碑と案内板は OSM の点の位置 (お札まきの板だけ狛犬と重ならないよう左へ寄せた)",
+      "items": [
+        {"type": "komainu", "at": [-2.75, 15.5], "level": "top"},
+        {"type": "komainu", "at": [1.55, 15.5], "level": "top", "closed": true},
+        {"type": "chozuya", "at": [3.7, 13.4], "face": -90},
+        {"type": "toro", "at": [3.3, 21.6], "level": "landing"},
+        {"type": "board", "at": [4.6, 22.7], "face": 0},
+        {"type": "bollard", "at": [2.6, 23.95], "level": "landing"},
+        {"type": "bollard", "at": [4.4, 23.95]},
+        {"type": "stones", "at": [-2.9, 21.8], "level": "landing"},
+        {"type": "monument", "world": [-369.84, 636.77], "h": 1.8, "w": 0.5, "d": 0.5},
+        {"type": "sign", "world": [-370.84, 636.95], "title": "由来"},
+        {"type": "sign", "at": [-4.3, 14.4], "title": "お札まき"},
+        {"type": "monument", "world": [-371.76, 631.3], "h": 1.2, "w": 0.45, "d": 0.3, "koshin": true},
+        {"type": "monument", "world": [-372.0, 629.13], "h": 1.5, "w": 0.95, "d": 0.3}
+      ]
     }
   ]
 }

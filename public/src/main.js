@@ -110,8 +110,9 @@ async function main() {
     console.info('[perf] buildCity ms=' + Math.round(performance.now() - t0) + ' tris=' + Math.round(tris) + ' ' + JSON.stringify(per));
   }
   if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
-  if (props) buildShrines(props.shrines, scene, world); // 神社の社殿 (shrine.js。V キーに関係なく描く)
+  const shrineG = props ? buildShrines(props.shrines, scene, world) : null; // 神社の社殿 (shrine.js。V キーに関係なく描く)
   const detail = await loadDetail({ scene, city: shown, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
+  if (shrineG) built.windowMats.push(...(shrineG.userData.emissive || [])); // 灯籠・提灯の明かり (夜に光る。time.js)
   const doors = new DoorControl(world); // 開け閉めできる扉 (時計の棟。形は detail が作って登録する)
 
   releaseGeometryAfterUpload(scene); // スマホ・タブレットだけ: 頂点データの JS 側の控えを、GPU に送った後に手放す

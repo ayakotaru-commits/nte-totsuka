@@ -286,6 +286,110 @@ function buildApproach(ap, y0, shadow) {
   return g;
 }
 
+// ---------- 境内の小物 (props.json の shrines[].items。位置・高さは build_props.py) ----------
+const STONE = '#9d998f', STONE_L = '#b3afa4';
+function textTex(lines, w, h, bg, fg, font) {
+  return canvasTexture(w, h, (g, W, Hh) => {
+    g.fillStyle = bg; g.fillRect(0, 0, W, Hh);
+    g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+    lines.forEach((t, i) => { g.font = i === 0 ? font : `${Math.round(parseInt(font) * 0.42)}px sans-serif`; g.fillText(t, W / 2, i === 0 ? Hh * 0.18 : Hh * (0.32 + i * 0.1)); });
+  });
+}
+// 狛犬 (台座の上に座る石の獅子。closed = 吽形 (口を閉じる)。形は簡略)
+function komainu(it, add) {
+  const m = mat(STONE, { roughness: 0.95 }), base = it.y - it.ground + 0.2;
+  const g = new THREE.Group();
+  const P = (mesh, x, y, z) => { mesh.position.set(x, y, z); g.add(mesh); return mesh; };
+  P(new THREE.Mesh(new THREE.BoxGeometry(0.75, base + 0.3, 0.95), mat(STONE_L)), 0, it.ground - it.y + (base + 0.3) / 2 - 0.2, 0);       // 台座 (地面まで)
+  P(new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.12, 1.05), mat(STONE_L)), 0, 0.36, 0);
+  const y0 = 0.42;
+  P(new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), m), 0, y0 + 0.25, -0.12).scale.set(1, 0.9, 1.25);           // 後ろ脚と腰
+  P(new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.6, 10), m), 0, y0 + 0.45, 0.08).rotation.x = -0.35;       // 胸
+  for (const sx of [-1, 1]) P(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.5, 8), m), sx * 0.12, y0 + 0.25, 0.25); // 前脚
+  P(new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), mat('#8f8b82')), 0, y0 + 0.82, 0.12).scale.set(1.15, 1, 1);  // たてがみ
+  P(new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), m), 0, y0 + 0.82, 0.26);                                       // 顔
+  P(new THREE.Mesh(new THREE.BoxGeometry(0.2, it.closed ? 0.06 : 0.1, 0.1), mat(it.closed ? STONE : '#5d5a54')), 0, y0 + 0.72, 0.4); // 口
+  P(new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.35, 8), m), 0, y0 + 0.4, -0.42).rotation.x = -0.9;                     // 尾
+  add(g, it);
+}
+// 手水舎 (柱 4 本・緑青の切妻屋根・石の水盤・しめ縄)
+function chozuya(it, add) {
+  const g = new THREE.Group(), w = 2.0, d = 1.4, hP = 1.9;
+  const P = (mesh, x, y, z) => { mesh.position.set(x, y, z); g.add(mesh); return mesh; };
+  for (const [x, z] of [[-w / 2, -d / 2], [w / 2, -d / 2], [-w / 2, d / 2], [w / 2, d / 2]]) P(new THREE.Mesh(new THREE.BoxGeometry(0.14, hP, 0.14), mat(WOOD)), x, hP / 2, z);
+  const b = new Builder(), ov = 0.35;
+  for (const sz of [-1, 1]) b.quad([-w / 2 - ov, hP - 0.05, sz * (d / 2 + ov)], [w / 2 + ov, hP - 0.05, sz * (d / 2 + ov)], [w / 2 + ov, hP + 0.65, 0], [-w / 2 - ov, hP + 0.65, 0], [0, 1, sz * 0.6]);
+  P(new THREE.Mesh(b.geometry(), mat('#fff', { map: copperTex(), side: THREE.DoubleSide, roughness: 0.6 })), 0, 0, 0);
+  P(new THREE.Mesh(new THREE.BoxGeometry(w + 2 * ov + 0.1, 0.12, 0.14), mat(CU_D)), 0, hP + 0.66, 0);
+  P(new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.55, 0.7), mat(STONE)), 0, 0.28, 0);                                     // 水盤
+  P(new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.02, 0.5), mat('#5f7f88', { roughness: 0.15, metalness: 0.2 })), 0, 0.56, 0);
+  const rope = []; for (let k = 0; k <= 10; k++) { const t = k / 10; rope.push(new THREE.Vector3(-w / 2 + w * t, hP - 0.2 - 0.12 * Math.sin(t * Math.PI), d / 2)); }
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rope), 16, 0.03, 5), mat('#d6c48c')));
+  add(g, it);
+}
+// 石灯籠 (基礎・竿・中台・火袋・笠・宝珠)。火袋の明かり取りは夜に光る (lamp)
+function toro(it, add, lamps) {
+  const g = new THREE.Group(), m = mat(STONE);
+  const P = (mesh, y) => { mesh.position.y = y; g.add(mesh); return mesh; };
+  P(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.38, 0.18, 6), m), 0.09);
+  P(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.9, 10), m), 0.63);
+  P(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.2, 0.16, 6), m), 1.16);
+  P(new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), m), 1.42);
+  const lamp = mat('#2a2622', { emissive: '#ffb860', emissiveIntensity: 0 }); lamp.userData.glow = 1.6; lamps.push(lamp);
+  for (const a of [0, Math.PI / 2]) { const w = P(new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.12), lamp), 1.44); w.rotation.y = a; }
+  P(new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.3, 6), m), 1.74);
+  P(new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), m), 1.95);
+  add(g, it);
+}
+// 掲示板 (町内会。脚 2 本・小さな屋根・緑の板に貼り紙)
+function board(it, add) {
+  const g = new THREE.Group(), P = (mesh, x, y, z) => { mesh.position.set(x, y, z); g.add(mesh); return mesh; };
+  for (const sx of [-1, 1]) P(new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.9, 0.08), mat('#4a3a2c')), sx * 0.75, 0.95, 0);
+  const tex = canvasTexture(256, 160, (c, W, H) => {
+    c.fillStyle = '#2f6b4a'; c.fillRect(0, 0, W, H);
+    const cols = ['#f7e46a', '#9fd3f0', '#f4b7c9', '#ffffff', '#c8e6a0', '#ffd39a'];
+    for (let k = 0; k < 7; k++) { c.fillStyle = cols[k % cols.length]; c.fillRect(10 + (k % 4) * 60 + (k > 3 ? 25 : 0), 12 + (k > 3 ? 78 : 0), 48, 64); c.fillStyle = 'rgba(0,0,0,.3)'; for (let l = 0; l < 4; l++) c.fillRect(16 + (k % 4) * 60 + (k > 3 ? 25 : 0), 24 + l * 12 + (k > 3 ? 78 : 0), 34, 3); }
+  });
+  P(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 0.06), [mat('#4a3a2c'), mat('#4a3a2c'), mat('#4a3a2c'), mat('#4a3a2c'), mat('#fff', { map: tex }), mat('#4a3a2c')]), 0, 1.35, 0);
+  P(new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.35), mat('#3c4a3c')), 0, 1.9, 0.05);
+  add(g, it);
+}
+// 石碑 (koshin = 庚申塔: 上が丸い細長い石)、案内板 (sign)、車止め (bollard)、石 (stones)
+function monument(it, add) {
+  const g = new THREE.Group(), h = it.h, w = it.w;
+  const tex = canvasTexture(64, 128, (c, W, Hh) => {
+    c.fillStyle = STONE; c.fillRect(0, 0, W, Hh);
+    c.fillStyle = 'rgba(40,38,34,.55)'; for (let col = 0; col < (w > 0.7 ? 3 : 1); col++) for (let k = 0; k < 9; k++) c.fillRect(W / 2 - 6 + (col - (w > 0.7 ? 1 : 0)) * 16, 14 + k * 12, 10, 7); // 刻まれた文字 (それらしい目地)
+  });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, it.d || 0.4), [mat(STONE), mat(STONE), mat(STONE), mat(STONE), mat('#fff', { map: tex }), mat(STONE)]);
+  body.position.y = 0.25 + h / 2; g.add(body);
+  if (it.koshin) { const cap = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, it.d || 0.3, 16).rotateX(Math.PI / 2), mat(STONE)); cap.position.y = 0.25 + h; g.add(cap); } // 上が丸い
+  const base = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.25, (it.d || 0.4) + 0.3), mat(STONE_L)); base.position.y = 0.125; g.add(base);
+  add(g, it);
+}
+function sign(it, add) {
+  const g = new THREE.Group();
+  for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.7, 0.08), mat('#5a4636')); p.position.set(sx * 0.55, 0.85, 0); g.add(p); }
+  const tex = textTex([it.title, '八坂神社'], 256, 192, '#f3efe4', '#2b2420', 'bold 44px sans-serif');
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.95, 0.05), [mat('#5a4636'), mat('#5a4636'), mat('#5a4636'), mat('#5a4636'), mat('#fff', { map: tex }), mat('#5a4636')]);
+  panel.position.y = 1.3; g.add(panel);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.3), mat('#4a3a2c')); roof.position.set(0, 1.82, 0.04); g.add(roof);
+  add(g, it);
+}
+function bollard(it, add) {
+  const g = new THREE.Group(), m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.85 + (it.y - it.ground), 0.22), mat('#d9d6cf'));
+  m.position.y = (0.85 - (it.y - it.ground)) / 2; g.add(m);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.12, 4).rotateY(Math.PI / 4), mat('#d9d6cf')); cap.position.y = 0.91; g.add(cap);
+  add(g, it);
+}
+function stones(it, add) {
+  const g = new THREE.Group();
+  for (const [x, z, r] of [[0, 0, 0.32], [0.55, 0.35, 0.24], [-0.45, 0.4, 0.27], [0.15, -0.55, 0.22], [-0.5, -0.35, 0.2]]) {
+    const s = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), mat(STONE)); s.position.set(x, r * 0.55, z); s.scale.y = 0.8; s.rotation.set(x * 3, z * 5, 0); g.add(s);
+  }
+  add(g, it);
+}
+
 export function buildShrines(shrines, scene, world) {
   const group = new THREE.Group(); group.name = 'shrines';
   const shadow = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
@@ -295,6 +399,13 @@ export function buildShrines(shrines, scene, world) {
     root.rotation.y = s.yaw;
     root.add(buildHall(s, shadow));
     if (s.annex) { const a = buildAnnex(s.annex, shadow); a.position.set(s.annex.at[0], 0, s.annex.at[1]); root.add(a); }
+    const lamps = [];
+    const placeItem = (g, it) => { g.position.set(it.lx, it.y, it.lz); g.rotation.y = it.lyaw; g.traverse((o) => { if (o.isMesh) shadow(o); }); root.add(g); };
+    for (const it of s.items || []) {
+      const fn = { komainu, chozuya, board, monument, sign, bollard, stones }[it.type];
+      if (fn) fn(it, placeItem); else if (it.type === 'toro') toro(it, placeItem, lamps);
+    }
+    group.userData.emissive = (group.userData.emissive || []).concat(lamps);
     const ap = s.approach;
     if (ap) {
       root.add(buildApproach(ap, s.y, shadow));

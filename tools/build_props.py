@@ -2479,7 +2479,40 @@ def build_shrines(H, hidden):
             for sx in (-1, 1):
                 x, z = W(x0 + sx * ti["span"] / 2, ti["z"])
                 circle.append([r2(x), r2(z), 0.24, r2(yl - 1), r2(yl + ti["h"])])
-        out.append({**{k: v for k, v in s.items() if not k.startswith("_") and k not in ("hide", "hide_roads")},
+        # 境内の小物: 位置 (世界)・高さ・向きを決め、当たり判定を足す (形は shrine.js の buildItem)
+        items = []
+        RAD = {"komainu": 0.45, "toro": 0.35, "monument": None, "sign": 0.12, "bollard": 0.13, "stones": 0.5, "board": 0.12}
+        for it in s.get("items", []):
+            if "world" in it:
+                x, z = it["world"]
+                dx, dz = x - ox, z - oz
+                lx, lz = dx * rx + dz * rz, dx * fx + dz * fz
+            else:
+                lx, lz = it["at"]
+                x, z = W(lx, lz)
+            g_ = H(x, z)
+            lv = it.get("level")
+            iy = ap["landing_y"] if (ap and lv == "landing") else ap["top_y"] if (ap and lv == "top") else g_
+            if "face" in it:
+                fa = math.radians(it["face"])
+                lyaw = math.atan2(math.sin(fa), math.cos(fa))
+            else:   # 参道の筋 (x = approach.x、少し道路側) の方を向く
+                tx, tz2 = ((ap["x"] if ap else 0) - lx, ((ap["top_z"] + 2) if ap else lz + 2) - lz)
+                lyaw = math.atan2(tx, tz2)
+            rec = {k: v for k, v in it.items() if k not in ("at", "world", "level")}
+            rec.update({"lx": r2(lx), "lz": r2(lz), "y": r2(iy - y), "ground": r2(g_ - y), "lyaw": r3(lyaw)})
+            items.append(rec)
+            t = it["type"]
+            if t == "chozuya":
+                bx, bz = 1.3, 0.9
+                cy, sy_ = math.cos(lyaw), math.sin(lyaw)
+                box.append([r2(x), r2(z), r3(yaw + lyaw), bx, bz, r2(g_ - 1), r2(iy + 0.9)])
+            elif t == "monument":
+                box.append([r2(x), r2(z), r3(yaw + lyaw), r2(it["w"] / 2), r2(it.get("d", 0.4) / 2), r2(g_ - 1), r2(iy + it["h"])])
+            else:
+                top = {"komainu": 1.6, "toro": 2.2, "sign": 1.9, "bollard": 0.8, "stones": 0.5, "board": 2.0}[t]
+                circle.append([r2(x), r2(z), RAD[t], r2(min(g_, iy) - 1), r2(iy + top)])
+        out.append({**{k: v for k, v in s.items() if not k.startswith("_") and k not in ("hide", "hide_roads", "items")}, "items": items,
                     "yaw": r3(yaw), "y": r2(y), "colliders": {"box": box, "circle": circle}})
     return out
 
