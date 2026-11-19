@@ -1,4 +1,5 @@
-// イベント「ミズタマンの襲来」: グランシティの時計の棟の門をくぐって中庭に入ると、まわりの棟の屋上から
+// イベント「ミズタマン大量発生クエスト」: グランシティの時計の棟の門をくぐって中庭に入ると、受けるかどうかを聞く表示が出る。
+// 「はい」(Y / Enter / 画面のボタン) で始まり、まわりの棟の屋上から
 // 敵キャラ「ミズタマン」(見た目は swarm/model.js) が大の字で次々に落ちてきて、起き上がって襲ってくる。
 //   ・一度に出るのは ALIVE 体まで。倒すと次が屋上から落ちてくる。全部で TOTAL 体倒すとクリア
 //   ・落ちてくる所には地面に赤い輪が出る
@@ -7,7 +8,8 @@
 //   ・敵は近づくと、ためてから体当たりしてくる。当たると体力が減る。0 になるとやられて、門の外からやり直し
 //   ・中庭から遠く (DIST_GIVEUP m) 離れて数秒たつと、敵はいなくなる (R でスタート地点に戻ったときも)
 // 自分の画面だけの出来事 (マルチプレイのほかの人には見えない)。
-// URL: ?swarm 開いてすぐ中庭で始める (確認用) / ?noswarm イベントを無効に
+// 「いいえ」(N / 画面のボタン) を選ぶか、聞いている間に中庭から出ると、いったん中庭の外へ出るまでは聞かない。
+// URL: ?swarm 開いてすぐ中庭で始める (聞かずに始める。確認用) / ?noswarm イベントを無効に
 import { H } from '../terrain.js';
 import { trailOn } from '../attack.js';
 import { Herd, Fx, BODY } from './model.js';
@@ -102,10 +104,21 @@ export class Swarm {
     this.list = [];                 // 出ている敵
     this.state = 'idle';            // idle / run / down / done
     this.armed = true;              // 中庭の外へ出たら、また始められる
-    this.ui = { box: $('swarm'), left: $('swarm-left'), hp: $('swarm-hp'), banner: $('swarm-banner'), hurt: $('mp-hurt'), time: $('swarm-time') };
+    this.asking = false;            // 受けるかどうかを聞いている
+    this.answer = null;             // 画面のボタンで選んだ答え ('yes' / 'no')
+    this.ui = { ask: $('swarm-ask'), box: $('swarm'), left: $('swarm-left'), hp: $('swarm-hp'), banner: $('swarm-banner'), hurt: $('mp-hurt'), time: $('swarm-time') };
     this.spawns = this.findSpawns();
     this.lastSpawnAt = new Map();
     this.clock = 0;
+    for (const [id, a] of [['swarm-yes', 'yes'], ['swarm-no', 'no']]) {
+      const b = $(id);
+      if (b) b.addEventListener('pointerdown', (ev) => { ev.preventDefault(); ev.stopPropagation(); this.answer = a; });
+    }
+  }
+
+  ask(on) {
+    this.asking = on; this.answer = null;
+    if (this.ui.ask) this.ui.ask.hidden = !on;
   }
 
   // 中庭に面した屋上の縁に、落ちてくる所を 2.5 m おきに並べる (屋根の高さは当たり判定から)
@@ -132,7 +145,7 @@ export class Swarm {
     this.state = 'run'; this.armed = false;
     this.killed = 0; this.spawned = 0; this.hp = HP_P; this.inv = 0; this.time = 0; this.queue = 0; this.nextAt = 1.2; this.away = 0;
     this.lastSerial = -1;
-    this.banner('ミズタマンの群れが降ってきた！', 2.5);
+    this.banner('ミズタマンが屋上から降ってくる！', 2.5);
     this.ui.box.hidden = false;
     this.draw();
   }
@@ -204,13 +217,22 @@ export class Swarm {
 
   setState(e, st) { e.st = st; e.t = 0; }
 
-  update(dt) {
+  // input: キーの押した瞬間 (Y / Enter = はい、N = いいえ)。無ければ画面のボタンだけ
+  update(dt, input) {
     this.clock += dt;
     const pl = this.player, p = pl.pos;
     if (this.state === 'idle') {
       const inside = inPoly(SITE.yard, p.x, p.z);
-      if (!inside) this.armed = true;
-      else if (this.armed && !pl.dead && !this.disabled) this.start();
+      if (!inside) { this.armed = true; if (this.asking) this.ask(false); }
+      else if (this.armed && !pl.dead && !this.disabled) {
+        if (this.auto) this.start();
+        else { this.armed = false; this.ask(true); }
+      }
+      if (this.asking) {
+        const key = (k) => input && input.pressed(k);
+        if (key('KeyY') || key('Enter') || this.answer === 'yes') { this.ask(false); this.start(); }
+        else if (key('KeyN') || this.answer === 'no') this.ask(false);
+      }
     }
     if (this.running) this.step(dt);
     this.herd.flush();

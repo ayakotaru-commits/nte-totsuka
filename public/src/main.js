@@ -143,12 +143,12 @@ async function main() {
     Object.assign(cam, { yaw: restore.yaw, pitch: restore.pitch, dist: restore.dist });
   }
 
-  // イベント「ミズタマンの襲来」(グランシティの中庭。swarm/event.js)。?noswarm で無効、?swarm で開いてすぐ始める (確認用)
+  // イベント「ミズタマン大量発生クエスト」(グランシティの中庭に入ると、受けるか聞く。swarm/event.js)。?noswarm で無効、?swarm で開いてすぐ始める (確認用)
   const swarm = new Swarm({ scene, world, player, camera, onRespawn: (x, z, face) => {
     const p = findFree(world, x, z); player.teleport(p.x, p.z); player.facing = face; cam.yaw = face + Math.PI; cam.update(0, player.pos, true);
   } });
   if (Q.has('noswarm') || (Q.has('shot') && !Q.has('swarm'))) swarm.disabled = true;
-  if (Q.has('swarm')) { const p = findFree(world, -246, 1449); player.teleport(p.x, p.z); player.facing = Math.PI / 2; cam.yaw = player.facing + Math.PI; cam.update(0, player.pos, true); }
+  if (Q.has('swarm')) { swarm.auto = true; const p = findFree(world, -246, 1449); player.teleport(p.x, p.z); player.facing = Math.PI / 2; cam.yaw = player.facing + Math.PI; cam.update(0, player.pos, true); }
 
   // マルチプレイ (サーバーが設定されているときだけ。net/config.js)
   const mp = startMultiplayer({ scene, player, respawn, bigmapOpen: () => bigmap.open });
@@ -253,9 +253,9 @@ async function main() {
       // キャラの動きは 1/30 秒以下に刻んで進める (すり抜け防止)。ジャンプなどの「押した瞬間」は最初の 1 刻みだけに効かせる
       const n = Math.ceil(dt / (1 / 30) - 1e-6) || 1;
       doors.update(dt, player, input);   // 扉の開け閉め (F)。押した瞬間を player より先に見る
+      swarm.update(dt, input);           // イベント (受けるか聞く表示の Y / N も、押した瞬間を player より先に見る)
       for (let i = 0; i < n; i++) { player.update(dt / n, input, cam); if (n > 1) input.endFrame(); }
       cam.update(dt, player.pos, false, player);
-      swarm.update(dt);
     }
     if (mp) mp.update(dt, input);
     tod.update(dt);

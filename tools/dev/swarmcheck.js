@@ -57,7 +57,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     out.groundY = W.groundAt(SITE.center[0], SITE.center[1], 0).toFixed(1);
     const mk = (keys = [], press = []) => ({ pressed: (k) => press.includes(k), held: (k) => keys.includes(k), ax: 0, az: 0, endFrame() {} });
     const dt = 1 / 30;
-    const tick = (inp) => { pl.update(dt, inp, g.cam); S.update(dt); };
+    const tick = (inp) => { S.update(dt, inp); pl.update(dt, inp, g.cam); };
     let nan = 0;
     const chk = () => { for (const e of S.list) if (!Number.isFinite(e.x + e.y + e.z)) nan++; if (!Number.isFinite(pl.pos.x + pl.pos.y)) nan++; };
 
@@ -98,6 +98,24 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       maxKilled = Math.max(maxKilled, S.killed || 0);
     }
     out.fight = { state: S.state, secs: +t.toFixed(1), killed: maxKilled, total: TOTAL, hpLeft: S.hp, time: +(S.time || 0).toFixed(1), banner: document.getElementById('swarm-banner').textContent };
+    // 5: 受けるかどうかを聞く表示 (?swarm 無しのとき)。N で断る → 出て入り直すとまた聞く → Y で始まる
+    S.stop(false); S.auto = false; S.armed = true; pl.revive();
+    const ask = {};
+    pl.teleport(SITE.out[0], SITE.out[1]); tick(mk());
+    pl.teleport(p0.x, p0.z); tick(mk());
+    ask.shown = S.asking && !document.getElementById('swarm-ask').hidden; ask.stateWhileAsking = S.state;
+    tick(mk([], ['KeyN'])); ask.afterNo = S.state + '/' + S.asking;
+    for (let k = 0; k < 30; k++) tick(mk()); ask.noReaskInside = !S.asking;
+    pl.teleport(SITE.out[0], SITE.out[1]); tick(mk()); pl.teleport(p0.x, p0.z); tick(mk());
+    ask.reasked = S.asking;
+    tick(mk([], ['KeyY'])); ask.afterYes = S.state + '/' + S.asking;
+    S.stop(false); S.armed = true;
+    pl.teleport(SITE.out[0], SITE.out[1]); tick(mk()); pl.teleport(p0.x, p0.z); tick(mk());
+    S.answer = 'yes'; tick(mk()); ask.button = S.state;
+    S.stop(false); S.armed = true; pl.teleport(SITE.out[0], SITE.out[1]); tick(mk()); pl.teleport(p0.x, p0.z); tick(mk());
+    pl.teleport(SITE.out[0], SITE.out[1]); tick(mk()); ask.closedOnLeave = !S.asking && document.getElementById('swarm-ask').hidden;
+    out.ask = ask;
+    S.auto = true;
     out.nan = nan;
     return out;
   });
@@ -105,6 +123,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
 
   // 4: 画面
   const shots = [
+    { name: 'ask', ask: true, follow: true },
     { name: 'fall', run: 2.2, cam: [-232, 1.5, 1452, -232, 9, 1440] },   // 中庭から南の棟の屋上を見上げる
     { name: 'swarm', run: 14, follow: true },
     { name: 'hit', run: 9, follow: true, atk: true },
@@ -118,9 +137,11 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       S.stop(false); S.armed = true;
       const mk = (keys = [], press = []) => ({ pressed: (k) => press.includes(k), held: (k) => keys.includes(k), ax: 0, az: 0, endFrame() {} });
       pl.revive(); pl.teleport(-240, 1450); pl.facing = Math.PI / 2;
-      pl.update(1 / 30, mk(), g.cam); S.update(1 / 30); // 始まる
+      if (s.ask) { S.auto = false; pl.teleport(-303, 1429); S.update(1 / 30); pl.teleport(-240, 1450); }
+      pl.update(1 / 30, mk(), g.cam); S.update(1 / 30); // 始まる (s.ask のときは聞く表示が出る)
+      S.auto = true;
       S.hp = 1e9;
-      const n = Math.round(s.run * 30);
+      const n = Math.round((s.run || 0) * 30);
       for (let k = 0; k < n; k++) {
         let inp = mk();
         if (s.atk && k >= n - 40) {
@@ -143,11 +164,12 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       // 撮影の間は止める (描画だけ続く)
       const pu = pl.update; pl.update = () => {}; g.restorePl = () => { pl.update = pu; };
       S.update = () => { S.herd.flush(); };
+      g.endAsk = () => S.ask(false);
     }, s);
     await page.waitForTimeout(4000);
     await page.screenshot({ path: path.join(out, s.name + '.png'), timeout: 300000 });
     console.log('ok', path.join(out, s.name + '.png'));
-    await page.evaluate(() => { const g = window.__g; g.look.render = () => {}; g.restorePl(); });
+    await page.evaluate(() => { const g = window.__g; g.look.render = () => {}; g.restorePl(); if (g.endAsk) g.endAsk(); });
   }
   await browser.close();
   server.close();
