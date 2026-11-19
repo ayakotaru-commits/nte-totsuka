@@ -2512,7 +2512,31 @@ def build_shrines(H, hidden):
             else:
                 top = {"komainu": 1.6, "toro": 2.2, "sign": 1.9, "bollard": 0.8, "stones": 0.5, "board": 2.0}[t]
                 circle.append([r2(x), r2(z), RAD[t], r2(min(g_, iy) - 1), r2(iy + top)])
-        out.append({**{k: v for k, v in s.items() if not k.startswith("_") and k not in ("hide", "hide_roads", "items")}, "items": items,
+        # お祭りの飾り: 提灯の列の柱と幟の竿 (位置・高さ。形は shrine.js の buildFestival)
+        fest = None
+        fe = s.get("festival")
+        if fe:
+            def base(p):
+                lx, lz = p[0], p[1]
+                x, z = W(lx, lz)
+                lv = p[2] if len(p) > 2 else None
+                b_ = ap["landing_y"] if (ap and lv == "landing") else ap["top_y"] if (ap and lv == "top") else H(x, z)
+                return x, z, b_
+            lines = []
+            for ln in fe.get("lines", []):
+                pts = []
+                for p in ln["pts"]:
+                    x, z, b_ = base(p)
+                    pts.append([p[0], p[1], r2(b_ - y)])
+                    circle.append([r2(x), r2(z), 0.09, r2(b_ - 1), r2(b_ + ln["h"] + 0.3)])
+                lines.append({"h": ln["h"], "pts": pts})
+            nob = []
+            for p in fe.get("nobori", []):
+                x, z, b_ = base(p)
+                nob.append([p[0], p[1], r2(b_ - y)])
+                circle.append([r2(x), r2(z), 0.08, r2(b_ - 1), r2(b_ + 5)])
+            fest = {"lines": lines, "nobori": nob}
+        out.append({**{k: v for k, v in s.items() if not k.startswith("_") and k not in ("hide", "hide_roads", "items", "festival")}, "items": items, "festival": fest,
                     "yaw": r3(yaw), "y": r2(y), "colliders": {"box": box, "circle": circle}})
     return out
 

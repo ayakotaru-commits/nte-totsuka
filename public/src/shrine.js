@@ -390,6 +390,60 @@ function stones(it, add) {
   add(g, it);
 }
 
+// ---------- お祭りの飾り (提灯の列と幟。props.json の shrines[].festival) ----------
+// 提灯は InstancedMesh 1 つ (赤と白を交互に)。夜は光る (emissive を time.js が明るくする。lamps に入れる)
+function buildFestival(fe, lamps) {
+  const g = new THREE.Group();
+  const wood = mat('#6b5440');
+  const ropeM = mat('#d6c48c');
+  const spots = [];   // 提灯の位置 (局所)
+  for (const ln of fe.lines) {
+    const P = ln.pts.map(([x, z, b]) => new THREE.Vector3(x, b + ln.h, z));
+    for (const [x, z, b] of ln.pts) {   // 柱
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, ln.h + 0.4, 8), wood); p.position.set(x, b + (ln.h + 0.4) / 2 - 0.05, z); g.add(p);
+    }
+    for (let i = 0; i + 1 < P.length; i++) {
+      const a = P[i], b = P[i + 1], L = a.distanceTo(b), sag = Math.min(0.5, L * 0.04);
+      const pts = []; for (let k = 0; k <= 16; k++) { const t = k / 16; pts.push(a.clone().lerp(b, t).add(new THREE.Vector3(0, -sag * Math.sin(t * Math.PI), 0))); }
+      g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.015, 4), ropeM));
+      const n = Math.max(1, Math.floor(L / 0.85));
+      for (let k = 1; k < n; k++) { const t = k / n; spots.push(a.clone().lerp(b, t).add(new THREE.Vector3(0, -sag * Math.sin(t * Math.PI) - 0.3, 0))); }
+    }
+  }
+  // 提灯の形 (丸く膨らんだ筒。上下に黒い枠)
+  const prof = []; for (let k = 0; k <= 10; k++) { const t = k / 10; prof.push(new THREE.Vector2(0.1 + 0.07 * Math.sin(t * Math.PI), -0.19 + 0.38 * t)); }
+  const body = new THREE.LatheGeometry(prof, 12);
+  // 赤と白は別の材質 (夜の光り方の色が違う: 赤い提灯は赤く、白い提灯は暖かい白に光る)
+  const kinds = [['#d8352b', '#ff4a2a', 1.2], ['#f4efe4', '#ffc27a', 1.3]].map(([c, e, gl]) => {
+    const m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.7, emissive: e, emissiveIntensity: 0 });
+    m.userData.glow = gl; lamps.push(m);
+    return new THREE.InstancedMesh(body, m, Math.ceil(spots.length / 2));
+  });
+  const caps = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.105, 0.105, 0.05, 12), mat('#1d1a18'), spots.length * 2);
+  const M = new THREE.Matrix4(), cnt = [0, 0];
+  spots.forEach((p, i) => {
+    const k = i % 2;
+    M.makeTranslation(p.x, p.y, p.z); kinds[k].setMatrixAt(cnt[k]++, M);
+    M.makeTranslation(p.x, p.y + 0.2, p.z); caps.setMatrixAt(2 * i, M);
+    M.makeTranslation(p.x, p.y - 0.2, p.z); caps.setMatrixAt(2 * i + 1, M);
+  });
+  kinds.forEach((m, k) => { m.count = cnt[k]; });
+  g.add(...kinds, caps);
+  // 幟 (白地に赤い縁と、文字の代わりの縦の帯)。竿は 5 m
+  const flag = canvasTexture(64, 256, (c, W, Hh) => {
+    c.fillStyle = '#f6f2e8'; c.fillRect(0, 0, W, Hh);
+    c.fillStyle = '#c8302c'; c.fillRect(0, 0, W, 20); c.fillRect(0, Hh - 14, W, 14);
+    c.fillStyle = '#222'; c.font = 'bold 34px serif'; c.textAlign = 'center';
+    ['八', '坂', '神', '社'].forEach((ch, i) => c.fillText(ch, W / 2, 62 + i * 46));
+  });
+  for (const [x, z, b] of fe.nobori) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 5, 8), wood); pole.position.set(x, b + 2.5, z); g.add(pole);
+    const cloth = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 3.2), mat('#fff', { map: flag, side: THREE.DoubleSide })); cloth.position.set(x + 0.33, b + 3.15, z); g.add(cloth);
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.7, 6).rotateZ(Math.PI / 2), wood); bar.position.set(x + 0.33, b + 4.77, z); g.add(bar);
+  }
+  return g;
+}
+
 export function buildShrines(shrines, scene, world) {
   const group = new THREE.Group(); group.name = 'shrines';
   const shadow = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
@@ -405,6 +459,7 @@ export function buildShrines(shrines, scene, world) {
       const fn = { komainu, chozuya, board, monument, sign, bollard, stones }[it.type];
       if (fn) fn(it, placeItem); else if (it.type === 'toro') toro(it, placeItem, lamps);
     }
+    if (s.festival) root.add(buildFestival(s.festival, lamps));
     group.userData.emissive = (group.userData.emissive || []).concat(lamps);
     const ap = s.approach;
     if (ap) {
