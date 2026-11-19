@@ -402,6 +402,29 @@ def build_street_props(city, world, H, cx, cz, R, col):
     # ひと続きの柵ごとに支柱の点の列 [[x, z, y], ...]。支柱は約 2m おき、隣どうしをパイプ 2 段 (高さ 0.45, 0.8) でつなぐ
     guards = []
     fronts = frontage_sites(city)
+    # 歩行者の道 (歩道・階段・小道) が車道に出る所は、ガードパイプを切る (以前は八坂神社の石段の下などをふさいでいた)。
+    # 道の端の点のうち、車道の中心線から (道幅の半分 + 6 m) 以内にあるもの。そこから WALK_GAP m 以内には支柱を立てない
+    WALK_GAP = 2.0
+    walk_ends = []
+    for wr in roads:
+        if wr["kind"] in ("footway", "steps", "path", "pedestrian") and not wr.get("ys") and len(wr["pts"]) >= 2:
+            for e, f2 in ((wr["pts"][0], wr["pts"][1]), (wr["pts"][-1], wr["pts"][-2])):
+                L = math.hypot(e[0] - f2[0], e[1] - f2[1]) or 1
+                walk_ends.append((e[0], e[1], (e[0] - f2[0]) / L, (e[1] - f2[1]) / L))   # 端の点と、端へ向かう向き
+
+    def near_walk_end(x, z, dx, dz, r, side):
+        """(x, z) = 車道の中心線の点、(dx, dz) = 車道の向き、side = 縁の側。その側の真横に、歩行者の道の端が出ているか"""
+        lim = r["w"] / 2 + 6
+        for ex, ez, ux, uz in walk_ends:
+            if abs(ux * dx + uz * dz) > 0.75:   # 車道に沿って走る歩道 (区切りの端) は切らない。横から出てくる道だけ
+                continue
+            ax, az = ex - x, ez - z
+            if abs(ax) > lim + WALK_GAP or abs(az) > lim + WALK_GAP:
+                continue
+            c = -ax * dz + az * dx   # 縁の側 (side) への距離
+            if abs(ax * dx + az * dz) < WALK_GAP and 0 < c * side < lim:
+                return True
+        return False
     for r in roads:
         if r["kind"] not in MAJOR or r.get("ys"):
             continue
@@ -412,7 +435,7 @@ def build_street_props(city, world, H, cx, cz, R, col):
                 go = edge(r, side) - r["sw"] + 0.2 if r.get("sw") else edge(r, side) + 0.2
                 px, pz = x - dz * side * go, z + dx * side * go
                 ok = (inR(px, pz) and not node_grid.near(x, z, r["w"] / 2 + 9) and clear(px, pz, 0.3) and not at_gate(px, pz)
-                      and not any(near_ring(px, pz, f, 3.0) for f in fronts))
+                      and not any(near_ring(px, pz, f, 3.0) for f in fronts) and not near_walk_end(x, z, dx, dz, r, side))
                 if not ok:
                     run[0] = None
                     return
@@ -2431,7 +2454,32 @@ def build_shrines(H, hidden):
         an = s.get("annex")
         if an:
             add_box(an["at"][0], an["at"][1], an["w"] / 2, an["d"] / 2, an["ridge"])
-        out.append({**{k: v for k, v in s.items() if not k.startswith("_") and k != "hide"},
+        ap = s.get("approach")
+        if ap:  # 参道: 道路側の段・踊り場・石段 (段ごとに奥まで続く箱。上に乗れる)・上の石畳・石垣・鳥居の柱 (形は shrine.js の buildApproach と同じ寸法)
+            x0, wl = ap["x"], ap["walls"]
+            sw, (ol, orr) = wl["side"], wl["out"]
+            xc, hxo = x0 + (orr - ol) / 2, (ol + orr) / 2
+            def add_abs(lx, lz, hx, hz, top_abs, bottom_abs=None):
+                x, z = W(lx, lz)
+                box.append([r2(x), r2(z), r3(yaw), r2(hx), r2(hz), r2((bottom_abs if bottom_abs is not None else y - 4)), r2(top_abs)])
+            frz, lz_, tz = ap["front_z"], ap["landing_z"], ap["top_z"]
+            ys, yl, yt = ap["street_y"], ap["landing_y"], ap["top_y"]
+            add_abs(xc, frz - 0.15, hxo, 0.15, ys + (yl - ys) / 3)                   # 道路側の段 (2 段)
+            add_abs(xc, frz - 0.45, hxo, 0.15, ys + (yl - ys) * 2 / 3)
+            add_abs(xc, (lz_ + frz - 0.6) / 2, hxo, (frz - 0.6 - lz_) / 2, yl)       # 踊り場
+            n, run = ap["steps"], (lz_ - tz) / ap["steps"]
+            for k in range(n):                                                         # 石段
+                z0 = lz_ - k * run
+                add_abs(x0, (z0 + tz) / 2, sw, (z0 - tz) / 2, yl + (yt - yl) * (k + 1) / n)
+            add_abs(x0, (tz + ap["plate_to"]) / 2, sw, (tz - ap["plate_to"]) / 2, yt)  # 上の石畳
+            for sx, o in ((-1, ol), (1, orr)):                                        # 石垣: 踊り場の奥 (道路側の面) と石段の脇
+                add_abs(x0 + sx * (sw + o) / 2, lz_ - 0.2, (o - sw) / 2, 0.2, wl["top_y"])
+                add_abs(x0 + sx * (sw + 0.2), (lz_ + tz) / 2, 0.2, (lz_ - tz) / 2, wl["top_y"])
+            ti = ap["torii"]
+            for sx in (-1, 1):
+                x, z = W(x0 + sx * ti["span"] / 2, ti["z"])
+                circle.append([r2(x), r2(z), 0.24, r2(yl - 1), r2(yl + ti["h"])])
+        out.append({**{k: v for k, v in s.items() if not k.startswith("_") and k not in ("hide", "hide_roads")},
                     "yaw": r3(yaw), "y": r2(y), "colliders": {"box": box, "circle": circle}})
     return out
 
@@ -2454,7 +2502,7 @@ def build(city):
     trees = build_lidar_trees(lots, world, H, col) if lots and lots.get("trees") else build_trees(city, world, H, col)
     cars = build_parking(lots, city, world, H, col, street["paint"]) if lots and lots.get("parking") else []
     rail = build_rail(city, world, H, col)
-    walk = build_walk(city, world, H, col)
+    walk = build_walk({**city, "roads": [r for r in city["roads"] if not r.get("hide")]}, world, H, col)  # 描かない道 (hide) には手すりを付けない
     extras = build_area_extras(city, world, H, col, (lots or {}).get("sites") or ())
     rf = build_rail_fences(city, world, H, col)
     if rf:

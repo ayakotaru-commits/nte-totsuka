@@ -981,7 +981,7 @@ def main():
     looks = landmarks.apply(buildings, roads)
     # 神社の社殿 (data/appearance.json の shrines)。PLATEAU の箱を描かない印 (hide) を付ける。社殿は public/src/shrine.js が描く
     import shrine
-    shrine.apply(buildings)
+    shrine.apply(buildings, roads)
 
     # 名前付き建物を POI に追加
     for b in buildings:

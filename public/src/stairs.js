@@ -31,6 +31,17 @@ export function stairAt(x, z, y = null) {
   return null;
 }
 
+// 階段を 1 区間足す (道のデータに無い階段。八坂神社の参道の石段 = shrine.js)。見た目は呼んだ側が作る。buildStairs の後に呼ぶ
+export function addStair(seg) {
+  const { ax, az, bx, bz, hw } = seg;
+  for (let gx = cellOf(Math.min(ax, bx) - hw - 1); gx <= cellOf(Math.max(ax, bx) + hw + 1); gx++)
+    for (let gz = cellOf(Math.min(az, bz) - hw - 1); gz <= cellOf(Math.max(az, bz) + hw + 1); gz++) {
+      const k = gx * 100000 + gz;
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(seg);
+    }
+}
+
 export function buildStairs(city) {
   grid.clear();
   const top = [], riser = [], side = [];

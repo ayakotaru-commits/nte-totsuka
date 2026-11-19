@@ -98,8 +98,8 @@ async function main() {
   // ---- world ----
   status('街を生成中…');
   await new Promise(r => setTimeout(r, 0));
-  // 外観を別に描く建物 (hide。神社の社殿 = tools/shrine.py → shrine.js) は、街の形と当たり判定から外す (ミニマップには輪郭を残す)
-  const shown = city.buildings.some((b) => b.hide) ? { ...city, buildings: city.buildings.filter((b) => !b.hide) } : city;
+  // 外観を別に描く建物・道 (hide。神社の社殿と参道 = tools/shrine.py → shrine.js) は、街の形・当たり判定・階段から外す (ミニマップには残す)
+  const shown = city.buildings.some((b) => b.hide) || city.roads.some((r) => r.hide) ? { ...city, buildings: city.buildings.filter((b) => !b.hide), roads: city.roads.filter((r) => !r.hide) } : city;
   const world = new World(shown.buildings, city.bounds);
   const t0 = performance.now();
   const built = buildCity(shown, world, props);

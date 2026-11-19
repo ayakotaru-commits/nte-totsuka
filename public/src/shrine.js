@@ -4,12 +4,16 @@
 //   銅板葺き (緑青) の入母屋・平入りの屋根、正面に 1 間の向拝 (柱 2 本)、焦げ茶の木の身舎と格子戸、
 //   高床 (浜縁) と木の階段、コンクリートの基壇、鈴と紅白の鈴緒、三つ巴の金具の賽銭箱、しめ縄と紙垂。
 //   北西に赤い屋根の小屋 (annex。PLATEAU に無い。点群と写真から。形は推定)。
+//   参道 (approach): 道路側の段と石の踊り場に石の明神鳥居、9 段の石段 (両脇にステンレスの手すり)、両脇と道路側は間知石の石垣、上に石畳。
+//     寸法は点群から (data/appearance.json の approach)。OSM の石段 (歩道を横切っていた) は tools/shrine.py が描かない印を付けている
 // 局所座標: 原点 = 屋根の中心の地面、+Z = 正面の向き、+X = 正面に向かって右手。小物の表示 (V キー) に関係なく描く。
 import * as THREE from 'three';
 import { Builder, canvasTexture } from './detail/util.js';
+import { addStair } from './stairs.js';
 
 const WOOD = '#4a3426', WOOD_D = '#2f2219', DECK = '#7a6450', CU = '#7d9d8b', CU_D = '#5f7f70', CONC = '#a3a19a';
 
+const repeat = (t) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
 const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85, ...o });
 
 // 板壁 (縦の板目) と、正面の格子戸の模様
@@ -36,13 +40,13 @@ function wallTex(door) {
 }
 // 銅板の屋根 (横の継ぎ目と、まだらの緑青)
 function copperTex() {
-  return canvasTexture(256, 256, (g, W, H) => {
+  return repeat(canvasTexture(256, 256, (g, W, H) => {
     g.fillStyle = CU; g.fillRect(0, 0, W, H);
     for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '60,80,70' : '170,195,180'},${0.05 + Math.random() * 0.08})`; g.fillRect(Math.random() * W, Math.random() * H, 6 + Math.random() * 30, 3 + Math.random() * 10); }
     g.strokeStyle = 'rgba(40,60,50,.35)'; g.lineWidth = 1.5;
     for (let y = 0; y < H; y += 16) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
     for (let y = 0; y < H; y += 16) for (let x = (y / 16) % 2 ? 0 : 20; x < W; x += 40) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 16); g.stroke(); }
-  });
+  }));
 }
 // 三つ巴 (賽銭箱の金具)
 function tomoeTex() {
@@ -188,6 +192,100 @@ function buildAnnex(an, shadow) {
   return g;
 }
 
+// 間知石の石垣 (斜めに積んだ六角形の石の目地)
+function wallStoneTex() {
+  return repeat(canvasTexture(256, 256, (g, W, H) => {
+    g.fillStyle = '#8f8b80'; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '60,60,55' : '190,185,170'},${0.05 + Math.random() * 0.07})`; g.fillRect(Math.random() * W, Math.random() * H, 4 + Math.random() * 14, 3 + Math.random() * 8); }
+    g.strokeStyle = 'rgba(45,42,38,.75)'; g.lineWidth = 3;
+    const s = 32;
+    for (let y = -s; y < H + s; y += s) for (let x = -s; x < W + s; x += s * 2) { // 菱形の目地 (斜めの積み方)
+      const ox = ((y / s) % 2) ? s : 0;
+      g.beginPath(); g.moveTo(x + ox, y); g.lineTo(x + ox + s, y + s / 2 * 1.2); g.lineTo(x + ox, y + s * 1.2); g.lineTo(x + ox - s, y + s / 2 * 1.2); g.closePath(); g.stroke();
+    }
+    g.fillStyle = 'rgba(80,110,60,.25)'; for (let i = 0; i < 40; i++) g.fillRect(Math.random() * W, H - Math.random() * 40, 6, 6); // 苔
+  }));
+}
+function flagTex() {
+  return repeat(canvasTexture(128, 128, (g, W, H) => {
+    g.fillStyle = '#9a978d'; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(50,48,44,.6)'; g.lineWidth = 2;
+    for (let y = 0; y < H; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); for (let x = ((y / 32) % 2) * 32; x < W; x += 64) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 32); g.stroke(); } }
+    for (let i = 0; i < 200; i++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '70,70,64' : '180,176,166'},.08)`; g.fillRect(Math.random() * W, Math.random() * H, 5, 4); }
+  }));
+}
+
+// 参道。y は絶対の高さなので、社殿の原点の高さ y0 を引いて局所にする
+function buildApproach(ap, y0, shadow) {
+  const g = new THREE.Group();
+  const add = (m, x, y, z) => { m.position.set(x, y, z); g.add(shadow(m)); return m; };
+  const stone = mat('#a19d93'), stoneD = mat('#8c887f');
+  const wallM = mat('#fff', { map: wallStoneTex() }), flagTx = flagTex(), flagM = mat('#fff', { map: flagTx });
+  flagTx.repeat.set(2, 3);
+  const x0 = ap.x, wl = ap.walls, sw = wl.side, [ol, orr] = wl.out;
+  const ys = ap.street_y - y0, yl = ap.landing_y - y0, yt = ap.top_y - y0, wt = wl.top_y - y0, fz = ap.front_z, lz = ap.landing_z, tz = ap.top_z;
+  const deep = 3.5;   // 地面の下へ伸ばす長さ (地形の凹凸に埋める)
+  const slab = (x1, x2, z1, z2, top, m) => add(new THREE.Mesh(new THREE.BoxGeometry(x2 - x1, top - (ys - deep), z2 - z1), m), (x1 + x2) / 2, (top + ys - deep) / 2, (z1 + z2) / 2);
+  // 道路側の段・踊り場 (中央に石畳)
+  slab(x0 - ol, x0 + orr, fz - 0.3, fz, ys + (yl - ys) / 3, stone);
+  slab(x0 - ol, x0 + orr, fz - 0.6, fz - 0.3, ys + (yl - ys) * 2 / 3, stone);
+  slab(x0 - ol, x0 + orr, lz, fz - 0.6, yl, stoneD);
+  add(new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.04, fz - 0.6 - lz), flagM), x0, yl + 0.02, (lz + fz - 0.6) / 2);
+  // 石段
+  const n = ap.steps, run = (lz - tz) / n;
+  for (let k = 0; k < n; k++) {
+    const za = lz - k * run, top = yl + (yt - yl) * (k + 1) / n;
+    const m = add(new THREE.Mesh(new THREE.BoxGeometry(2 * sw, top - (yl - 1), run + 0.04), k % 2 ? stone : mat('#a6a296')), x0, (top + yl - 1) / 2, za - run / 2);
+    m.receiveShadow = true;
+  }
+  // 上の石畳 (境内へ)
+  slab(x0 - sw, x0 + sw, ap.plate_to, tz, yt, flagM);
+  // 石垣: 踊り場の奥 (道路側の面) と、石段の両脇 (上端は境内の高さ)
+  const wallBox = (x1, x2, z1, z2) => {
+    const geo = new THREE.BoxGeometry(x2 - x1, wt - (ys - deep), z2 - z1);
+    const uv = geo.attributes.uv; // 模様が引き伸ばされないよう、面の大きさに合わせて繰り返す
+    const pos = geo.attributes.position, nrm = geo.attributes.normal;
+    for (let i = 0; i < uv.count; i++) {
+      const ax = Math.abs(nrm.getX(i)) > 0.5 ? pos.getZ(i) : pos.getX(i);
+      uv.setXY(i, (ax + 50) / 1.6, (pos.getY(i) + 50) / 1.6);
+    }
+    return add(new THREE.Mesh(geo, wallM), (x1 + x2) / 2, (wt + ys - deep) / 2, (z1 + z2) / 2);
+  };
+  wallBox(x0 - ol, x0 - sw, lz - 0.4, lz); wallBox(x0 + sw, x0 + orr, lz - 0.4, lz);
+  wallBox(x0 - sw - 0.4, x0 - sw, tz, lz); wallBox(x0 + sw, x0 + sw + 0.4, tz, lz);
+  for (const [a, b] of [[x0 - ol, x0 - sw], [x0 + sw, x0 + orr]]) add(new THREE.Mesh(new THREE.BoxGeometry(b - a + 0.1, 0.12, 0.5), stone), (a + b) / 2, wt + 0.06, lz - 0.2); // 天端の笠石
+  for (const sx of [-1, 1]) add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, lz - tz), stone), x0 + sx * (sw + 0.2), wt + 0.06, (lz + tz) / 2);
+  // 手すり (ステンレス。石段の両脇の少し内側)
+  const steel = mat('#d3d7da', { metalness: 0.7, roughness: 0.3 });
+  for (const sx of [-1, 1]) {
+    const x = x0 + sx * (sw - 0.3);
+    const a = new THREE.Vector3(x, yl + 0.85, lz + 0.2), b = new THREE.Vector3(x, yt + 0.85, tz - 0.3);
+    const L = a.distanceTo(b), rail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, L, 8), steel);
+    rail.position.copy(a).add(b).multiplyScalar(0.5); rail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize()); g.add(rail);
+    for (const t of [0, 0.5, 1]) {
+      const p = a.clone().lerp(b, t);
+      add(new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.85, 8), steel), x, p.y - 0.425, p.z);
+    }
+  }
+  // 石の明神鳥居 (柱・台石・貫・島木と笠木 (両端が反る)・額束)
+  const ti = ap.torii, H = ti.h, half = ti.span / 2, tm = mat('#8e8a82'), tz0 = ti.z;
+  for (const sx of [-1, 1]) {
+    add(new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.35, 0.75), stoneD), x0 + sx * half, yl + 0.17, tz0);
+    const p = add(new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, H - 0.55, 16), tm), x0 + sx * half, yl + 0.35 + (H - 0.55) / 2, tz0);
+    p.rotation.z = -sx * 0.035; // 転び (少し内側へ傾く)
+  }
+  add(new THREE.Mesh(new THREE.BoxGeometry(ti.span + 0.9, 0.24, 0.16), tm), x0, yl + H - 1.15, tz0);                 // 貫
+  add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.55, 0.14), tm), x0, yl + H - 0.75, tz0);                           // 額束
+  add(new THREE.Mesh(new THREE.BoxGeometry(ti.span + 1.1, 0.2, 0.3), tm), x0, yl + H - 0.38, tz0);                  // 島木
+  {
+    const L = ti.span + 1.7, sh = new THREE.Shape(), k = 0.22;                                                         // 笠木 (反り)
+    sh.moveTo(-L / 2, 0.28); sh.quadraticCurveTo(0, -0.02, L / 2, 0.28); sh.lineTo(L / 2, 0.28 + k); sh.quadraticCurveTo(0, k - 0.04, -L / 2, 0.28 + k); sh.closePath();
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.36, bevelEnabled: false }); geo.translate(0, 0, -0.18);
+    add(new THREE.Mesh(geo, tm), x0, yl + H - 0.28, tz0);
+  }
+  return g;
+}
+
 export function buildShrines(shrines, scene, world) {
   const group = new THREE.Group(); group.name = 'shrines';
   const shadow = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
@@ -197,6 +295,15 @@ export function buildShrines(shrines, scene, world) {
     root.rotation.y = s.yaw;
     root.add(buildHall(s, shadow));
     if (s.annex) { const a = buildAnnex(s.annex, shadow); a.position.set(s.annex.at[0], 0, s.annex.at[1]); root.add(a); }
+    const ap = s.approach;
+    if (ap) {
+      root.add(buildApproach(ap, s.y, shadow));
+      // 石段を階段として登録 (上り下りの姿勢。stairs.js)。局所 → 世界
+      const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw), rx = fz, rz = -fx;
+      const W = (lx, lz) => [s.origin[0] + rx * lx + fx * lz, s.origin[1] + rz * lx + fz * lz];
+      const [ax, az] = W(ap.x, ap.landing_z), [bx, bz] = W(ap.x, ap.top_z);
+      addStair({ ax, az, bx, bz, hw: ap.walls.side, ya: ap.landing_y, yb: ap.top_y });
+    }
     group.add(root);
     world.addColliders(s.colliders, true);
   }
