@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- 敵キャラ「ミズタマン」(public/src/swarm/model.js) だけを素早く確認するページ。街は読み込まない。
+  リポジトリの直下を配信して開く:  python -m http.server 8772 --bind 127.0.0.1
+  http://127.0.0.1:8772/tools/dev/swarmview.html          いろいろな姿勢を並べる (立ち・歩き・大の字で落ちる・うつぶせ・起き上がり・ため・体当たり・のけぞり)
+  ?side で斜め横から。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>swarmview</title>
+<style>html, body { margin: 0; overflow: hidden; background: #8fa3b8; }</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { Herd, Fx } from '../../public/src/swarm/model.js';
+import { poseOf } from '../../public/src/swarm/event.js';
+
+const Q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#9fb6cc');
+const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 100);
+if (Q.has('side')) { cam.position.set(9, 3.2, 7); } else { cam.position.set(0, 2.6, 9.5); }
+cam.lookAt(0, 0.7, 0);
+scene.add(new THREE.HemisphereLight('#e3edff', '#a39a88', 1.2));
+const sun = new THREE.DirectionalLight('#fff', 2.5); sun.position.set(4, 8, 6); sun.castShadow = true;
+Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 });
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#b8ad97' }));
+ground.receiveShadow = true; scene.add(ground);
+
+const herd = new Herd(scene, 12);
+const fx = new Fx(scene);
+const states = [
+  { st: 'chase', t: 0, ph: 0 }, { st: 'chase', t: 0, ph: 1.6 }, { st: 'perch', t: 0.3 }, { st: 'fall', t: 0.5 },
+  { st: 'splat', t: 0.3 }, { st: 'rise', t: 0.25 }, { st: 'wind', t: 0.3 }, { st: 'lunge', t: 0.12 }, { st: 'hurt', t: 0.08 },
+];
+states.forEach((e, i) => {
+  const col = i % 5, row = Math.floor(i / 5);
+  Object.assign(e, { x: (col - 2) * 1.9, y: e.st === 'fall' ? 1.2 : e.st === 'perch' ? 0 : 0, z: -row * 2.6, yaw: 0, speed: 3, s: 1, seed: i * 0.7 });
+  herd.setPose(i, poseOf(e, e.t));
+});
+herd.flush();
+fx.update(0, cam, [{ x: 3.8, y: 0, z: -2.6, r: 1.4 }]);
+renderer.render(scene, cam);
+window.__done = true;
+</script>
+</body>
+</html>

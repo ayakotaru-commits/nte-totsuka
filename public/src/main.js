@@ -24,6 +24,7 @@ import { Look } from './look.js';
 import { useMocap } from './attack.js';
 import { loadMotion } from './motion.js';
 import { preloadVRM } from './character.js';
+import { Swarm } from './swarm/event.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
 if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); loadMotion('ual_sword_attack_rm'); }
@@ -142,6 +143,13 @@ async function main() {
     Object.assign(cam, { yaw: restore.yaw, pitch: restore.pitch, dist: restore.dist });
   }
 
+  // イベント「ミズタマンの襲来」(グランシティの中庭。swarm/event.js)。?noswarm で無効、?swarm で開いてすぐ始める (確認用)
+  const swarm = new Swarm({ scene, world, player, camera, onRespawn: (x, z, face) => {
+    const p = findFree(world, x, z); player.teleport(p.x, p.z); player.facing = face; cam.yaw = face + Math.PI; cam.update(0, player.pos, true);
+  } });
+  if (Q.has('noswarm') || (Q.has('shot') && !Q.has('swarm'))) swarm.disabled = true;
+  if (Q.has('swarm')) { const p = findFree(world, -246, 1449); player.teleport(p.x, p.z); player.facing = Math.PI / 2; cam.yaw = player.facing + Math.PI; cam.update(0, player.pos, true); }
+
   // マルチプレイ (サーバーが設定されているときだけ。net/config.js)
   const mp = startMultiplayer({ scene, player, respawn, bigmapOpen: () => bigmap.open });
 
@@ -247,6 +255,7 @@ async function main() {
       doors.update(dt, player, input);   // 扉の開け閉め (F)。押した瞬間を player より先に見る
       for (let i = 0; i < n; i++) { player.update(dt / n, input, cam); if (n > 1) input.endFrame(); }
       cam.update(dt, player.pos, false, player);
+      swarm.update(dt);
     }
     if (mp) mp.update(dt, input);
     tod.update(dt);

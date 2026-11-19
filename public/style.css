@@ -106,3 +106,14 @@ body.touch #mp-pvp, body.touch #mp-leave { padding: 6px 12px; }
 body.touch #mp-join { padding: 8px 14px; }
 body.touch #mp-hp { width: 150px; }
 body.touch #mp-down { font-size: 20px; }
+
+/* イベント「ミズタマンの襲来」(src/swarm/event.js) */
+#swarm { position: fixed; left: 50%; top: 110px; transform: translateX(-50%); z-index: 6; padding: 6px 14px 8px; border-radius: 8px; background: rgba(10,20,35,.6); color: #fff; font-size: 15px; text-align: center; text-shadow: 0 1px 3px #000; pointer-events: none; }
+#swarm b { font-size: 20px; color: #ffe08a; }
+#swarm-time { opacity: .8; font-size: 13px; }
+#swarm-hp { margin: 5px auto 0; width: 220px; height: 9px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.6); border-radius: 4px; overflow: hidden; }
+#swarm-hp i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff6b6b, #ffd166); transition: width .15s; }
+#swarm-banner { position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%); z-index: 7; font-size: 28px; font-weight: 700; color: #fff; text-shadow: 0 2px 8px #000, 0 0 2px #000; pointer-events: none; white-space: nowrap; }
+body.touch #swarm { top: 96px; font-size: 13px; }
+body.touch #swarm-hp { width: 160px; }
+body.touch #swarm-banner { font-size: 19px; white-space: normal; width: 86vw; text-align: center; }
