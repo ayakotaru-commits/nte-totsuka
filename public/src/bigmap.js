@@ -1,5 +1,6 @@
 // 全画面マップ (M キー)。北が上。ホイール・2 本指でズーム、ドラッグで移動、F で現在地へ。
 import { MAP_PX_PER_M } from './minimap.js';
+import { drawEventMark } from './eventmarks.js';
 
 const MIN_SCALE = 0.25, MAX_SCALE = 8;
 
@@ -12,6 +13,7 @@ export class BigMap {
     this.B = city.bounds;
     this.start = city.start;
     this.waypoints = city.waypoints || [];
+    this.events = [];   // イベントの場所 ({ name, x, z, color, active() }。main.js が入れる)
     this.pois = pois;
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
@@ -32,14 +34,14 @@ export class BigMap {
     const up = (e) => {
       if (!pts.delete(e.pointerId)) return;
       // ほとんど動かさずに離したらクリック扱い: ワープ先のピンを立てる
-      if (drag && !drag.moved && this.open && e.type === 'pointerup') this.target = this.toWorld(e.clientX, e.clientY);
+      if (drag && !drag.moved && this.open && e.type === 'pointerup') this.target = this.pickAt(e.clientX, e.clientY);
       drag = null; pinch = null;
       if (pts.size === 1) startDrag([...pts.values()][0], true); // つまんだ後、残った指でそのまま動かせる
     };
     addEventListener('pointerup', up);
     addEventListener('pointercancel', up);
     canvas.addEventListener('dblclick', (e) => {
-      this.target = this.toWorld(e.clientX, e.clientY);
+      this.target = this.pickAt(e.clientX, e.clientY);
       this.warp();
     });
     addEventListener('pointermove', (e) => {
@@ -93,6 +95,15 @@ export class BigMap {
     const x = this.cx + (clientX - r.left - r.width / 2) / this.scale;
     const z = this.cz + (clientY - r.top - r.height / 2) / this.scale;
     return { x: Math.max(B.minX, Math.min(B.maxX, x)), z: Math.max(B.minZ, Math.min(B.maxZ, z)) };
+  }
+
+  // クリック・タップした所: イベントの印の上ならその場所 (印の名前つき)、それ以外は地図の上の点
+  pickAt(clientX, clientY) {
+    const r = this.canvas.getBoundingClientRect(), hit = this.touch ? 26 : 16;
+    for (const e of this.events) {
+      if (Math.hypot(this.sx(e.x) - (clientX - r.left), this.sy(e.z) - (clientY - r.top)) <= hit) return { x: e.x, z: e.z, event: e.name };
+    }
+    return this.toWorld(clientX, clientY);
   }
 
   // 選んだ場所へワープ (ピンが無ければ何もしない)
@@ -156,6 +167,14 @@ export class BigMap {
       c.restore();
       c.font = 'bold 13px "Yu Gothic UI", sans-serif';
       halo(c, w.name, x, y + 22, '#7a4a00');
+    }
+
+    // イベントの場所 (名前つき)
+    for (const e of this.events) {
+      const x = this.sx(e.x), y = this.sy(e.z);
+      drawEventMark(c, x, y, 11, e.color, e.active());
+      c.font = 'bold 13px "Yu Gothic UI", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      halo(c, e.name, x, y + 24, e.color);
     }
 
     // ワープ先のピン

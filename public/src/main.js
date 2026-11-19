@@ -24,8 +24,8 @@ import { Look } from './look.js';
 import { useMocap } from './attack.js';
 import { loadMotion } from './motion.js';
 import { preloadVRM } from './character.js';
-import { Swarm } from './swarm/event.js';
-import { Rhythm } from './rhythm/event.js';
+import { Swarm, SITE as SWARM_SITE } from './swarm/event.js';
+import { Rhythm, SITE as RHYTHM_SITE } from './rhythm/event.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
 if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); loadMotion('ual_sword_attack_rm'); }
@@ -157,6 +157,13 @@ async function main() {
   if (Q.has('norhythm') || (Q.has('shot') && !Q.has('rhythm'))) rhythm.disabled = true;
   if (Q.has('rhythm')) { rhythm.auto = true; rhythm.autoPlay = Q.get('rhythm') === 'auto'; player.teleport(-386, 623.4); }
   window.__rhythm = rhythm; // 確認用 (tools/dev/rhythmcheck.js)
+
+  // イベントの場所の印 (ミニマップ・大きい地図。eventmarks.js)。大きい地図で印をクリック・タップすると、そこをワープ先に選ぶ
+  const EVENTS = [
+    { name: 'うな○ー大量発生クエスト', x: SWARM_SITE.center[0], z: SWARM_SITE.center[1], color: '#2f9e64', active: () => swarm.running, off: swarm.disabled },
+    { name: 'お札まき 合いの手', x: RHYTHM_SITE.me[0], z: RHYTHM_SITE.me[1], color: '#d23c34', active: () => rhythm.playing, off: rhythm.disabled },
+  ].filter((e) => !e.off);
+  minimap.events = bigmap.events = EVENTS;
 
   // マルチプレイ (サーバーが設定されているときだけ。net/config.js)
   const mp = startMultiplayer({ scene, player, respawn, bigmapOpen: () => bigmap.open });
