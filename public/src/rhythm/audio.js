@@ -48,6 +48,38 @@ export const audioOn = () => !!ctx && ctx.state === 'running';
 // 音の準備ができていない (まだ触っていない・再開の途中) とき、もう一度頼む。触った処理の外なので効かない端末もある
 export function wake() { if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); return audioOn(); }
 
+const LANE_F = [659, 784, 880, 1047, 1175, 1319];   // 6 本のレーンの音 (ミ ソ ラ ド レ ミ)
+
+// ---- 曲のファイル (ゲームセンターのリズムゲーム) ----
+export function ensure() { return make(); }
+// mp3 などを読み込んで音のデータにする (触る前でも作れる。再生は触った後)
+export function decode(arrayBuffer) {
+  const c = make();
+  if (!c) return Promise.resolve(null);
+  return new Promise((res) => { try { const p = c.decodeAudioData(arrayBuffer, res, () => res(null)); if (p && p.catch) p.catch(() => res(null)); } catch (e) { res(null); } });
+}
+let songSrc = null, songGain = null;
+// 曲を始める。t は now() の時計での開始時刻 (過ぎていれば途中から)。音が出せなければ false
+export function startSong(buf, t, volume = 0.9) {
+  stopSong(0);
+  if (!audioOn() || !buf) return false;
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  songGain = ctx.createGain(); songGain.gain.value = volume;
+  src.connect(songGain); songGain.connect(ctx.destination);
+  const when = sched(t);
+  if (when >= ctx.currentTime) src.start(when); else src.start(ctx.currentTime, Math.min(buf.duration - 0.01, ctx.currentTime - when));
+  songSrc = src;
+  return true;
+}
+export function stopSong(fade = 0.2) {
+  if (!songSrc) return;
+  const s = songSrc, g = songGain; songSrc = songGain = null;
+  try {
+    if (fade > 0 && ctx) { g.gain.setValueAtTime(g.gain.value, ctx.currentTime); g.gain.linearRampToValueAtTime(0, ctx.currentTime + fade); s.stop(ctx.currentTime + fade + 0.02); }
+    else s.stop();
+  } catch (e) { /* もう止まっている */ }
+}
+
 // 今の時刻 (秒)。音が出ているときは「いま耳に届いている音」の時刻 (出力の遅れを含む) にそろえる
 export function now() {
   if (!audioOn()) return performance.now() / 1000;
@@ -83,7 +115,7 @@ function noise(t, dur, filt, f, q, out) {
 }
 
 // 音を鳴らす。t は now() の時刻 (省略 = すぐ)。v = 音量の倍率
-export function play(kind, t = null, v = 1) {
+export function play(kind, t = null, v = 1, lane = 0) {
   if (!audioOn()) return;
   const T = Math.max(ctx.currentTime, t == null ? ctx.currentTime : sched(t));
   switch (kind) {
@@ -140,6 +172,35 @@ export function play(kind, t = null, v = 1) {
     case 'bump': { // どすん: うな○ーの体当たり
       osc('sine', 140, 45, T, 0.25, env(T, 0.003, 0.7 * v, 0.25));
       noise(T, 0.12, 'lowpass', 700, 0.7, env(T, 0.001, 0.35 * v, 0.12));
+      break;
+    }
+    // ---- ゲームセンターのリズムゲーム (arcade/event.js) の効果音。レーンごとにペンタトニックの高さ (ぽん)
+    case 'pon': { // 木琴のような「ぽん」
+      const f = LANE_F[lane % LANE_F.length];
+      osc('sine', f, f, T, 0.2, env(T, 0.002, 0.3 * v, 0.2));
+      osc('triangle', f * 2, f * 2, T, 0.09, env(T, 0.002, 0.1 * v, 0.09));
+      noise(T, 0.015, 'highpass', 4000, 0.8, env(T, 0.001, 0.05 * v, 0.015));
+      break;
+    }
+    case 'sparkle': { // perfect のきらっ
+      const f = LANE_F[lane % LANE_F.length] * 3;
+      osc('sine', f, f, T + 0.012, 0.14, env(T + 0.012, 0.003, 0.07 * v, 0.14));
+      break;
+    }
+    case 'swish': { // フリック: 上へのしゅっ + 高い音
+      osc('sine', 520, 1900, T, 0.13, env(T, 0.003, 0.16 * v, 0.13));
+      noise(T, 0.1, 'bandpass', 3200, 1.2, env(T, 0.002, 0.12 * v, 0.1));
+      const f = LANE_F[lane % LANE_F.length] * 2;
+      osc('sine', f, f, T + 0.05, 0.25, env(T + 0.05, 0.003, 0.14 * v, 0.25));
+      break;
+    }
+    case 'fanfare': { // 結果: 鈴が上がっていく (ドミソド) を 2 回
+      [1047, 1319, 1568, 2093, 1568, 2093, 2637].forEach((f, k) => {
+        const tt = T + k * 0.09;
+        osc('sine', f, f, tt, 0.5, env(tt, 0.003, 0.17 * v, 0.5));
+        osc('triangle', f * 2.01, f * 2.01, tt, 0.25, env(tt, 0.003, 0.05 * v, 0.25));
+      });
+      noise(T + 0.3, 0.6, 'highpass', 6000, 0.7, env(T + 0.3, 0.01, 0.08 * v, 0.6));
       break;
     }
     case 'cheer': { // わーっ: 帯域を絞った雑音を、ふくらませてから消す

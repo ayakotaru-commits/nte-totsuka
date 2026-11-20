@@ -81,6 +81,37 @@
   <div id="rh-rank"></div><div id="rh-count"></div>
   <div class="q-btns"><button class="tbtn" id="rh-again"><b>Y</b> もう一回</button><button class="tbtn" id="rh-quit"><b>N</b> やめる</button></div>
 </div>
+<!-- イベント「ゲームセンター リズムステージ」(src/arcade/event.js) -->
+<div id="ar-ask" hidden>
+  <div class="q-title">♪ ゲームセンター リズムステージ ♪</div>
+  <div class="q-body">ゲームセンターに入って、リズムゲームで遊びますか？<br>6 つのレーンに降ってくる音符をタップ！</div>
+  <div class="q-btns"><button class="tbtn" id="ar-yes"><b>Y</b> はいる</button><button class="tbtn" id="ar-no"><b>N</b> やめとく</button></div>
+</div>
+<div id="ar-root" hidden>
+  <canvas id="ar-canvas"></canvas>
+  <div id="ar-select" class="ar-card" hidden>
+    <div class="ar-head">♪ リズムステージ ♪</div>
+    <div class="ar-song"><div class="ar-jacket"><i>♪</i><i>★</i><i>♥</i></div><div><div class="ar-title">ハイテンポ・ポップ</div><div class="ar-meta">BPM 172 → 200　約 1 分 23 秒　サビ前でテンポがゆれるよ</div></div></div>
+    <div class="ar-row">
+      <button class="ar-btn diff" data-act="diff" data-v="NORMAL"><span class="d">NORMAL</span><span class="s"></span><span class="n"></span><span class="b"></span></button>
+      <button class="ar-btn diff hard" data-act="diff" data-v="HARD"><span class="d">HARD</span><span class="s"></span><span class="n"></span><span class="b"></span></button>
+    </div>
+    <div class="ar-opts">
+      <div class="ar-opt"><span>ノーツの速さ</span><button class="ar-chip" data-act="speed" data-v="slow">ゆっくり</button><button class="ar-chip" data-act="speed" data-v="normal">ふつう</button><button class="ar-chip" data-act="speed" data-v="fast">はやい</button></div>
+      <div class="ar-opt"><span>タイミング</span><button class="ar-chip sm" data-act="off" data-v="-10">−</button><b id="ar-off">0 ms</b><button class="ar-chip sm" data-act="off" data-v="10">＋</button><button class="ar-chip" data-act="sfx">効果音 ON</button></div>
+    </div>
+    <div id="ar-info"></div>
+    <div class="ar-btns"><button class="ar-btn go" data-act="start">スタート！</button><button class="ar-btn" data-act="exit">やめる</button></div>
+    <div class="ar-keys"><span class="pc">キーボード <b>S</b><b>D</b><b>F</b><b>J</b><b>K</b><b>L</b></span><span class="tp">画面のレーンをタップ・長押し・上へはじく</span></div>
+  </div>
+  <div id="ar-result" class="ar-card" hidden>
+    <div class="ar-head">RESULT <span id="ar-diff"></span></div>
+    <div class="ar-big"><div id="ar-rank">S</div><div class="ar-sc"><div id="ar-score">000000</div><div id="ar-badge"></div><div id="ar-new" hidden>NEW RECORD!</div></div></div>
+    <div id="ar-counts"></div>
+    <div id="ar-sub"></div>
+    <div class="ar-btns"><button class="ar-btn go" data-act="retry">もう一回！</button><button class="ar-btn" data-act="select">曲えらびへ</button><button class="ar-btn" data-act="exit">おしまい</button></div>
+  </div>
+</div>
 <div id="door-hint" hidden><b>F</b> 扉を開ける</div>
 <div id="map-touch" hidden>
   <button class="tbtn" data-key="KeyM">閉じる</button>
@@ -89,7 +120,7 @@
 </div>
 
 <div id="help">
-  <b>WASD</b> 移動　<b>Shift</b> ダッシュ　<b>C</b> 歩き切替　<b>Space</b> ジャンプ（2段）　<b>J</b> / <b>クリック</b> 攻撃（連続で押すと5連撃）　<b>F</b> 扉を開ける・閉める（近くにいるとき）　八坂神社の境内でお札まきのリズムゲーム　走って柵・塀に向かうと自動で飛び越える・よじ登る<br>
+  <b>WASD</b> 移動　<b>Shift</b> ダッシュ　<b>C</b> 歩き切替　<b>Space</b> ジャンプ（2段）　<b>J</b> / <b>クリック</b> 攻撃（連続で押すと5連撃）　<b>F</b> 扉を開ける・閉める（近くにいるとき）　八坂神社の境内でお札まきのリズムゲーム　戸塚駅西口の路地のゲームセンター（赤い建物）の入口でリズムゲーム（S D F J K L）　走って柵・塀に向かうと自動で飛び越える・よじ登る<br>
   <b>マウス</b> 視点　<b>ホイール</b> ズーム　<b>E</b> 修正モード　<b>P</b> ストリートビュー　<b>M</b> 大きいマップ　<b>V</b> ディテール　<b>T</b> 時間帯　<b>R</b> スタート地点に戻る　<b>G</b> 街をGLB出力　<b>H</b> ヘルプ表示切替<span id="help-mp" hidden>　<b>O</b> みんなと遊ぶ・1人に戻る　<b>B</b> 戦闘オン・オフ（オンの人同士だけ当たる）　<b>L</b> 参加者の一覧</span>
 </div>
 <div id="credit">地図データ © OpenStreetMap contributors (ODbL)</div>

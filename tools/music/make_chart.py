@@ -2,7 +2,7 @@
 """曲(song_pop1.json)の旋律から、プロセカ風(落ちてくる形式)の譜面を作る。
 
   python tools/music/song_pop1.py <フォルダ>            # 先に曲を作る (song_pop1.json ができる)
-  python tools/music/make_chart.py <フォルダ> [--png]   # <フォルダ>/song_pop1_chart.json (--png で一覧画像も)
+  python tools/music/make_chart.py <フォルダ> [--png] [--public]   # <フォルダ>/song_pop1_chart.json (--png で一覧画像、--public で public/arcade/chart.json も)
 
 レーンは 6 本（0 が左端）。ノーツは tap / flick（上へはじく）/ hold（長押し。flickEnd なら離す所ではじく）。
 時刻はすべて曲の頭からの秒。難易度は NORMAL と HARD。
@@ -263,6 +263,7 @@ def main():
         'tempo': [{'bar': i, 'start': info['bar_start'][i], 'bpm': b}
                   for i, b in enumerate(info['bar_bpm']) if i == 0 or b != info['bar_bpm'][i - 1]],
         'sections': info['sections'],
+        'barStart': info['bar_start'], 'barBpm': info['bar_bpm'],   # 小節の頭の時刻 (秒) と、その小節のテンポ。拍の演出に使う
         'difficulties': {},
     }
     for d, notes in charts.items():
@@ -278,6 +279,12 @@ def main():
     path = os.path.join(folder, 'song_pop1_chart.json')
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False, separators=(',', ':'))
+    if '--public' in sys.argv:   # ゲームが読む場所 (public/arcade/chart.json)。曲 (song_pop1.mp3) は同じフォルダに手で置く
+        pub = os.path.join(os.path.dirname(__file__), '..', '..', 'public', 'arcade')
+        os.makedirs(pub, exist_ok=True)
+        with open(os.path.join(pub, 'chart.json'), 'w', encoding='utf-8') as f:
+            json.dump(out, f, ensure_ascii=False, separators=(',', ':'))
+        print('書いた:', os.path.join(pub, 'chart.json'))
     if '--png' in sys.argv:
         draw(charts, info, os.path.join(folder, 'chart_overview.png'))
     print('書いた:', path, os.path.getsize(path), 'bytes')
