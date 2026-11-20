@@ -1,15 +1,15 @@
 // お札まきの観客に加わる「うな○ー」(swarm/model.js の見た目を使う)。大吉を出すたびに 1 体ずつ、空から降りてきて見物に加わる。
-// 加わったら、曲に合わせて跳ねて、両手を上げて盛り上がる。最大 MAX 体 (1 回の曲の大吉の数より多い)。
+// 加わったら、曲に合わせて跳ねて、両手を上げて盛り上がる。最大 MAX 体。立ち位置が足りなくなったら、同じ場所のそばに少しずらして重ねる。
 import { Herd, Fx } from '../swarm/model.js';
 
-const MAX = 24;
+const MAX = 90;
 const DOTS = ['#ffd166', '#ff6b6b', '#fff3b0', '#f2789f'];
 
 export class UnaaCrowd {
   // slots: [[x, z], ...] 加わる順の立ち位置。face: [x, z] 見る先
   constructor(scene, ground, slots, face) {
     this.ground = ground; this.face = face;
-    this.slots = slots.slice(0, MAX);
+    this.slots = slots;
     this.herd = new Herd(scene, MAX);
     this.fx = new Fx(scene, 200, 1);
     this.list = [];
@@ -22,9 +22,10 @@ export class UnaaCrowd {
   }
   // 1 体加える (満員なら false)
   add() {
-    const i = this.list.length;
-    if (i >= this.slots.length) return false;
-    const [x, z] = this.slots[i];
+    const i = this.list.length, n = this.slots.length;
+    if (i >= MAX || !n) return false;
+    let [x, z] = this.slots[i % n];
+    if (i >= n) { const a = i * 2.4, r = 0.5 + 0.2 * Math.floor(i / n); x += Math.cos(a) * r; z += Math.sin(a) * r; } // 2 周目からは少しずらす
     this.list.push({ slot: i, x, z, gy: this.ground(x, z), t: 0, ph: Math.random() * 6, landed: false,
       yaw: Math.atan2(this.face[0] - x, this.face[1] - z) });
     return true;

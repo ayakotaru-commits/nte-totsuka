@@ -141,9 +141,9 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     await p2.evaluate(() => { const R = window.__g.rhythm; window.__T = 5000; R.clock = () => window.__T; R.stop(); R.autoPlay = true; R.start();
       while (R.t0 == null) { window.__T += 0.05; R.update(0.05, null); } });
     // [名前, 曲の頭からの秒 (関数で譜面から決める)]
-    const moments = [['01_call', 'c => c.calls.find(x => x.bar === 3).t + 0.03'], ['01b_cue', 'c => 3 * 4 * 60 / 110 + 6.6 * 60 / 220'], ['02_resp', 'c => c.targets.find(x => x.bar === 4).t + 0.03'],
-      ['03_ofuda', 'c => c.targets.find(x => x.kind === "ofuda" && x.bar === 8).t + 0.25'], ['04_lift', 'c => 12 * 4 * 60 / 110 + 3.4 * 60 / 110'],
-      ['05_final', 'c => 13 * 4 * 60 / 110 + 0.35'], ['06_result', 'c => 14 * 4 * 60 / 110 + 2']];
+    const moments = [['01_call', 'c => c.calls.find(x => x.bar === 3).t + 0.03'], ['01b_cue', 'c => 3 * 4 * 60 / 107 + 6.6 * 60 / 214'], ['02_resp', 'c => c.targets.find(x => x.bar === 4).t + 0.03'],
+      ['03_ofuda', 'c => c.targets.find(x => x.kind === "rush" && x.bar === 12).t + 0.25'], ['04_lift', 'c => 18 * 4 * 60 / 107 + 3.4 * 60 / 107'],
+      ['05_final', 'c => 19 * 4 * 60 / 107 + 0.35'], ['06_result', 'c => 20 * 4 * 60 / 107 + 2']];
     for (const [n, f] of moments) {
       const st = await p2.evaluate((f) => {
         const R = window.__g.rhythm, at = eval(f)(R.chart);
