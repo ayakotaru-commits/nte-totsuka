@@ -177,7 +177,7 @@ export class Rhythm {
     // 大吉のたびに加わるうな○ー (SITE.fans の順に。境内の外に出る所は使わない)
     this.jumpAt = null;
     this.unaa = new UnaaCrowd(scene, this.ground, SITE.fans.filter(([x, z]) => inPoly(SITE.area, x, z)), [(lx + mx) / 2, (lz + mz) / 2]);
-    this.unaa.onBump = () => A.play('bump');
+    this.unaa.onBump = () => { A.play('bump'); this.bumpAt = this.clock(); };
     this.hype = 0;
     this.ui = {
       ask: $('rh-ask'), hud: $('rh-hud'), label: $('rh-label'), cells: $('rh-cells'), prog: $('rh-prog'), banner: $('rh-banner'),
@@ -265,7 +265,8 @@ export class Rhythm {
     ];
     this.cues = this.callBars().map((b) => b * BAR + CUE * SLOT); // 「はい！」を出す時刻
     for (const c of this.crowd) c.root.visible = true;
-    pl.perf = () => ({ type: 'fan', u: this.clock() - this.lastMe, lift: this.lift() });
+    this.lastJudge = -9; this.lastRes = null; this.hopRes = null; this.bumpAt = -9;
+    pl.perf = () => this.perfAct();
     this.show(this.ui.hud, true); this.show(this.ui.hint, true); this.show(this.ui.tap, true);
     if (this.ui.touch) this.ui.touch.style.visibility = 'hidden';
     document.body.classList.add('rh-on'); // 地図の名前の札を隠す (style.css)
@@ -293,6 +294,17 @@ export class Rhythm {
   // 手本の小節の番号
   callBars() { return [...new Set(this.chart.calls.filter((c) => c.kind !== 'final').map((c) => c.bar))]; }
 
+  // 自分の姿勢 (character.js の festPose へ渡す)。拍に乗る・打つと跳ぶ・大吉で回る・判定への反応・うな○ーにぶつかられた
+  perfAct() {
+    const now = this.clock(), u = now - this.lastMe, ju = now - this.lastJudge, k = u / 0.3;
+    const hh = this.hopRes === 'good' ? 0.3 : this.hopRes === 'ok' ? 0.12 : 0;
+    const sp = this.lastRes === 'good' ? ju / 0.55 : 2;
+    return { type: 'fan', u, lift: this.lift(), bt: this.state === 'play' && this.t0 != null ? this.songT() / BEAT : null, e: this.hype,
+      res: this.lastRes, ju, bu: now - this.bumpAt,
+      hop: k > 0 && k < 1 ? hh * Math.sin(Math.PI * k) : 0,
+      twirl: sp < 1 ? Math.PI * 2 * sp * sp * (3 - 2 * sp) : 0 };
+  }
+
   // 締めの一打の前に、うちわを高く掲げる度合い
   lift() {
     if (this.state !== 'play' || this.t0 == null) return 0;
@@ -305,7 +317,7 @@ export class Rhythm {
   hit(t) {
     if (this.state !== 'play' || this.t0 == null) return;
     const st = t - this.t0;
-    this.lastMe = t;
+    this.lastMe = t; this.hopRes = null;
     A.play('fan');
     // まだ判定していない拍のうち、いちばん近いもの
     let best = null, bd = 1e9;
@@ -323,6 +335,7 @@ export class Rhythm {
   judged(g) {
     const [mx, mz] = SITE.me, [lx, lz] = SITE.lead;
     const y = this.ground(mx, mz) + 1.6, dx = lx - mx, dz = lz - mz;
+    this.lastJudge = this.clock(); this.lastRes = g.res; this.hopRes = g.res;
     if (g.res === 'miss') {
       A.play('kyo'); this.flash(g.d == null ? '凶' : g.d < 0 ? '凶 はやい' : '凶 おそい', 'miss');
       this.hype = Math.max(0, this.hype - 0.25);

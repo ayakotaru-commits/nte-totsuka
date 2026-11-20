@@ -155,6 +155,23 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       await p2.waitForTimeout(6000); // 描画が追いつくまで
       await p2.screenshot({ path: path.join(out, `shot${n}.png`) });
       console.log('shot', n, JSON.stringify(st));
+      if (n === '03_ofuda') { // 自分の動き: 拍で沈む・大吉・凶・うな○ーにぶつかられた (判定の状態を直接決めて、止めて撮る)
+        for (const [nn, how] of [['03e_dip', 'dip'], ['03f_good', 'good'], ['03g_hop', 'hop'], ['03h_miss', 'miss'], ['03i_bumped', 'bump']]) {
+          await p2.evaluate((how) => {
+            const R = window.__g.rhythm, now = R.clock();
+            R.lastRes = null; R.hopRes = null; R.lastJudge = -9; R.bumpAt = -9; R.lastMe = now - 5;
+            if (how === 'good') { R.lastRes = 'good'; R.lastJudge = now - 0.3; }
+            if (how === 'hop') { R.lastRes = 'good'; R.hopRes = 'good'; R.lastMe = now - 0.15; R.lastJudge = now - 0.7; }
+            if (how === 'miss') { R.lastRes = 'miss'; R.lastJudge = now - 0.35; }
+            if (how === 'bump') R.bumpAt = now - 0.22;
+            R.__upd = R.update; R.update = () => {};
+          }, how);
+          await p2.waitForTimeout(7000);
+          await p2.screenshot({ path: path.join(out, `shot${nn}.png`) });
+          await p2.evaluate(() => { const R = window.__g.rhythm; R.update = R.__upd; });
+          console.log('shot', nn);
+        }
+      }
       if (n === '03_ofuda') { // 凶のときの体当たり: 走っている途中と、ぶつかった直後を撮る
         for (const [nn, adv] of [['03b_charge', 0.4], ['03c_bump', 0.2], ['03d_back', 0.5]]) {
           const st2 = await p2.evaluate(([adv, first]) => {

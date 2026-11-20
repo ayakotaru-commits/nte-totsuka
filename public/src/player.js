@@ -396,6 +396,7 @@ export class Player {
     this.lastAct = act; this.lastSp = this.poseSpeed ?? sp;
     this.model.root.position.copy(this.pos);
     this.model.root.rotation.y = this.facing + this.spin;
+    if (act && act.type === 'fan') { this.model.root.position.y += act.hop || 0; this.model.root.rotation.y += act.twirl || 0; } // リズム地獄: 跳ぶ・回る
     this.model.update(dt, this.poseSpeed ?? sp, this.onGround, this.vy, this.stair || 0, act, this.armed); // poseSpeed: 撮影用 (?shot&pose=5.5 でその場で歩き・走りの姿勢)
   }
 }
