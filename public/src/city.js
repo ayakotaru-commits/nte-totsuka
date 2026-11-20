@@ -146,7 +146,7 @@ function facadeTextures(type) {
 // テクスチャは 1 段 = 1 階分の柄を縦に並べたもの。壁は階ごとに切って、その階の柄の段を貼る (横は 8 ベイで繰り返し)
 // 段は外観ごとに、使う柄だけを並べる (lookRows。テクスチャを小さく保つため)
 const LOOK_KINDS = ['shop', 'panel', 'screen', 'parking', 'glass', 'plain', 'ribbon', 'screen2', 'open', 'shutter', 'band', 'louver', 'fins', 'curtain', 'curtain2',
-  'terrace', 'maroon', 'slits', 'slats', 'slats2', 'grid', 'tenants', 'store2', 'base', 'market', 'palette'];
+  'terrace', 'maroon', 'slits', 'slats', 'slats2', 'grid', 'tenants', 'store2', 'base', 'market', 'arcade', 'redwall', 'palette'];
 const LOOK_NB = 8, LOOK_BAY = 6, LOOK_RH = 128; // 横のベイ数、1 ベイの幅 (m)、1 段の高さ (px)
 function lookRows(L) {
   if (L._ri) return L._ri;
@@ -398,6 +398,38 @@ function lookTextures(L) {
       lit(x0, gy, cw, gh, '#fff1cf', 0.75);
       g.fillStyle = 'rgba(0,0,0,.14)'; g.fillRect(x0, y + rh * 0.92, cw, rh * 0.08);   // 腰壁の影
     }
+    // ゲームセンターの 1 階 (タイトーステーション 戸塚西口店。路上写真を見て): 赤い鉄骨の柱の間に、銀のサッシの背の高いガラスと、
+    // 縦長の取っ手の付いた両開きの扉。中は明るく、夜はクレーンゲームの色が透ける。足元に低い腰。(1 ベイ 6 m = 左から 柱・固定ガラス 2.6 m・扉 1.9 m・固定ガラス 1.1 m・柱)
+    y = top('arcade');
+    if (RI.idx.arcade != null) {  // 使う外観だけ描く (乱数の並びを、ほかの外観と変えないため)
+      g.fillStyle = L.wall; g.fillRect(x0, y, cw, rh);
+      const gy = y + 5, gh = rh - 5 - 9;
+      glass(x0 + 6, gy, cw - 12, gh, '#8d9da6', '#4a5962');
+      lit(x0 + 6, gy, cw - 12, gh, '#fff0dc', 0.6);
+      const cc = ['#ff5fa8', '#45d9ff', '#ffd84a', '#8dff7a', '#ffffff'];
+      for (let k = 0; k < 9; k++) lit(x0 + 10 + rnd() * (cw - 34), gy + gh * (0.28 + rnd() * 0.55), 8 + rnd() * 10, 10 + rnd() * 16, cc[(rnd() * 5) | 0], 0.5);
+      g.fillStyle = '#bcc3c7';                                            // 銀のサッシ: 縦の桟・扉の枠・欄間
+      for (const mx of [34, 62, 82, 102]) g.fillRect(x0 + mx - 1.3, gy, 2.6, gh);
+      g.fillRect(x0 + 6, gy + gh * 0.17, cw - 12, 2.2);
+      g.fillRect(x0 + 6, gy, cw - 12, 2); g.fillRect(x0 + 6, gy + gh - 2, cw - 12, 2);
+      g.fillStyle = '#eef1f2';                                            // 扉の縦長の取っ手
+      g.fillRect(x0 + 78, gy + gh * 0.36, 2.6, gh * 0.34); g.fillRect(x0 + 84, gy + gh * 0.36, 2.6, gh * 0.34);
+      g.fillStyle = 'rgba(160,20,30,1)';                                  // 赤い柱 (濃い面)
+      g.fillRect(x0, y, 6, rh); g.fillRect(x0 + cw - 6, y, 6, rh);
+      g.fillStyle = '#9a968f'; g.fillRect(x0, y + rh - 9, cw, 9);          // 腰 (コンクリート)
+      g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x0, y + rh - 9, cw, 2);
+    }
+    // 赤い壁の階 (上の階): 細長い縦の窓が 3 m おき、継ぎ目
+    y = top('redwall');
+    if (RI.idx.redwall != null) {
+      g.fillStyle = L.wall; g.fillRect(x0, y, cw, rh);
+      g.fillStyle = 'rgba(0,0,0,.10)'; g.fillRect(x0, y, 1.5, rh); g.fillRect(x0, y + rh - 2, cw, 2);
+      for (const wx of [20, 84]) {
+        glass(x0 + wx, y + 14, 15, rh - 34, '#3b4a57', '#1b232b');
+        g.strokeStyle = L.accent; g.lineWidth = 2.5; g.strokeRect(x0 + wx - 1, y + 13, 17, rh - 32);
+        lit(x0 + wx, y + 14, 15, rh - 34, '#ffe3b8', 0.4 + rnd() * 0.3);
+      }
+    }
     // 単色の見本 (立体の飾り relief の色): 0 壁、1 アクセント、2 ガラスの手すり、3 えんじ色、4 白い床の縁
     y = top('palette');
     g.fillStyle = [L.wall, L.accent, '#bcd0cf', a2, '#eef0ef', L.wall, L.wall, L.wall][bx]; g.fillRect(x0, y, cw, rh);
@@ -497,6 +529,24 @@ function simplifyRing(ring, tol) { // Douglas-Peucker (閉じた輪)
   const h1 = dp(ring.slice(0, far + 1)), h2 = dp([...ring.slice(far), ring[0]]);
   return [...h1.slice(0, -1), ...h2.slice(0, -1)];
 }
+// 辺 a→c のうち、区間 sp (from〜to の線から w 以内) に入る部分の、辺の上の割合 [t0, t1]。入らなければ null
+function spanClip(a, c, sp) {
+  const dx = c[0] - a[0], dz = c[1] - a[1], len = Math.hypot(dx, dz);
+  if (len < 0.01) return null;
+  const ux = dx / len, uz = dz / len, zl = Math.hypot(sp.to[0] - sp.from[0], sp.to[1] - sp.from[1]);
+  const zx = (sp.to[0] - sp.from[0]) / zl, zz = (sp.to[1] - sp.from[1]) / zl, w = sp.w || 1.5;
+  const sa = (a[0] - sp.from[0]) * zx + (a[1] - sp.from[1]) * zz, sb = ux * zx + uz * zz;
+  const da = (a[0] - sp.from[0]) * zz - (a[1] - sp.from[1]) * zx, db = ux * zz - uz * zx;
+  let lo = 0, hi = len, ok = true;
+  const clip = (c0, c1, mn, mx) => {
+    if (Math.abs(c1) < 1e-9) { if (c0 < mn || c0 > mx) ok = false; return; }
+    let t0 = (mn - c0) / c1, t1 = (mx - c0) / c1;
+    if (t0 > t1) [t0, t1] = [t1, t0];
+    lo = Math.max(lo, t0); hi = Math.min(hi, t1);
+  };
+  clip(sa, sb, 0, zl); clip(da, db, -w, w);
+  return ok && hi - lo > 0.05 ? [lo / len, hi / len] : null;
+}
 function addLookRelief(gb, b, L, y0, y1) {
   const R = L.relief;
   if (!R) return;
@@ -548,16 +598,22 @@ function addLookRelief(gb, b, L, y0, y1) {
       return [p[0] + mx * k, p[1] + mz * k];
     });
     for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n, A = r[i], B = r[j], A2 = off[i], B2 = off[j];
+      const j = (i + 1) % n, A0 = r[i], B0 = r[j], A20 = off[i], B20 = off[j];
       if (e.faces && !e.faces.includes(faceOf(nr[i][0], nr[i][1]))) continue;
-      if (e.rail) { // 庇 (床) の先にガラスの手すり
-        const t = 0.06 / d, F = (P, Q) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
-        const A3 = F(A2, A), B3 = F(B2, B);
-        box([[A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B3[0], yt, B3[1]], [A3[0], yt, A3[1]],
-             [A2[0], yt + e.rail, A2[1]], [B2[0], yt + e.rail, B2[1]], [B3[0], yt + e.rail, B3[1]], [A3[0], yt + e.rail, A3[1]]], reliefUV(L, 'rail'));
+      // spans: [{from, to, w}] = その線 (from〜to) から w m 以内の壁の部分だけに付ける (扉の上だけの庇など)。無ければ辺ぜんぶ
+      const segs = e.spans ? e.spans.map(sp => spanClip(A0, B0, sp)).filter(Boolean) : [[0, 1]];
+      for (const [t0, t1] of segs) {
+        const lp = (P, Q, t) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
+        const A = lp(A0, B0, t0), B = lp(A0, B0, t1), A2 = lp(A20, B20, t0), B2 = lp(A20, B20, t1);
+        if (e.rail) { // 庇 (床) の先にガラスの手すり
+          const t = 0.06 / d, F = (P, Q) => [P[0] + (Q[0] - P[0]) * t, P[1] + (Q[1] - P[1]) * t];
+          const A3 = F(A2, A), B3 = F(B2, B);
+          box([[A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B3[0], yt, B3[1]], [A3[0], yt, A3[1]],
+               [A2[0], yt + e.rail, A2[1]], [B2[0], yt + e.rail, B2[1]], [B3[0], yt + e.rail, B3[1]], [A3[0], yt + e.rail, A3[1]]], reliefUV(L, 'rail'));
+        }
+        box([[A2[0], yb, A2[1]], [B2[0], yb, B2[1]], [B[0], yb, B[1]], [A[0], yb, A[1]],
+             [A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B[0], yt, B[1]], [A[0], yt, A[1]]], uv);
       }
-      box([[A2[0], yb, A2[1]], [B2[0], yb, B2[1]], [B[0], yb, B[1]], [A[0], yb, A[1]],
-           [A2[0], yt, A2[1]], [B2[0], yt, B2[1]], [B[0], yt, B[1]], [A[0], yt, A[1]]], uv);
     }
   }
 }
