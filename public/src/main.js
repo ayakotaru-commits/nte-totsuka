@@ -26,6 +26,7 @@ import { loadMotion } from './motion.js';
 import { preloadVRM } from './character.js';
 import { Swarm, SITE as SWARM_SITE } from './swarm/event.js';
 import { Rhythm, SITE as RHYTHM_SITE } from './rhythm/event.js';
+import { Arcade, SITE as ARCADE_SITE } from './arcade/event.js';
 import { buildShrines } from './shrine.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
@@ -163,10 +164,23 @@ async function main() {
   if (Q.has('rhythm')) { rhythm.auto = true; rhythm.autoPlay = Q.get('rhythm') === 'auto'; player.teleport(RHYTHM_SITE.me[0], RHYTHM_SITE.me[1]); }
   window.__rhythm = rhythm; window.__rhythmSite = RHYTHM_SITE; // 確認用 (tools/dev/rhythmcheck.js)
 
+  // イベント「ゲームセンター リズムステージ」(戸塚駅西口の路地の、赤いゲームセンターの入口。arcade/event.js)。
+  // ?noarcade で無効、?arcade で開いてすぐ曲えらびへ、?arcade=auto で自動で打つ (&diff=HARD &bot=0.15 = 15% は打たない)、?arcade=ask で入口に立つだけ (確認用)
+  const arcade = new Arcade({ player, onClose: () => { if (!TOUCH) lock(); } });
+  if (Q.has('noarcade') || (Q.has('shot') && !Q.has('arcade'))) arcade.disabled = true;
+  if (Q.has('arcade')) {
+    arcade.autoOpen = Q.get('arcade') !== 'ask'; arcade.autoPlay = Q.get('arcade') === 'auto'; arcade.botSkip = +(Q.get('bot') || 0); // =ask: 入口に立つだけ (聞く表示の確認)
+    if (Q.get('diff') === 'HARD' || Q.get('diff') === 'NORMAL') arcade.cfg.diff = Q.get('diff');
+    player.teleport(ARCADE_SITE.center[0], ARCADE_SITE.center[1]); player.facing = -Math.PI / 2;
+  }
+  window.__arcade = arcade; // 確認用 (tools/dev/arcadecheck.js)
+  const NOIN = { ax: 0, az: 0, pressed: () => false, held: () => false, press() {}, setHeld() {}, endFrame() {} }; // ゲーム画面の間、キャラに渡す (S D F J K L で歩かない)
+
   // イベントの場所の印 (ミニマップ・大きい地図。eventmarks.js)。大きい地図で印をクリック・タップすると、そこをワープ先に選ぶ
   const EVENTS = [
     { name: 'うな○ー大量発生クエスト', x: SWARM_SITE.center[0], z: SWARM_SITE.center[1], color: '#2f9e64', active: () => swarm.running, off: swarm.disabled },
     { name: 'リズム地獄(八坂神社)', x: RHYTHM_SITE.me[0], z: RHYTHM_SITE.me[1], color: '#d23c34', active: () => rhythm.playing, off: rhythm.disabled },
+    { name: 'ゲームセンター リズムステージ', x: ARCADE_SITE.center[0], z: ARCADE_SITE.center[1], color: '#ff6fae', active: () => arcade.active, off: arcade.disabled },
   ].filter((e) => !e.off);
   minimap.events = bigmap.events = EVENTS;
 
@@ -265,21 +279,23 @@ async function main() {
     if (input.pressed('KeyH')) $('help').hidden = !$('help').hidden;
     if (input.pressed('KeyG')) exportGLB(built.group);
 
-    if (input.pressed('KeyM')) { rhythm.stop(); toggleMap(); }
+    if (input.pressed('KeyM') && !arcade.active) { rhythm.stop(); toggleMap(); }
     if (bigmap.open && input.pressed('KeyF')) bigmap.centerOnPlayer();
 
     // マップ表示中はキャラを止める
     if (!bigmap.open) {
       // キャラの動きは 1/30 秒以下に刻んで進める (すり抜け防止)。ジャンプなどの「押した瞬間」は最初の 1 刻みだけに効かせる
       const n = Math.ceil(dt / (1 / 30) - 1e-6) || 1;
-      doors.update(dt, player, input);   // 扉の開け閉め (F)。押した瞬間を player より先に見る
-      swarm.update(dt, input);           // イベント (受けるか聞く表示の Y / N も、押した瞬間を player より先に見る)
-      rhythm.update(dt, input);          // イベント「お札まき」(同上。曲の間のカメラもここで決めるので、cam.update の後でもう一度)
-      for (let i = 0; i < n; i++) { player.update(dt / n, input, cam); if (n > 1) input.endFrame(); }
+      const inp = arcade.active ? NOIN : input; // ゲームセンターのゲーム画面の間は、キャラ・扉・ほかのイベントに入力を渡さない
+      doors.update(dt, player, inp);     // 扉の開け閉め (F)。押した瞬間を player より先に見る
+      swarm.update(dt, inp);             // イベント (受けるか聞く表示の Y / N も、押した瞬間を player より先に見る)
+      rhythm.update(dt, inp);            // イベント「お札まき」(同上。曲の間のカメラもここで決めるので、cam.update の後でもう一度)
+      arcade.update(dt, input);          // イベント「ゲームセンター リズムステージ」(同上)
+      for (let i = 0; i < n; i++) { player.update(dt / n, inp, cam); if (n > 1) input.endFrame(); }
       cam.update(dt, player.pos, false, player);
       if (rhythm.playing) rhythm.view();
     }
-    if (mp) mp.update(dt, input);
+    if (mp) mp.update(dt, arcade.active ? NOIN : input);
     tod.update(dt);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
@@ -298,8 +314,7 @@ async function main() {
       $('place').textContent = p ? p.label + ' 付近' : '戸塚';
     }
 
-    look.render();
-    labelRenderer.render(scene, camera);
+    if (!arcade.active) { look.render(); labelRenderer.render(scene, camera); } // ゲーム画面の間は街を描かない (画面が全部おおわれるので、軽くなる)
     input.endFrame();
   });
 }
