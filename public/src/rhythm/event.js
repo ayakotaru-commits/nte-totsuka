@@ -1,7 +1,7 @@
-// イベント「お札まき 合いの手」: 八坂神社 (旧東海道沿い) の境内に入ると、参加するかを聞く。
-// 「はい」(Y / Enter / 画面のボタン) で、社殿の前で手本役と向かい合い、約 30 秒の 1 曲が始まる。
+// イベント「リズム地獄(八坂神社)」(お札まきがもと): 八坂神社 (旧東海道沿い) の境内に入ると、参加するかを聞く。
+// 「はい」(Y / Enter / 画面のボタン) で、社殿の前で手本役と向かい合い、約 45 秒の 1 曲が始まる。
 //   ・手本役が 1 小節うちわで打って見せ (太鼓の音)、次の 1 小節で同じリズムを返す (Space / J / クリック / タップ)
-//   ・1 曲 = テンポ 110 の 14 小節: 前奏 1 → うちわ打ち 4 → お札まき 4 (裏拍が入る) → 伴奏が止まる 4 → 締めの一打 1
+//   ・1 曲 = テンポ 107 の 20 小節: 前奏 1 → うちわ打ち 4 → お札まき 4 (裏拍が入る) → 速い 4 → 伴奏が止まる 4 → ラスト 2 → 締めの一打 1
 //     手本の打ち方は毎回、候補 (POOLS) から選び直す
 //   ・判定はずれの大きさで 良 (±GOOD) / 可 (±OK)。外れるか打たないとミス。ずれ合わせ (遅れの測定) は無い (持ち主の希望)。
 //     音が出ているときは、ブラウザが知らせる出力の遅れだけは自動で差し引く (audio.js の now())
@@ -15,25 +15,28 @@ import { H } from '../terrain.js';
 import * as A from './audio.js';
 import { UnaaCrowd } from './unaa.js';
 
-export const BPM = 110;
+export const BPM = 107;
 const BEAT = 60 / BPM, SLOT = BEAT / 2, BAR = BEAT * 4;
 export const GOOD = 0.07, OK = 0.13;     // 判定の幅 (秒)。ずれ合わせが無いので広め
 const NEAR = 0.25;                       // この範囲で外れた打ちは、近い拍のミスとして数える (連打でごまかせないように)
 const LEAD_IN = 0.9;                     // 「はい」から前奏の 1 拍目まで (秒)
-const BARS = 14, FINAL = 13;             // 小節の数、締めの一打の小節
+const BARS = 20, FINAL = 19;             // 小節の数、締めの一打の小節
 // 区切り: 手本の小節 (bar, bar + 2)、返す小節 (bar + 1, bar + 3)
 const SECTIONS = [
   { bar: 1, kind: 'uchiwa', name: 'うちわ打ち' },
   { bar: 5, kind: 'ofuda', name: 'お札まき' },
-  { bar: 9, kind: 'stop', name: '音が止まっても 続けて！' },
+  { bar: 9, kind: 'rush', name: 'もっと 速く！' },
+  { bar: 13, kind: 'stop', name: '音が止まっても 続けて！' },
+  { bar: 17, kind: 'rush', name: 'ラスト！', pairs: 1 },
 ];
-const SILENT = new Set([10, 12]);        // 拍子木の伴奏が止まる小節
+const SILENT = new Set([14, 16]);        // 拍子木の伴奏が止まる小節
 // 手本の打ち方の候補 (1 小節を 8 分音符 8 つに分けた位置。0, 2, 4, 6 が表拍)。[1 回目の候補, 2 回目の候補]
 // 手本の小節の 4 拍目 (6・7) は空けておき、そこで「はい！」の合図を出す (返す小節の 1 打目に備えられるように)
 const POOLS = {
   uchiwa: [[[0, 2, 4], [0, 4], [0, 2, 4]], [[0, 2, 3, 4], [0, 1, 2, 4], [0, 2, 3, 4]]],
   ofuda: [[[1, 3, 4], [0, 3, 4], [0, 1, 3]], [[0, 1, 3, 4], [1, 2, 3, 4], [0, 1, 2, 3]]],
   stop: [[[0, 2, 4], [0, 1, 2, 4], [0, 2, 3]], [[0, 3, 4], [0, 2, 3, 4], [0, 1, 4]]],
+  rush: [[[0, 1, 3, 4], [0, 2, 3, 4], [1, 2, 4, 5]], [[0, 1, 2, 3, 4], [1, 2, 3, 4, 5], [0, 1, 3, 4, 5]]],
 };
 const CUE = 6;                           // 「はい！」の合図を出す位置 (手本の小節の 4 拍目)
 const RING = BEAT * 1.5;                 // 次に打つ升目のまわりの輪が、この秒数前から縮み始める
@@ -47,6 +50,19 @@ const W = (lx, lz) => {
   return [+(SH.o[0] + fz * lx + fx * lz).toFixed(2), +(SH.o[1] - fx * lx + fz * lz).toFixed(2)];
 };
 const AX = -0.6; // 参道の筋 (石段・鳥居と社殿の正面を結ぶ線) の lx
+// うな○ーの立ち位置 (社殿の局所座標の格子 1.5 m 間隔。舞台と見物人の列・手水舎・石碑・提灯の柱は避け、舞台に近い順に左右交互)
+function fanSlots() {
+  const keep = [[3.7, 13.4, 2.3], [7.27, 12.89, 1.4], [9.27, 12.02, 1.4], [7.8, 3.6, 0.9], [7.8, 10.6, 0.9], [-9.0, 3.6, 0.9], [-9.0, 8.4, 0.9], [-6.6, 4.1, 0.9], [5.4, 4.1, 0.9]];
+  const c = [];
+  for (let lz = 4.9; lz <= 12.4; lz += 1.5) for (let lx = -9.5; lx <= 9.5; lx += 1.5) {
+    const d = lx - AX;
+    if (Math.abs(d) < 4.4) continue;                               // 舞台と見物人の列
+    if (keep.some(([x, z, r]) => Math.hypot(lx - x, lz - z) < r)) continue;
+    c.push({ lx, lz, k: Math.hypot(d, (lz - 7.8) * 1.3) + Math.random() * 0.6 });
+  }
+  c.sort((a, b) => a.k - b.k);
+  return c.map((q) => W(q.lx, q.lz));
+}
 export const SITE = {
   area: [[-401.6, 604.8], [-375.3, 610.0], [-369.3, 635.2], [-362.4, 637.5], [-364.6, 647.4], [-375.5, 643.8], [-379.3, 644.4], [-382.2, 651.7], [-392.1, 636.1], [-399.6, 616.5]],
   lead: W(AX, 5.8),   // 手本役 (社殿を背に、鳥居の方を向く)
@@ -54,7 +70,7 @@ export const SITE = {
   crowd: [5.8, 7.8, 9.8].flatMap((lz) => [-3.4, 3.4].map((d) => W(AX + d, lz))), // 見物人 (両脇)
   cam: { back: 4.2, side: -1.5, up: 3.2 },   // 舞台のカメラ (view())
   // うな○ーの立ち位置 (見物人の外側。手水舎・石碑・石垣を避ける)
-  fans: [5.0, 7.0].flatMap((d) => [4.8, 6.8, 8.8, 10.8].flatMap((lz) => [-d, d].map((s) => W(AX + s, lz)))),
+  fans: fanSlots(),
 };
 const CROWD_COL = [
   { hair: '#2a2226', jacket: '#3d5a8a', accent: '#f2e6c8' }, { hair: '#4a3328', jacket: '#8a3d4a', accent: '#f6d06a' },
@@ -77,7 +93,7 @@ const $ = (id) => document.getElementById(id);
 export function makeChart() {
   const calls = [], targets = [];
   for (const s of SECTIONS) {
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < (s.pairs || 2); k++) {
       const bar = s.bar + 2 * k, slots = pick(POOLS[s.kind][k]);
       for (const sl of slots) {
         calls.push({ t: bar * BAR + sl * SLOT, bar, slot: sl, kind: s.kind });
@@ -239,7 +255,7 @@ export class Rhythm {
     this.hype = 0; this.lastLead = -9; this.lastMe = -9; this.bannerOff = null;
     this.calls = this.chart.calls.slice();
     this.banners = [
-      [0, 'せーの！'], ...SECTIONS.map((s) => [s.bar * BAR, s.name]), [12 * BAR + 2 * BEAT, '最後は いっしょに！'],
+      [0, 'せーの！'], ...SECTIONS.map((s) => [s.bar * BAR, s.name]), [(FINAL - 1) * BAR + 2 * BEAT, '最後は いっしょに！'],
     ];
     this.cues = this.callBars().map((b) => b * BAR + CUE * SLOT); // 「はい！」を出す時刻
     for (const c of this.crowd) c.root.visible = true;
@@ -275,7 +291,8 @@ export class Rhythm {
   lift() {
     if (this.state !== 'play' || this.t0 == null) return 0;
     const t = this.songT();
-    return t > 12 * BAR + 2 * BEAT && t < FINAL * BAR + 0.05 ? Math.min(1, (t - 12 * BAR - 2 * BEAT) / BEAT) : 0;
+    const t0 = (FINAL - 1) * BAR + 2 * BEAT;
+    return t > t0 && t < FINAL * BAR + 0.05 ? Math.min(1, (t - t0) / BEAT) : 0;
   }
 
   // 打った (時刻 t。clock() の基準)
@@ -307,7 +324,10 @@ export class Rhythm {
       return;
     }
     A.play(g.res === 'good' ? 'daikichi' : 'kichi');
-    if (g.res === 'good' && this.unaa.add()) this.hype = Math.min(1, this.hype + 0.1); // 大吉のたびに、うな○ーが 1 体加わる
+    if (g.res === 'good') { // 大吉のたびに、うな○ーが 3 体加わる
+      let n = 0; for (let k = 0; k < 3; k++) if (this.unaa.add()) n++;
+      if (n) this.hype = Math.min(1, this.hype + 0.1);
+    }
     this.flash(g.res === 'good' ? '大吉！' : '吉', g.res);
     this.omikuji(g, g.res === 'good' ? '大' : '吉');
     this.hype = Math.min(1, this.hype + (g.res === 'good' ? 0.3 : 0.15));

@@ -157,7 +157,7 @@ async function main() {
   if (Q.has('noswarm') || (Q.has('shot') && !Q.has('swarm'))) swarm.disabled = true;
   if (Q.has('swarm')) { swarm.auto = true; const p = findFree(world, -246, 1449); player.teleport(p.x, p.z); player.facing = Math.PI / 2; cam.yaw = player.facing + Math.PI; cam.update(0, player.pos, true); }
 
-  // イベント「お札まき 合いの手」(八坂神社の境内に入ると、参加するか聞く。rhythm/event.js)。?norhythm で無効、?rhythm で開いてすぐ始める、?rhythm=auto で自動で打つ (確認用)
+  // イベント「リズム地獄(八坂神社)」(八坂神社の境内に入ると、参加するか聞く。rhythm/event.js)。?norhythm で無効、?rhythm で開いてすぐ始める、?rhythm=auto で自動で打つ (確認用)
   const rhythm = new Rhythm({ scene, world, player, camera, cam });
   if (Q.has('norhythm') || (Q.has('shot') && !Q.has('rhythm'))) rhythm.disabled = true;
   if (Q.has('rhythm')) { rhythm.auto = true; rhythm.autoPlay = Q.get('rhythm') === 'auto'; player.teleport(RHYTHM_SITE.me[0], RHYTHM_SITE.me[1]); }
@@ -166,7 +166,7 @@ async function main() {
   // イベントの場所の印 (ミニマップ・大きい地図。eventmarks.js)。大きい地図で印をクリック・タップすると、そこをワープ先に選ぶ
   const EVENTS = [
     { name: 'うな○ー大量発生クエスト', x: SWARM_SITE.center[0], z: SWARM_SITE.center[1], color: '#2f9e64', active: () => swarm.running, off: swarm.disabled },
-    { name: 'お札まき 合いの手', x: RHYTHM_SITE.me[0], z: RHYTHM_SITE.me[1], color: '#d23c34', active: () => rhythm.playing, off: rhythm.disabled },
+    { name: 'リズム地獄(八坂神社)', x: RHYTHM_SITE.me[0], z: RHYTHM_SITE.me[1], color: '#d23c34', active: () => rhythm.playing, off: rhythm.disabled },
   ].filter((e) => !e.off);
   minimap.events = bigmap.events = EVENTS;
 
