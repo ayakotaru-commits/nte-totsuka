@@ -39,12 +39,21 @@ const CUE = 6;                           // 「はい！」の合図を出す位
 const RING = BEAT * 1.5;                 // 次に打つ升目のまわりの輪が、この秒数前から縮み始める
 const AUDIO_WAIT = 1.5;                  // 音の準備を待つ長さ (秒)。過ぎたら音なしで始める
 
-// 場所 (八坂神社。city.json の境内の輪郭と、社殿 gc2537e880a の北の空き地)
+// 場所 (八坂神社。city.json の境内の輪郭と、社殿の正面 = 石段の上のすぐ先)
+// 社殿 (props.json の shrines[0]) の局所座標 (lx = 右手、lz = 正面の向き) → 世界。舞台は社殿の正面、石段 (鳥居) の上のすぐ先
+const SH = { o: [-386.21, 634.48], yaw: 1.274 };
+const W = (lx, lz) => {
+  const fx = Math.sin(SH.yaw), fz = Math.cos(SH.yaw);
+  return [+(SH.o[0] + fz * lx + fx * lz).toFixed(2), +(SH.o[1] - fx * lx + fz * lz).toFixed(2)];
+};
+const AX = -0.6; // 参道の筋 (石段・鳥居と社殿の正面を結ぶ線) の lx
 export const SITE = {
   area: [[-401.6, 604.8], [-375.3, 610.0], [-369.3, 635.2], [-362.4, 637.5], [-364.6, 647.4], [-375.5, 643.8], [-379.3, 644.4], [-382.2, 651.7], [-392.1, 636.1], [-399.6, 616.5]],
-  lead: [-386.0, 627.6],   // 手本役 (社殿を背に、北を向く)
-  me: [-386.0, 623.4],     // 自分
-  crowd: [[-390.3, 622.6], [-390.6, 625.0], [-390.1, 627.4], [-381.8, 622.6], [-381.5, 625.0], [-381.9, 627.4]], // 見物人 (両脇)
+  lead: W(AX, 5.8),   // 手本役 (社殿を背に、鳥居の方を向く)
+  me: W(AX, 9.8),     // 自分 (石段の上から社殿へ 2〜3 m 進んだ所。社殿の方を向く)
+  crowd: [5.8, 7.8, 9.8].flatMap((lz) => [-3.4, 3.4].map((d) => W(AX + d, lz))), // 見物人 (両脇)
+  // うな○ーの立ち位置 (見物人の外側。手水舎・石碑・石垣を避ける)
+  fans: [5.0, 7.0].flatMap((d) => [4.8, 6.8, 8.8, 10.8].flatMap((lz) => [-d, d].map((s) => W(AX + s, lz)))),
 };
 const CROWD_COL = [
   { hair: '#2a2226', jacket: '#3d5a8a', accent: '#f2e6c8' }, { hair: '#4a3328', jacket: '#8a3d4a', accent: '#f6d06a' },
@@ -147,15 +156,8 @@ export class Rhythm {
       return m;
     });
     this.ofuda = new Ofuda(scene);
-    // 大吉のたびに加わるうな○ー (手本役と自分の間の両脇、見物人のさらに外側に並ぶ。境内の中だけ)
-    {
-      const ux = (lx - mx), uz = (lz - mz), L = Math.hypot(ux, uz), fx = ux / L, fz = uz / L, slots = [];
-      for (const lat of [5.6, 7.4, 9.2]) for (const ax of [1.2, 3.6, -1.2, 6.0, -3.6, 8.4]) for (const sd of [1, -1]) {
-        const x = mx + fx * ax - fz * lat * sd, z = mz + fz * ax + fx * lat * sd;
-        if (inPoly(SITE.area, x, z)) slots.push([x, z]);
-      }
-      this.unaa = new UnaaCrowd(scene, this.ground, slots, [(lx + mx) / 2, (lz + mz) / 2]);
-    }
+    // 大吉のたびに加わるうな○ー (SITE.fans の順に。境内の外に出る所は使わない)
+    this.unaa = new UnaaCrowd(scene, this.ground, SITE.fans.filter(([x, z]) => inPoly(SITE.area, x, z)), [(lx + mx) / 2, (lz + mz) / 2]);
     this.hype = 0;
     this.ui = {
       ask: $('rh-ask'), hud: $('rh-hud'), label: $('rh-label'), cells: $('rh-cells'), prog: $('rh-prog'), banner: $('rh-banner'),

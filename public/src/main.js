@@ -160,8 +160,8 @@ async function main() {
   // イベント「お札まき 合いの手」(八坂神社の境内に入ると、参加するか聞く。rhythm/event.js)。?norhythm で無効、?rhythm で開いてすぐ始める、?rhythm=auto で自動で打つ (確認用)
   const rhythm = new Rhythm({ scene, world, player, camera, cam });
   if (Q.has('norhythm') || (Q.has('shot') && !Q.has('rhythm'))) rhythm.disabled = true;
-  if (Q.has('rhythm')) { rhythm.auto = true; rhythm.autoPlay = Q.get('rhythm') === 'auto'; player.teleport(-386, 623.4); }
-  window.__rhythm = rhythm; // 確認用 (tools/dev/rhythmcheck.js)
+  if (Q.has('rhythm')) { rhythm.auto = true; rhythm.autoPlay = Q.get('rhythm') === 'auto'; player.teleport(RHYTHM_SITE.me[0], RHYTHM_SITE.me[1]); }
+  window.__rhythm = rhythm; window.__rhythmSite = RHYTHM_SITE; // 確認用 (tools/dev/rhythmcheck.js)
 
   // イベントの場所の印 (ミニマップ・大きい地図。eventmarks.js)。大きい地図で印をクリック・タップすると、そこをワープ先に選ぶ
   const EVENTS = [
