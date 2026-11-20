@@ -101,6 +101,7 @@ export class World {
       add(ring, y0, y1);
     }
     for (const [x, z, yaw, hx, hz, y0, y1] of c.box || []) add(rect(x, z, Math.sin(yaw), Math.cos(yaw), hx, hz), y0, y1);
+    for (const [ring, y0, y1] of c.poly || []) add(ring, y0, y1); // 任意の多角形 [[x, z], ...] (ホームの床など)
     for (const ln of c.line || []) {
       const [hw, h] = ln;
       for (let k = 2; k + 5 < ln.length; k += 3) {
