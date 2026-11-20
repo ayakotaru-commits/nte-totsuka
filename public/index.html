@@ -91,7 +91,8 @@
   <canvas id="ar-canvas"></canvas>
   <div id="ar-select" class="ar-card" hidden>
     <div class="ar-head">♪ リズムステージ ♪</div>
-    <div class="ar-song"><div class="ar-jacket"><i>♪</i><i>★</i><i>♥</i></div><div><div class="ar-title">ハイテンポ・ポップ</div><div class="ar-meta">BPM 172 → 200　約 1 分 23 秒　サビ前でテンポがゆれるよ</div></div></div>
+    <div class="ar-songs" id="ar-songs"></div>
+    <div class="ar-song"><div class="ar-jacket"><i>♪</i><i>★</i><i>♥</i></div><div><div class="ar-title"></div><div class="ar-meta"></div><div id="ar-credit"></div></div></div>
     <div class="ar-row">
       <button class="ar-btn diff" data-act="diff" data-v="NORMAL"><span class="d">NORMAL</span><span class="s"></span><span class="n"></span><span class="b"></span></button>
       <button class="ar-btn diff hard" data-act="diff" data-v="HARD"><span class="d">HARD</span><span class="s"></span><span class="n"></span><span class="b"></span></button>
@@ -106,6 +107,7 @@
   </div>
   <div id="ar-result" class="ar-card" hidden>
     <div class="ar-head">RESULT <span id="ar-diff"></span></div>
+    <div id="ar-rsong"></div>
     <div class="ar-big"><div id="ar-rank">S</div><div class="ar-sc"><div id="ar-score">000000</div><div id="ar-badge"></div><div id="ar-new" hidden>NEW RECORD!</div></div></div>
     <div id="ar-counts"></div>
     <div id="ar-sub"></div>

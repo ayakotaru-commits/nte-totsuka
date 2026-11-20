@@ -259,3 +259,10 @@ body.touch .ar-card { width: min(94vw, 640px); left: 50%; padding: 12px 14px 10p
   .ar-title { font-size: 17px; } .ar-row { margin: 4px 0; } .ar-btn.diff { padding: 4px 6px; } .ar-btn.diff .d { font-size: 16px; } .ar-opts { margin: 4px 0 2px; gap: 3px; } .ar-btns { margin-top: 6px; }
   .ar-keys { margin-top: 4px; } #ar-rank { font-size: 64px; } #ar-score { font-size: 28px; } .ar-big { margin: 2px 0; } #ar-counts .c b { font-size: 16px; } .ar-btn { padding: 8px 14px; font-size: 14px; } .ar-btn.go { font-size: 16px; min-width: 120px; }
 }
+
+/* 曲えらび (複数の曲) */
+.ar-songs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 8px 0 2px; max-height: 76px; overflow: auto; }
+.ar-chip.song { max-width: 48%; padding: 5px 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ar-credit { margin-top: 3px; font-size: 11px; color: #9a82bb; line-height: 1.4; }
+#ar-rsong { margin-top: 1px; font-size: 15px; font-weight: 800; color: #7a5aa8; }
+@media (max-height: 480px) { .ar-songs { margin: 3px 0 0; max-height: 52px; } .ar-chip.song { padding: 3px 9px; font-size: 12px; } #ar-credit { display: none; } }

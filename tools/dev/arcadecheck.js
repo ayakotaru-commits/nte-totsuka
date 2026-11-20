@@ -88,6 +88,18 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   ok(await page.evaluate(() => window.__arcade.cfg.diff) === 'HARD', '→ キーで HARD');
   await page.keyboard.press('ArrowLeft');
   await page.click('[data-act="sfx"]'); await page.click('[data-act="off"][data-v="-10"]'); await page.click('[data-act="off"][data-v="-10"]'); await page.click('[data-act="speed"][data-v="normal"]');
+  // 曲えらび: 一覧・切り替え (譜面と音を読み直す)
+  const songs = await page.evaluate(() => window.__arcade.songs.map(s => s.id));
+  ok(songs.length >= 5 && songs[0] === 'pipipi' && songs.includes('pop1'), `曲の一覧: ${songs.join(', ')}`);
+  ok(await page.evaluate(() => document.querySelectorAll('#ar-songs .ar-chip').length) === songs.length && await page.evaluate(() => window.__arcade.song.id) === 'pipipi', '最初の曲は 1 曲目 (歌入り)');
+  await page.click('[data-act="song"][data-v="miraimirai"]');
+  await page.waitForFunction(() => window.__arcade.chart && window.__arcade.chart.id === 'miraimirai' && !window.__arcade.picking);
+  ok(await page.evaluate(() => !!window.__arcade.buf && !document.querySelector('[data-act="start"]').disabled && window.__arcade.chart.difficulties.HARD.stats.notes > 300),
+     '曲を切り替えると、その曲の譜面と音が読み込まれる (ミライミライ)');
+  ok((await page.evaluate(() => document.getElementById('ar-credit').textContent)).includes('NeWorld'), 'クレジットが曲えらびに出る');
+  await shot(page, '2b_select_song');
+  await page.click('[data-act="song"][data-v="pipipi"]');
+  await page.waitForFunction(() => window.__arcade.chart && window.__arcade.chart.id === 'pipipi' && !window.__arcade.picking);
   // スタート
   await page.click('[data-act="start"]');
   await waitState(page, 'play');
@@ -123,8 +135,11 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await page.keyboard.press('Escape');
   await waitState(page, 'select');
   ok(await page.evaluate(() => window.__arcade.game === null), 'Esc で曲えらびに戻る (曲は止まる)');
-  // 自動で最後まで (10% は打たない)
+  // 自動で最後まで (10% は打たない)。最後まで通すのは、短いほうの自作曲 (pop1。約 83 秒)
+  await page.click('[data-act="song"][data-v="pop1"]');
+  await page.waitForFunction(() => window.__arcade.chart && window.__arcade.chart.id === undefined && !window.__arcade.picking && window.__arcade.song.id === 'pop1');
   await page.evaluate(() => { const A = window.__arcade; A.autoPlay = true; A.botSkip = 0.1; A.cfg.diff = 'HARD'; });
+  await page.click('[data-act="diff"][data-v="HARD"]');
   await page.click('[data-act="start"]');
   await waitState(page, 'play');
   await page.waitForFunction(() => window.__arcade.chartT(window.__arcade.now()) > 27, null, { timeout: 120000 });

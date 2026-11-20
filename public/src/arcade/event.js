@@ -21,7 +21,6 @@ export const LABELS = ['S', 'D', 'F', 'J', 'K', 'L'];
 const SPEEDS = { slow: 1.5, normal: 1.15, fast: 0.9 };
 const READY = 2.0;                 // 「はい」ではなく「スタート」から、曲の頭まで (秒)
 const STORE = 'arcade.v1';
-const TITLE = 'ハイテンポ・ポップ';
 const STARS = { NORMAL: '★★☆☆', HARD: '★★★★' };
 
 const inPoly = (poly, x, z) => {
@@ -42,7 +41,8 @@ export class Arcade {
     this.state = 'idle';        // idle / ask / loading / select / play / result
     this.armed = true; this.dwell = 0; this.answer = null;
     this.chart = null; this.buf = null; this.stage = null; this.game = null;
-    this.cfg = Object.assign({ speed: 'normal', sfx: true, offset: 0, diff: 'NORMAL', best: {} }, load());
+    this.cfg = Object.assign({ speed: 'normal', sfx: true, offset: 0, diff: 'NORMAL', song: null, best: {} }, load());
+    for (const d of ['NORMAL', 'HARD']) if (this.cfg.best[d] != null) { this.cfg.best['pop1:' + d] = this.cfg.best[d]; delete this.cfg.best[d]; }  // 曲が 1 つだったころの記録は、最初の曲 (pop1) のものにする
     this.delta = 0; this.held = new Array(6).fill(false); this.heldN = new Array(6).fill(0); this.ptrs = new Map();
     this.ui = {
       ask: $('ar-ask'), root: $('ar-root'), cv: $('ar-canvas'), sel: $('ar-select'), res: $('ar-result'), touch: $('touch-ui'),
@@ -149,6 +149,7 @@ export class Arcade {
   // ---- 画面の操作 (ボタン・キー) ----
   act(a, v) {
     if (a === 'diff' && this.state === 'select') { this.cfg.diff = v; save(this.cfg); this.renderSelect(); }
+    else if (a === 'song') this.pickSong(v);
     else if (a === 'speed') { this.cfg.speed = v; save(this.cfg); this.renderSelect(); }
     else if (a === 'sfx') { this.cfg.sfx = !this.cfg.sfx; save(this.cfg); this.renderSelect(); }
     else if (a === 'off') { this.cfg.offset = Math.max(-300, Math.min(300, this.cfg.offset + (+v))); save(this.cfg); this.renderSelect(); }
@@ -164,19 +165,38 @@ export class Arcade {
     if (on) this.state = 'ask'; else if (this.state === 'ask') this.state = 'idle';
     this.show(this.ui.ask, on);
   }
-  // 曲と譜面を、聞く表示のうちに読み始める
+  // 曲の一覧と、えらんでいる曲の譜面・音を、聞く表示のうちに読み始める
   prefetch() {
     if (this.pre) return this.pre;
     this.pre = (async () => {
-      try {
-        if (!this.chart) this.chart = await (await fetch('arcade/chart.json')).json();
-      } catch (e) { this.err = '譜面を読み込めませんでした'; }
-      try {
-        if (!this.buf) { const ab = await (await fetch('arcade/song_pop1.mp3')).arrayBuffer(); this.buf = await A.decode(ab); }
-      } catch (e) { /* 曲なしでも遊べる */ }
+      try { if (!this.songs) this.songs = (await (await fetch('arcade/songs.json')).json()).songs; } catch (e) { this.err = '曲の一覧を読み込めませんでした'; return; }
+      if (!this.songs.some((x) => x.id === this.cfg.song)) this.cfg.song = this.songs[0].id;
+      await this.loadSong(this.cfg.song);
     })();
     return this.pre;
   }
+  // 1 曲の譜面と音 (読んだものは覚えておく)
+  async loadSong(id) {
+    const sg = this.songs.find((x) => x.id === id);
+    const c = (this.cache || (this.cache = {}))[id] || (this.cache[id] = {});
+    if (!c.chart) { try { c.chart = await (await fetch('arcade/' + sg.chart)).json(); } catch (e) { this.err = '譜面を読み込めませんでした'; } }
+    if (c.buf === undefined) { try { c.buf = await A.decode(await (await fetch('arcade/' + sg.audio)).arrayBuffer()); } catch (e) { c.buf = null; } } // 曲なしでも遊べる
+    return c;
+  }
+  get song() { return this.songs && this.songs.find((x) => x.id === this.cfg.song); }
+  // 曲をえらぶ (読み込みが終わるまで、スタートは押せない)
+  async pickSong(id) {
+    if (this.state !== 'select' || id === this.cfg.song && this.chart) return;
+    this.cfg.song = id; save(this.cfg);
+    this.picking = id; this.renderSelect();
+    const c = await this.loadSong(id);
+    if (this.picking !== id) return;
+    this.picking = null;
+    this.chart = c.chart; this.buf = c.buf;
+    if (this.stage && this.chart) this.stage.setChart(this.chart);
+    this.renderSelect();
+  }
+  bestKey(d) { return this.cfg.song + ':' + d; }
   async enter() {
     this.ask(false);
     this.state = 'loading';
@@ -188,6 +208,8 @@ export class Arcade {
     this.renderSelect();
     await this.prefetch();
     if (this.state !== 'loading') return;
+    const c0 = this.song && this.cache && this.cache[this.song.id];
+    if (c0) { this.chart = c0.chart; this.buf = c0.buf; }
     if (this.chart && !this.stage) this.stage = new Stage(this.ui.cv, this.chart);
     if (this.stage) this.stage.resize();
     this.state = 'select';
@@ -207,21 +229,38 @@ export class Arcade {
   // ---- 曲えらび ----
   renderSelect() {
     const el = this.ui.sel; if (!el) return;
-    const ready = this.state === 'select';
-    const D = this.chart && this.chart.difficulties;
+    const busy = this.state !== 'select' || !!this.picking;
+    // 曲の一覧
+    const box = el.querySelector('#ar-songs');
+    if (this.songs && box.dataset.n !== String(this.songs.length)) {
+      box.dataset.n = String(this.songs.length); box.textContent = '';
+      for (const sg of this.songs) {
+        const b = document.createElement('button');
+        b.className = 'ar-chip song'; b.dataset.act = 'song'; b.dataset.v = sg.id; b.textContent = sg.title;
+        box.appendChild(b);
+      }
+    }
+    for (const b of box.children) b.classList.toggle('on', b.dataset.v === this.cfg.song);
+    const sg = this.song;
+    if (sg) {
+      el.querySelector('.ar-title').textContent = sg.title;
+      el.querySelector('.ar-meta').textContent = `BPM ${sg.bpm}　約 ${Math.floor(sg.duration / 60)} 分 ${Math.round(sg.duration % 60)} 秒${sg.note ? '　' + sg.note : ''}`;
+      el.querySelector('#ar-credit').textContent = sg.credit || '';
+    }
+    const D = !this.picking && this.chart && this.chart.difficulties;
     for (const b of el.querySelectorAll('[data-act="diff"]')) {
       const d = b.dataset.v, st = D && D[d] && D[d].stats;
       b.classList.toggle('on', this.cfg.diff === d);
       b.querySelector('.n').textContent = st ? `${st.notes} ノーツ` : '…';
-      b.querySelector('.b').textContent = this.cfg.best[d] ? `ベスト ${String(this.cfg.best[d]).padStart(6, '0')}` : 'ベスト --';
+      b.querySelector('.b').textContent = this.cfg.best[this.bestKey(d)] ? `ベスト ${String(this.cfg.best[this.bestKey(d)]).padStart(6, '0')}` : 'ベスト --';
       b.querySelector('.s').textContent = STARS[d];
     }
     for (const b of el.querySelectorAll('[data-act="speed"]')) b.classList.toggle('on', this.cfg.speed === b.dataset.v);
     const sfx = el.querySelector('[data-act="sfx"]'); sfx.textContent = this.cfg.sfx ? '効果音 ON' : '効果音 OFF'; sfx.classList.toggle('on', this.cfg.sfx);
     el.querySelector('#ar-off').textContent = (this.cfg.offset > 0 ? '+' : '') + this.cfg.offset + ' ms';
     const info = el.querySelector('#ar-info');
-    info.textContent = this.err ? this.err : !ready ? 'よみこみ中…' : !this.buf ? '（曲を読み込めませんでした。音なしで遊べます）' : (A.audioOn() ? '' : '（音が出ていません。画面を触ると鳴ります）');
-    el.querySelector('[data-act="start"]').disabled = !ready || !this.chart;
+    info.textContent = this.err ? this.err : busy ? 'よみこみ中…' : !this.buf ? '（曲を読み込めませんでした。音なしで遊べます）' : (A.audioOn() ? '' : '（音が出ていません。画面を触ると鳴ります）');
+    el.querySelector('[data-act="start"]').disabled = busy || !this.chart;
   }
 
   // ---- 曲を始める ----
@@ -264,8 +303,8 @@ export class Arcade {
     A.stopSong(0.8);
     this.releaseAll();
     const s = this.game.summary();
-    const prev = this.cfg.best[this.diff] || 0, isNew = s.score > prev;
-    if (isNew && !this.autoPlay) { this.cfg.best[this.diff] = s.score; save(this.cfg); }
+    const prev = this.cfg.best[this.bestKey(this.diff)] || 0, isNew = s.score > prev;
+    if (isNew && !this.autoPlay) { this.cfg.best[this.bestKey(this.diff)] = s.score; save(this.cfg); }
     this.last = s;
     const r = this.ui.res;
     r.querySelector('#ar-rank').textContent = s.rank; r.querySelector('#ar-rank').dataset.r = s.rank;
@@ -277,6 +316,7 @@ export class Arcade {
       .map(([n, v, k]) => `<div class="c ${k}"><span>${n}</span><b>${v}</b></div>`).join('');
     r.querySelector('#ar-sub').textContent = `最大コンボ ${s.maxCombo} / ${s.total}　FAST ${s.fast}　LATE ${s.late}`;
     r.querySelector('#ar-diff').textContent = this.diff;
+    r.querySelector('#ar-rsong').textContent = this.song ? this.song.title : '';
     this.show(this.ui.res, true);
     A.play(s.rank === 'S' || s.rank === 'A' ? 'fanfare' : 'kichi', null, 1);
     if (s.rank === 'S' || s.rank === 'A') A.play('cheer', this.now() + 0.4, 0.5);
@@ -317,7 +357,7 @@ export class Arcade {
       this.game.update(t, this.held);
       if (this.endAt == null && this.game.finished) this.endAt = Math.max(t, ...this.game.notes.map((n) => n.end)) + 1.4;
       st.frame({ mode: 'play', t, dt, game: this.game, held: this.held, diff: this.diff, approach: this.approach, count: t < 0 ? -t : null,
-        labels: LABELS, keysOn: !document.body.classList.contains('touch'), title: TITLE });
+        labels: LABELS, keysOn: !document.body.classList.contains('touch'), title: this.song ? this.song.title : '', credit: this.song ? this.song.credit : '' });
       if (this.endAt != null && t > this.endAt) this.finishPlay();
       if (!this.endAt && t > this.chart.duration + 2) this.finishPlay();
     } else {

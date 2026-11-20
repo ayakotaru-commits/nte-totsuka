@@ -134,12 +134,18 @@ export class Stage {
       sp: 0.012 + Math.random() * 0.03, ph: Math.random() * 6.28, col: i % 8, rot: Math.random() * 6.28,
     }));
     this.dots = Array.from({ length: 9 }, () => ({ x: Math.random(), y: Math.random(), r: 0.1 + Math.random() * 0.18, sp: 0.006 + Math.random() * 0.012, ph: Math.random() * 6.28 }));
-    // 拍の時刻 (テンポが変わる曲でも合うように、小節ごとに作る)
+    this.setChart(chart);
+    this.quit = { x: 34, y: 34, r: 24 };
+    this.resize();
+  }
+
+  // 曲を替える: 拍の時刻 (テンポが変わる曲でも合うように、小節ごとに作る)・区間・長さを、この譜面のものにする
+  setChart(chart) {
+    this.chart = chart;
     this.beats = [];
     const bs = chart.barStart || [], bb = chart.barBpm || [];
     for (let i = 0; i < bb.length; i++) for (let k = 0; k < 4; k++) this.beats.push(bs[i] + k * 60 / bb[i]);
-    this.quit = { x: 34, y: 34, r: 24 };
-    this.resize();
+    this.bannerFor = null; this.banner = null;
   }
 
   resize() {
@@ -429,14 +435,14 @@ export class Stage {
     if (o.rot) { g.translate(x, y); g.rotate(o.rot); x = 0; y = 0; }
     g.lineJoin = 'round';
     if (o.shadow) { g.shadowColor = o.shadow; g.shadowBlur = size * 0.35; g.shadowOffsetY = size * 0.06; }
-    if (o.stroke) { g.lineWidth = o.sw || size * 0.2; g.strokeStyle = o.stroke; g.strokeText(str, x, y); }
+    if (o.stroke) { g.lineWidth = o.sw || size * 0.2; g.strokeStyle = o.stroke; g.strokeText(str, x, y, o.max); }
     g.shadowColor = 'transparent';
     if (o.rainbow) {
       const w = g.measureText(str).width, gr = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
       RAINBOW.forEach((c, i) => gr.addColorStop(i / (RAINBOW.length - 1), c));
       g.fillStyle = gr;
     } else g.fillStyle = o.fill || '#fff';
-    g.fillText(str, x, y);
+    g.fillText(str, x, y, o.max);
     g.restore();
   }
   pill(x, y, w, h, fill, stroke) {
@@ -459,6 +465,8 @@ export class Stage {
       g.restore();
       g.drawImage(this.S.tint.star[7], bx + bw * prog - 11, by - 4, 22, 22);
     }
+    // クレジット (曲の作者への表記。画面の下に小さく)
+    if (S.credit) this.text(S.credit, W / 2, H - 14, Math.max(10, m * 0.026), { fill: '#7a5aa8', stroke: 'rgba(255,255,255,.9)', sw: 4, max: W - 24 });
     // 曲名・難易度
     this.text(S.title || '', bx + bw / 2, by + bh + 17, Math.max(12, m * 0.028), { fill: '#7a5aa8', stroke: 'rgba(255,255,255,.9)', sw: 5 });
     // スコア
@@ -508,7 +516,7 @@ export class Stage {
     const s = this.section(t);
     if (this.bannerFor !== s.name) {
       this.bannerFor = s.name;
-      const txt = BANNER[secKey(s.name)];
+      const txt = (this.chart.banners || BANNER)[secKey(s.name)];   // 譜面が banners を持っていれば、それだけを出す
       if (txt && t > 0.5) this.banner = { text: txt, t0: this.t };
     }
     if (this.banner) {
