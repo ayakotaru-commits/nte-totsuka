@@ -143,7 +143,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     // [名前, 曲の頭からの秒 (関数で譜面から決める)]
     const moments = [['01_call', 'c => c.calls.find(x => x.bar === 3).t + 0.03'], ['01b_cue', 'c => 3 * 4 * 60 / 107 + 6.6 * 60 / 214'], ['02_resp', 'c => c.targets.find(x => x.bar === 4).t + 0.03'],
       ['03_ofuda', 'c => c.targets.find(x => x.kind === "rush" && x.bar === 12).t + 0.25'], ['04_lift', 'c => 18 * 4 * 60 / 107 + 3.4 * 60 / 107'],
-      ['05_final', 'c => 19 * 4 * 60 / 107 + 0.35'], ['06_result', 'c => 20 * 4 * 60 / 107 + 2']];
+      ['05_final', 'c => 19 * 4 * 60 / 107 + 0.35'], ['05b_jump', 'c => 19 * 4 * 60 / 107 + 0.62'], ['06_result', 'c => 20 * 4 * 60 / 107 + 2']];
     for (const [n, f] of moments) {
       const st = await p2.evaluate((f) => {
         const R = window.__g.rhythm, at = eval(f)(R.chart);
@@ -155,6 +155,39 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       await p2.waitForTimeout(6000); // 描画が追いつくまで
       await p2.screenshot({ path: path.join(out, `shot${n}.png`) });
       console.log('shot', n, JSON.stringify(st));
+      if (n === '03_ofuda') { // 自分の動き: 拍で沈む・大吉・凶・うな○ーにぶつかられた (判定の状態を直接決めて、止めて撮る)
+        for (const [nn, how] of [['03e_dip', 'dip'], ['03f_good', 'good'], ['03g_hop', 'hop'], ['03h_miss', 'miss'], ['03i_bumped', 'bump']]) {
+          await p2.evaluate((how) => {
+            const R = window.__g.rhythm, now = R.clock();
+            R.lastRes = null; R.hopRes = null; R.lastJudge = -9; R.bumpAt = -9; R.lastMe = now - 5;
+            if (how === 'good') { R.lastRes = 'good'; R.lastJudge = now - 0.3; }
+            if (how === 'hop') { R.lastRes = 'good'; R.hopRes = 'good'; R.lastMe = now - 0.15; R.lastJudge = now - 0.7; }
+            if (how === 'miss') { R.lastRes = 'miss'; R.lastJudge = now - 0.35; }
+            if (how === 'bump') R.bumpAt = now - 0.22;
+            R.__upd = R.update; R.update = () => {};
+          }, how);
+          await p2.waitForTimeout(7000);
+          await p2.screenshot({ path: path.join(out, `shot${nn}.png`) });
+          await p2.evaluate(() => { const R = window.__g.rhythm; R.update = R.__upd; });
+          console.log('shot', nn);
+        }
+      }
+      if (n === '03_ofuda') { // 凶のときの体当たり: 走っている途中と、ぶつかった直後を撮る
+        for (const [nn, adv] of [['03b_charge', 0.4], ['03c_bump', 0.2], ['03d_back', 0.5]]) {
+          const st2 = await p2.evaluate(([adv, first]) => {
+            const R = window.__g.rhythm, [mx, mz] = window.__rhythmSite.me;
+            if (first) R.unaa.charge(mx, mz);
+            let T = window.__T; const end = T + adv; while (T < end) { T = Math.min(end, T + 0.05); window.__T = T; R.update(0.05, null); }
+            const b = R.unaa.list.find((u) => u.ch); return { busy: R.unaa.list.filter((u) => u.ch).length, n: R.unaa.count, ch: b && { t: +b.ch.t.toFixed(2), home: [b.x, b.z].map((v) => +v.toFixed(1)), D: +b.ch.D.toFixed(1) }, me: [mx, mz], pl: [R.player.pos.x, R.player.pos.z].map((v) => +v.toFixed(1)) };
+          }, [adv, nn === '03b_charge']);
+          // 描画を待つ間にゲーム本体の更新が進まないよう、止めてから撮る (実時間の 1 コマが 1〜2 秒かかるため)
+          await p2.evaluate(() => { const R = window.__g.rhythm; R.__upd = R.update; R.update = () => {}; });
+          await p2.waitForTimeout(6000);
+          await p2.screenshot({ path: path.join(out, `shot${nn}.png`) });
+          await p2.evaluate(() => { const R = window.__g.rhythm; R.update = R.__upd; });
+          console.log('shot', nn, JSON.stringify(st2));
+        }
+      }
     }
     await p2.close();
   }

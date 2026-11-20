@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { makeCharacter } from '../character.js';
 import { H } from '../terrain.js';
 import * as A from './audio.js';
-import { UnaaCrowd } from './unaa.js';
+import { UnaaCrowd, jumpY } from './unaa.js';
 
 export const BPM = 107;
 const BEAT = 60 / BPM, SLOT = BEAT / 2, BAR = BEAT * 4;
@@ -161,7 +161,7 @@ export class Rhythm {
     // 手本役 (いつも境内に立っている) と見物人 (曲の間だけ)
     const mk = (colors, x, z, face) => {
       const m = makeCharacter({ vrm: false, colors });
-      m.root.position.set(x, this.ground(x, z), z); m.root.rotation.y = face;
+      m.root.position.set(x, this.ground(x, z), z); m.root.rotation.y = face; m.baseY = m.root.position.y;
       scene.add(m.root);
       return m;
     };
@@ -175,7 +175,9 @@ export class Rhythm {
     });
     this.ofuda = new Ofuda(scene);
     // 大吉のたびに加わるうな○ー (SITE.fans の順に。境内の外に出る所は使わない)
+    this.jumpAt = null;
     this.unaa = new UnaaCrowd(scene, this.ground, SITE.fans.filter(([x, z]) => inPoly(SITE.area, x, z)), [(lx + mx) / 2, (lz + mz) / 2]);
+    this.unaa.onBump = () => { A.play('bump'); this.bumpAt = this.clock(); };
     this.hype = 0;
     this.ui = {
       ask: $('rh-ask'), hud: $('rh-hud'), label: $('rh-label'), cells: $('rh-cells'), prog: $('rh-prog'), banner: $('rh-banner'),
@@ -235,6 +237,10 @@ export class Rhythm {
       im.instanceMatrix.needsUpdate = true;
     }
   }
+  resetJump() {
+    this.jumpAt = null;
+    for (const c of [this.lead, ...this.crowd]) if (c.baseY != null) c.root.position.y = c.baseY;
+  }
   showTrees() {
     if (!this.hiddenTrees) return;
     for (const t of this.hiddenTrees) { t.im.setMatrixAt(t.i, t.m); t.im.instanceMatrix.needsUpdate = true; }
@@ -251,7 +257,7 @@ export class Rhythm {
     this.t0 = null;                               // 音の準備ができたら begin() で決める
     this.useAudio = false; this.waitUntil = this.clock() + AUDIO_WAIT;
     if (A.wake()) this.begin();
-    this.unaa.clear();
+    this.unaa.clear(); this.resetJump();
     this.hype = 0; this.lastLead = -9; this.lastMe = -9; this.bannerOff = null;
     this.calls = this.chart.calls.slice();
     this.banners = [
@@ -259,7 +265,8 @@ export class Rhythm {
     ];
     this.cues = this.callBars().map((b) => b * BAR + CUE * SLOT); // 「はい！」を出す時刻
     for (const c of this.crowd) c.root.visible = true;
-    pl.perf = () => ({ type: 'fan', u: this.clock() - this.lastMe, lift: this.lift() });
+    this.lastJudge = -9; this.lastRes = null; this.hopRes = null; this.bumpAt = -9;
+    pl.perf = () => this.perfAct();
     this.show(this.ui.hud, true); this.show(this.ui.hint, true); this.show(this.ui.tap, true);
     if (this.ui.touch) this.ui.touch.style.visibility = 'hidden';
     document.body.classList.add('rh-on'); // 地図の名前の札を隠す (style.css)
@@ -287,6 +294,17 @@ export class Rhythm {
   // 手本の小節の番号
   callBars() { return [...new Set(this.chart.calls.filter((c) => c.kind !== 'final').map((c) => c.bar))]; }
 
+  // 自分の姿勢 (character.js の festPose へ渡す)。拍に乗る・打つと跳ぶ・大吉で回る・判定への反応・うな○ーにぶつかられた
+  perfAct() {
+    const now = this.clock(), u = now - this.lastMe, ju = now - this.lastJudge, k = u / 0.3;
+    const hh = this.hopRes === 'good' ? 0.3 : this.hopRes === 'ok' ? 0.12 : 0;
+    const sp = this.lastRes === 'good' ? ju / 0.55 : 2;
+    return { type: 'fan', u, lift: this.lift(), bt: this.state === 'play' && this.t0 != null ? this.songT() / BEAT : null, e: this.hype,
+      res: this.lastRes, ju, bu: now - this.bumpAt,
+      hop: k > 0 && k < 1 ? hh * Math.sin(Math.PI * k) : 0,
+      twirl: sp < 1 ? Math.PI * 2 * sp * sp * (3 - 2 * sp) : 0 };
+  }
+
   // 締めの一打の前に、うちわを高く掲げる度合い
   lift() {
     if (this.state !== 'play' || this.t0 == null) return 0;
@@ -299,7 +317,7 @@ export class Rhythm {
   hit(t) {
     if (this.state !== 'play' || this.t0 == null) return;
     const st = t - this.t0;
-    this.lastMe = t;
+    this.lastMe = t; this.hopRes = null;
     A.play('fan');
     // まだ判定していない拍のうち、いちばん近いもの
     let best = null, bd = 1e9;
@@ -317,10 +335,12 @@ export class Rhythm {
   judged(g) {
     const [mx, mz] = SITE.me, [lx, lz] = SITE.lead;
     const y = this.ground(mx, mz) + 1.6, dx = lx - mx, dz = lz - mz;
+    this.lastJudge = this.clock(); this.lastRes = g.res; this.hopRes = g.res;
     if (g.res === 'miss') {
       A.play('kyo'); this.flash(g.d == null ? '凶' : g.d < 0 ? '凶 はやい' : '凶 おそい', 'miss');
       this.hype = Math.max(0, this.hype - 0.25);
       this.omikuji(g, '凶');
+      this.unaa.charge(mx, mz); // うな○ーがいれば 1 体、体当たりして帰る
       return;
     }
     A.play(g.res === 'good' ? 'daikichi' : 'kichi');
@@ -328,11 +348,13 @@ export class Rhythm {
       let n = 0; for (let k = 0; k < 3; k++) if (this.unaa.add()) n++;
       if (n) this.hype = Math.min(1, this.hype + 0.1);
     }
+    if (g.res === 'ok') this.unaa.add(); // 吉は 1 体
     this.flash(g.res === 'good' ? '大吉！' : '吉', g.res);
-    this.omikuji(g, g.res === 'good' ? '大' : '吉');
+    this.omikuji(g, g.res === 'good' ? '大\n吉' : '吉');
     this.hype = Math.min(1, this.hype + (g.res === 'good' ? 0.3 : 0.15));
     if (g.kind === 'ofuda') this.ofuda.burst(mx, y, mz, dx, dz, g.res === 'good' ? 10 : 5);
     if (g.kind === 'final') {
+      this.unaa.jumpAll(); this.jumpAt = this.clock(); this.hype = 1; // 全員いっせいにジャンプ
       this.ofuda.burst(mx, y, mz, dx, dz, 40, 2.2);
       this.ofuda.burst(lx, y, lz, -dx, -dz, 40, 2.2);
     }
@@ -374,7 +396,7 @@ export class Rhythm {
     this.state = 'idle';
     this.player.perf = null;
     for (const c of this.crowd) c.root.visible = false;
-    this.unaa.clear(); this.showTrees();
+    this.unaa.clear(); this.showTrees(); this.resetJump();
     for (const el of [this.ui.hud, this.ui.hint, this.ui.tap, this.ui.result]) this.show(el, false);
     this.setBanner('');
     if (this.ui.touch) this.ui.touch.style.visibility = '';
@@ -449,7 +471,7 @@ export class Rhythm {
     this.cellEls.forEach((el, i) => {
       let cls = '', txt = '';
       if (isCall) { const c = call.find((c) => c.slot === i); if (c) cls = t >= c.t ? 'lit' : 'mark'; }
-      else { const g = resp.find((g) => g.slot === i); if (g) { cls = g.res ? g.res : 'mark'; txt = g.res ? (g.ch || (g.res === 'good' ? '大' : g.res === 'ok' ? '吉' : '凶')) : ''; } }
+      else { const g = resp.find((g) => g.slot === i); if (g) { cls = g.res ? g.res : 'mark'; txt = g.res ? (g.ch || (g.res === 'good' ? '大\n吉' : g.res === 'ok' ? '吉' : '凶')) : ''; } }
       if (!preview && i === slotNow && t >= 0 && bar < FINAL && !SILENT.has(bar)) cls += ' now';
       const ring = next && next.bar === bar && next.slot === i;
       if (ring) cls += ' ring';
@@ -474,6 +496,11 @@ export class Rhythm {
       });
     }
     this.ofuda.update(dt, this.ground);
+    if (this.jumpAt != null) { // 手本役と見物人も、いっしょに跳ぶ
+      const t = this.clock() - this.jumpAt, y = jumpY(t, 1.1);
+      for (const c of [this.lead, ...this.crowd]) c.root.position.y = c.baseY + y;
+      if (t > 1.5) this.resetJump();
+    }
     {
       const e = this.state === 'result' ? (this.last && this.last.score >= 0.55 ? 1 : 0.2) : this.hype;
       this.unaa.update(dt, this.camera, e, (this.state === 'play' && this.t0 != null ? this.songT() : now) / BEAT);

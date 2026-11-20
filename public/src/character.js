@@ -543,6 +543,47 @@ export function makeCharacter(opt = {}) {
       X.elR = [mix(-0.85 + 0.6 * lift, -0.2, hit), 0, 0];
       X.haR = [mix(0.35, -0.55, hit), 0, -0.1];
       X.shL = [-0.55 - 0.15 * hit, 0, 0.3]; X.elL = [-1.55, 0, 0]; X.haL = [0, 0, 0.2]; // 左手は胸の前
+      // --- かわいい動き (リズム地獄。act: bt = 曲の拍の数、e = 盛り上がり、res/ju = 最後の判定とそこからの秒、bu = うな○ーにぶつかられてからの秒) ---
+      const e = act.e ?? 0.5, bt = act.bt ?? 0, ju = act.ju ?? 9, bu = act.bu ?? 9;
+      // 1. 拍に乗る: 拍の頭で膝を曲げ、体を左右に揺らし、首をかしげる (曲の外では動かない)
+      if (act.bt != null) {
+        const sq = (0.5 + 0.5 * Math.cos(2 * Math.PI * bt)) * (0.1 + 0.14 * e);
+        for (const [t, k, f] of [['thL', 'knL', 'ftL'], ['thR', 'knR', 'ftR']]) { X[t][0] -= sq; X[k][0] += 2 * sq; X[f][0] -= sq; }
+        const sw = Math.sin(Math.PI * bt) * (0.5 + 0.5 * e);
+        X.hips[2] += 0.09 * sw; X.spine[2] -= 0.04 * sw; X.chest[2] -= 0.05 * sw; X.head[2] += 0.1 * Math.sin(Math.PI * bt + 0.8) * (0.5 + 0.5 * e);
+        X.hips[1] += 0.05 * Math.sin(Math.PI * bt + 0.4);
+        X.shL[2] += 0.06 * sw; X.shL[0] += 0.05 * Math.cos(2 * Math.PI * bt);
+      }
+      // 2. 打つ瞬間にぴょんと跳ぶ (高さと回転は rhythm/event.js が act.hop・act.twirl で渡す)。跳んでいる間は右足を後ろへ蹴り上げる
+      if (act.hop > 0.005) {
+        const hf = Math.min(1, act.hop / 0.3);
+        X.thR[0] += 0.35 * hf; X.knR[0] += 1.0 * hf; X.ftR[0] += 0.3 * hf;
+        X.thL[0] -= 0.1 * hf; X.knL[0] += 0.15 * hf;
+        X.spine[0] += 0.05 * hf; X.hips[1] += 0.2 * hf * Math.sin(act.bt ?? 0);
+      }
+      // 3. 判定への反応
+      if (act.res === 'good' && ju < 1.1) { // 大吉: 左手を高く上げて万歳、首を後ろへ反らして、にっこり
+        const w = sstep(0, 0.08, ju) * (1 - sstep(0.7, 1.1, ju));
+        X.shL = [mix(X.shL[0], -2.75, w), 0, mix(X.shL[2], 0.55, w)]; X.elL = [mix(X.elL[0], -0.2, w), 0, 0]; X.haL = [0, 0, 0.3 * w];
+        X.head[0] += -0.18 * w; X.chest[0] += -0.1 * w;
+      } else if (act.res === 'ok' && ju < 0.7) { // 吉: うなずいて、肩をすくめる
+        const w = Math.sin(Math.PI * Math.min(1, ju / 0.5));
+        X.head[0] += 0.2 * w; X.chest[2] += 0.05 * w;
+      } else if (act.res === 'miss' && ju < 1.4) { // 凶: しょんぼり。肩を落として首を振り、膝を内側へ
+        const w = sstep(0, 0.1, ju) * (1 - sstep(0.9, 1.4, ju));
+        X.spine[0] += 0.28 * w; X.chest[0] += 0.2 * w; X.head[0] += 0.3 * w; X.head[1] += 0.28 * Math.sin(ju * 22) * w;
+        X.shR[0] += 1.0 * w; X.shL[0] += 0.4 * w;
+        X.thL[2] += 0.12 * w; X.thR[2] -= 0.12 * w; X.knL[0] += 0.2 * w; X.knR[0] += 0.2 * w; X.thL[0] -= 0.1 * w; X.thR[0] -= 0.1 * w;
+      }
+      // うな○ーにぶつかられた: のけぞって、両手をばたばたさせ、よろよろする
+      if (bu < 1.0) {
+        const w = (1 - sstep(0.4, 1.0, bu)) * sstep(0, 0.04, bu), osc = Math.sin(bu * 16);
+        X.spine[0] += -0.4 * w; X.chest[0] += -0.3 * w; X.head[0] += -0.2 * w;
+        X.hips[2] += 0.25 * osc * w; X.chest[2] -= 0.15 * osc * w;
+        X.shL = [mix(X.shL[0], -1.3 + 0.3 * osc, w), 0, mix(X.shL[2], 0.9, w)]; X.elL = [mix(X.elL[0], -0.5, w), 0, 0];
+        X.shR = [mix(X.shR[0], -1.3 - 0.3 * osc, w), 0, mix(X.shR[2], -0.9, w)];
+        X.thL[0] -= 0.25 * w; X.thR[0] += 0.15 * w; X.knL[0] += 0.4 * w; X.knR[0] += 0.3 * w;
+      }
     } else {
       // 両手を V の字に上げ、拍に合わせて交互に振る
       const e = act.e || 0, b = Math.sin(act.ph || 0);

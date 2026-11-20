@@ -137,6 +137,11 @@ export function play(kind, t = null, v = 1) {
       noise(T, 0.1, 'lowpass', 500, 0.7, env(T, 0.002, 0.2 * v, 0.1));
       break;
     }
+    case 'bump': { // どすん: うな○ーの体当たり
+      osc('sine', 140, 45, T, 0.25, env(T, 0.003, 0.7 * v, 0.25));
+      noise(T, 0.12, 'lowpass', 700, 0.7, env(T, 0.001, 0.35 * v, 0.12));
+      break;
+    }
     case 'cheer': { // わーっ: 帯域を絞った雑音を、ふくらませてから消す
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, T);
