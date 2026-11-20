@@ -87,7 +87,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await page.keyboard.press('ArrowRight');
   ok(await page.evaluate(() => window.__arcade.cfg.diff) === 'HARD', '→ キーで HARD');
   await page.keyboard.press('ArrowLeft');
-  await page.click('[data-act="sfx"]'); await page.click('[data-act="off"][data-v="-20"]'); await page.click('[data-act="speed"][data-v="normal"]');
+  await page.click('[data-act="sfx"]'); await page.click('[data-act="off"][data-v="-10"]'); await page.click('[data-act="off"][data-v="-10"]'); await page.click('[data-act="speed"][data-v="normal"]');
   // スタート
   await page.click('[data-act="start"]');
   await waitState(page, 'play');
