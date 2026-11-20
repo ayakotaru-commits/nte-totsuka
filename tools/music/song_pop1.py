@@ -8,7 +8,8 @@
     -> song_pop1.wav  (44.1kHz / 16bit / ステレオ)
        song_pop1.json (テンポ・各セクションの時刻・旋律の音符。譜面づくりに使う)
 
-BPM 172・4/4・ニ長調(D)。約 84 秒。
+4/4・ニ長調(D)。テンポは BPM 172 が基本で、Bの最後の 2 小節で 140 → 92 に大きく落とし、
+サビ以降は 200 に上げる（`TEMPO`）。
   イントロ 4 / A 8 / B 4 / サビ 8 / 間奏 4 / A 8 / B 4 / サビ 8 / 大サビ(+2 半音) 8 / アウトロ 4  = 60 小節
 """
 import json
@@ -74,7 +75,14 @@ MEL_CH = [
     [(0, 8, 74)],
 ]
 MEL_OUT = [MEL_CH[0], MEL_CH[1], MEL_CH[6], [(0, 16, 74)]]
-INTER_PAT = [0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 4, 3, 2, 1, 2, 3]
+# ───────── テンポ（小節ごとの BPM） ─────────
+# Bの最後の 2 小節で 172 → 140 → 92 と大きく落とし、サビは 200 で一気に駆け上がる。
+FAST = 200
+TEMPO = {
+    'intro': BPM, 'A': BPM, 'B': [BPM, BPM, 140, 92], 'chorus': FAST, 'interlude': FAST,
+    'A2': BPM, 'B2': [BPM, BPM, 140, 92], 'chorus2': FAST, 'big': FAST, 'outro': FAST,
+}
+INTER_PAT =[0, 1, 2, 3, 2, 1, 0, 1, 2, 3, 4, 3, 2, 1, 2, 3]
 
 
 # ───────── 部品 ─────────
@@ -240,7 +248,14 @@ def build():
         ('A2', P_A), ('B2', P_B), ('chorus2', P_CH), ('big', P_CH), ('outro', P_OUT),
     ]
     nbars = sum(len(p) for _, p in secs)
-    total_s = nbars * BAR + 3.0
+    # 小節ごとのテンポ（Bの終わりで大きく落とし、サビで一気に速くする）
+    bar_bpm = []
+    for name, prog in secs:
+        tp = TEMPO[name]
+        bar_bpm += list(tp) if isinstance(tp, (list, tuple)) else [tp] * len(prog)
+    bar_len = [240.0 / b for b in bar_bpm]
+    bar_start = np.concatenate([[0.0], np.cumsum(bar_len)])
+    total_s = float(bar_start[-1]) + 3.0
     N = int(total_s * SR)
 
     drums, bass, pad, arp, lead = (Track(N) for _ in range(5))
@@ -273,18 +288,23 @@ def build():
     bar_i = 0
     for name, prog in secs:
         shift = 2 if name == 'big' else 0
-        sec_t = bar_i * BAR
-        sections_out.append({'name': name, 'start': round(sec_t, 4), 'bars': len(prog), 'shift': shift})
+        sec_t = float(bar_start[bar_i])
         nb = len(prog)
+        sections_out.append({'name': name, 'start': round(sec_t, 4), 'bars': nb, 'shift': shift,
+                             'end': round(float(bar_start[bar_i + nb]), 4)})
         for bi, cname in enumerate(prog):
-            t0 = (bar_i + bi) * BAR
+            gi = bar_i + bi
+            t0 = float(bar_start[gi])
+            blen = bar_len[gi]
+            beat = blen / 4
+            s16 = blen / 16
             bs, tri = CH[cname]
             bs += shift
             tri = tuple(x + shift for x in tri)
             last = bi == nb - 1
 
             # ─ ドラム ─
-            P = lambda p: t0 + p * S16  # noqa: E731
+            P = lambda p: t0 + p * s16  # noqa: E731
             full = name in ('chorus', 'chorus2', 'big', 'interlude') or (name == 'outro' and bi < 3)
             if name == 'intro':
                 for p in range(0, 16, 2):
@@ -318,10 +338,14 @@ def build():
                 elif bi == 2:
                     for p in range(0, 16, 2):
                         dsn(P(p), 0.55 + 0.03 * p, clap=False)
-                else:
-                    for p in range(16):
-                        dsn(P(p), 0.4 + 0.04 * p, clap=False)
-                    drums.add(make_riser(BAR), t0, 0.5, 0.0)
+                else:  # テンポを大きく落とした「ため」の小節: ハーフタイムの 2 打 + 最後の拍のロール
+                    dk(P(0), 1.0)
+                    dsn(P(8), 0.9)
+                    for p in range(0, 12, 4):
+                        dh(P(p), 0.6)
+                    for k, p in enumerate((12, 13, 14, 15)):
+                        dsn(P(p), 0.5 + 0.15 * k, clap=False)
+                    drums.add(make_riser(blen), t0, 0.5, 0.0)
             elif full:
                 for p in (0, 4, 8, 12):
                     dk(P(p))
@@ -349,18 +373,18 @@ def build():
             if name == 'intro' and bi < 2:
                 pass
             elif name == 'outro' and bi == 3:
-                bass.add(bass_note(bs, 2 * BEAT), t0, 0.9)
+                bass.add(bass_note(bs, 2 * beat), t0, 0.9)
             else:
                 for p in range(0, 16, 2):
                     oct_up = name in ('chorus', 'chorus2', 'big', 'interlude') and p in (6, 14)
-                    bass.add(bass_note(bs + (12 if oct_up else 0), 2 * S16), P(p), 0.8)
+                    bass.add(bass_note(bs + (12 if oct_up else 0), 2 * s16), P(p), 0.8)
 
             # ─ パッド ─
             padg = 0.22 if name == 'big' else 0.17
             if not (name == 'outro' and bi == 3):
-                pad.add(pad_chord(tri, BAR), t0, padg, 0.0)
+                pad.add(pad_chord(tri, blen), t0, padg, 0.0)
             else:
-                pad.add(pad_chord(tri, 2.6 * BEAT), t0, padg, 0.0)
+                pad.add(pad_chord(tri, 2.6 * beat), t0, padg, 0.0)
 
             # ─ アルペジオ（ぷにっとした音） ─
             if name in ('intro', 'outro', 'B', 'B2', 'chorus', 'chorus2', 'big'):
@@ -385,7 +409,7 @@ def build():
             if mel:
                 for pos, ln, m in mel:
                     m2 = m + shift
-                    d = ln * S16
+                    d = ln * s16
                     g = 0.34 if kind == 'bright' else 0.30
                     lead.add(lead_note(m2, d, kind), P(pos), g, 0.0)
                     if name in ('chorus', 'chorus2', 'big'):
@@ -400,9 +424,9 @@ def build():
                 ext = [tri[0] + 12, tri[1] + 12, tri[2] + 12, tri[0] + 24, tri[1] + 24]
                 for p in range(16):
                     m = ext[INTER_PAT[p]]
-                    lead.add(lead_note(m, S16, 'run', vib=False), P(p), 0.28, 0.0)
+                    lead.add(lead_note(m, s16, 'run', vib=False), P(p), 0.28, 0.0)
                     notes_out.append({'sec': name, 'bar': bar_i + bi, 't': round(P(p), 4),
-                                      'dur': round(S16, 4), 'midi': m, 'kind': 'run'})
+                                      'dur': round(s16, 4), 'midi': m, 'kind': 'run'})
         bar_i += nb
 
     # ─ サイドチェイン（キックのたびに、ベース・パッド・アルペジオが引っこむ） ─
@@ -442,20 +466,26 @@ def build():
 
     rvL, rvR = reverb([(lead, 1.0), (arp, 0.7), (pad, 0.5)], 0.12)
 
-    ed = int(round(3 * S16 * SR))
     echoL = np.zeros(N)
     echoR = np.zeros(N)
     srcL = lead.L * 0.5 + arp.L * 0.25
     srcR = lead.R * 0.5 + arp.R * 0.25
-    for k in range(1, 4):
-        sh = ed * k
-        g = 0.38 ** k
-        if k % 2 == 1:
-            echoL[sh:] += srcR[:N - sh] * g
-            echoR[sh:] += srcL[:N - sh] * g
-        else:
-            echoL[sh:] += srcL[:N - sh] * g
-            echoR[sh:] += srcR[:N - sh] * g
+    for gi in range(nbars):  # エコーの間隔（付点 8 分）は、その小節のテンポに合わせる
+        a = int(round(bar_start[gi] * SR))
+        b = min(int(round(bar_start[gi + 1] * SR)), N)
+        ed = int(round(3 * (bar_len[gi] / 16) * SR))
+        for k in range(1, 4):
+            sh = ed * k
+            if a + sh >= N:
+                continue
+            m = min(b - a, N - a - sh)
+            g = 0.38 ** k
+            if k % 2 == 1:
+                echoL[a + sh:a + sh + m] += srcR[a:a + m] * g
+                echoR[a + sh:a + sh + m] += srcL[a:a + m] * g
+            else:
+                echoL[a + sh:a + sh + m] += srcL[a:a + m] * g
+                echoR[a + sh:a + sh + m] += srcR[a:a + m] * g
 
     # 各パートの音量（サビの区間で測った RMS が、ドラム -17・リード -17・ベース -20・パッド/アルペジオ -26 dB くらいになる値）
     G = {'drums': 0.55, 'bass': 0.28, 'pad': 3.2, 'arp': 1.6, 'lead': 1.7}
@@ -472,12 +502,13 @@ def build():
     peak = np.max(np.abs(out))
     out = out / peak * 0.89
     # 終わりの余韻を切る
-    end = int((nbars * BAR + 2.6) * SR)
+    end = int((float(bar_start[-1]) + 2.6) * SR)
     out = out[:, :end]
     fade = int(0.4 * SR)
     out[:, -fade:] *= np.linspace(1, 0, fade)
     info = {
-        'title': 'ハイテンポ・ポップ (仮)', 'bpm': BPM, 'beat': round(BEAT, 6), 'bar': round(BAR, 6),
+        'title': 'ハイテンポ・ポップ (仮)', 'bpm': BPM,
+        'bar_bpm': bar_bpm, 'bar_start': [round(float(t), 4) for t in bar_start],
         'key': 'D major (サビは +2 半音)', 'bars': nbars, 'duration': round(out.shape[1] / SR, 3),
         'sections': sections_out, 'notes': notes_out,
         'kicks': [round(k, 4) for k in kick_times],
