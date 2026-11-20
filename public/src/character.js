@@ -280,9 +280,24 @@ export function makeCharacter(opt = {}) {
     g.add(shape(new THREE.BoxGeometry(0.15, 0.022, 0.04), M.jacket, [0, 0.05, 0], 0.02, true));   // つば
     g.add(shape(new THREE.CylinderGeometry(0.02, 0.02, 0.15, 8), M.pants, [0, -0.03, 0], 0.02, true)); // 柄
     g.add(shape(new THREE.SphereGeometry(0.03, 8, 6), M.accent, [0, -0.11, 0], 0.03, false));          // 柄頭
+    // 伝説のうな○ー刀 (うな○ー大量発生クエストのごほうび) にしたときだけ見える、刃の水玉
+    const dots = new THREE.Group();
+    [['#f2789f', 0.2], ['#f6d34a', 0.36], ['#7cc4ea', 0.52], ['#e8434f', 0.66], ['#9ccc3c', 0.78]].forEach(([c, y], k) => {
+      const d = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.024, 10).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: c }));
+      d.position.set(k % 2 ? 0.008 : -0.008, 0.06 + y, 0); dots.add(d);
+    });
+    dots.visible = false; blade.add(dots);
     g.visible = false; root.add(g);
-    return { g, blade };
+    return { g, blade, dots, bl, tip, line };
   });
+  // 伝説のうな○ー刀に持ち替える (金色に光る刃・水玉・金色の軌跡)。on = false で元の剣に戻す
+  const BLADE0 = bladeMats.map((m) => m.color.clone()), TRAIL0 = trailCols.map((c) => c.slice());
+  const setLegend = (on) => {
+    bladeMats.forEach((m, i) => m.color.copy(on ? new THREE.Color('#ffd84a') : BLADE0[i]));
+    trailCols.forEach((c, i) => c.splice(0, 3, ...(on ? [1.0, 0.8, 0.25] : TRAIL0[i])));
+    for (const sw of swords) { sw.dots.visible = on; sw.bl.scale.x = on ? 1.7 : 1; sw.tip.scale.x = on ? 1.7 : 1; sw.line.visible = !on; } // 金の刃は少し幅広に。水色の芯は消す (緑がかって見えるため)
+    for (const sw of swords) sw.g.userData.legend = on;
+  };
   // うちわ (お札まきのイベントで右手に持つ。act.type === 'fan' の間だけ見える)
   const fan = (() => {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;
@@ -1005,5 +1020,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose };
+  return { root, update, ready, bones: BONE, dispose, setLegend };
 }

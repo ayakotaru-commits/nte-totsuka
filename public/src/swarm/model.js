@@ -16,7 +16,7 @@ export const BODY = { w: 0.95, h: 1.15, y: 0.88 };   // 体の板 (幅・高さ�
 const ARM = { len: 0.52, w: 0.17, x: 0.36, y: 1.0 };  // 腕 (付け根の位置)
 const LEG = { len: 0.48, w: 0.19, x: 0.17, y: 0.46 }; // 脚
 const DOTS = ['#f2789f', '#f6d34a', '#9ccc3c', '#7cc4ea', '#e8434f', '#2fae95', '#b48ad8'];
-const LINE = '#b9bcc0';
+const LINE = '#b9bcc0', LINE0 = LINE;
 
 // 体の輪郭: 上が丸く、下が少し広い「おもち」の形
 function bodyPath(g, W, H, m) {
@@ -30,7 +30,8 @@ function bodyPath(g, W, H, m) {
   g.closePath();
 }
 
-function drawBody(front) {
+// gold: 白い所を金色に (クエストの最後に降りてくる「黄金のうな○ー」)
+function drawBody(front, gold = false) {
   const W = 256, H = 310, c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d');
@@ -44,8 +45,17 @@ function drawBody(front) {
   }
   // 体
   bodyPath(g, W, H, 9);
-  g.fillStyle = '#fbfbf7'; g.fill();
+  if (gold) { // 金色: 上から光が当たったような明暗と、斜めの照り
+    const gg = g.createLinearGradient(0, 30, W * 0.4, H);
+    gg.addColorStop(0, '#fff3b0'); gg.addColorStop(0.35, '#ffd34d'); gg.addColorStop(0.7, '#e8a91c'); gg.addColorStop(1, '#c98a12');
+    g.fillStyle = gg;
+  } else g.fillStyle = '#fbfbf7';
+  g.fill();
   g.save(); g.clip();
+  if (gold) {
+    g.fillStyle = 'rgba(255,255,235,0.55)';
+    g.beginPath(); g.moveTo(40, 60); g.lineTo(90, 50); g.lineTo(40, 200); g.lineTo(20, 200); g.closePath(); g.fill();
+  }
   // 水玉 (体の下半分に多め。裏は少し別の並び)
   const spots = front
     ? [[60, 205, 20, 0], [190, 180, 17, 1], [118, 262, 22, 2], [205, 255, 15, 3], [40, 145, 13, 4], [150, 205, 12, 5], [80, 285, 13, 6], [222, 125, 12, 0]]
@@ -60,7 +70,7 @@ function drawBody(front) {
   g.fillStyle = grd; g.fillRect(0, 0, W, H);
   g.restore();
   bodyPath(g, W, H, 9);
-  g.strokeStyle = LINE; g.lineWidth = 12; g.stroke();
+  g.strokeStyle = gold ? '#a8740c' : LINE; g.lineWidth = 12; g.stroke();
   if (front) {
     // 目: 黒いまる目に白い光、少しつり上がった眉 (いたずらっぽい顔)
     for (const sx of [-1, 1]) {
@@ -85,17 +95,18 @@ function drawBody(front) {
 }
 
 // 手足: 太い灰色の線で縁取った白いひも。先はまるい手 (足)
-function drawLimb() {
+function drawLimb(gold = false) {
   const W = 48, H = 160, c = document.createElement('canvas');
+  const LINE = gold ? '#a8740c' : LINE0, FILL = gold ? '#ffd34d' : '#fbfbf7';
   c.width = W; c.height = H;
   const g = c.getContext('2d');
   g.lineCap = 'round';
   g.strokeStyle = LINE; g.lineWidth = 30;
   g.beginPath(); g.moveTo(W / 2, 10); g.lineTo(W / 2, H - 26); g.stroke();
   g.beginPath(); g.arc(W / 2, H - 22, 18, 0, Math.PI * 2); g.fillStyle = LINE; g.fill();
-  g.strokeStyle = '#fbfbf7'; g.lineWidth = 16;
+  g.strokeStyle = FILL; g.lineWidth = 16;
   g.beginPath(); g.moveTo(W / 2, 4); g.lineTo(W / 2, H - 26); g.stroke();
-  g.beginPath(); g.arc(W / 2, H - 22, 11, 0, Math.PI * 2); g.fillStyle = '#fbfbf7'; g.fill();
+  g.beginPath(); g.arc(W / 2, H - 22, 11, 0, Math.PI * 2); g.fillStyle = FILL; g.fill();
   return c;
 }
 
@@ -118,15 +129,18 @@ function ringTex() {
 
 const tex = (c) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
 // 白が灰色に沈まないよう、絵そのものを少し光らせる (影の中でも明るい紙の人形に見える)
-const mat = (c, side = THREE.FrontSide) => { const t = tex(c); return new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: '#ffffff', emissiveIntensity: 0.32, alphaTest: 0.5, side, roughness: 0.85, metalness: 0 }); };
+// 金色のときは強く光らせ、金属のつやを出す
+const mat = (c, side = THREE.FrontSide, gold = false) => { const t = tex(c); return new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: '#ffffff', emissiveIntensity: gold ? 0.75 : 0.32, alphaTest: 0.5, side, roughness: gold ? 0.35 : 0.85, metalness: gold ? 0.5 : 0 }); };
 
 const _m = new THREE.Matrix4(), _r = new THREE.Matrix4(), _p = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color();
 const HIDE = new THREE.Matrix4().makeScale(0, 0, 0);
 const WHITE = new THREE.Color(1, 1, 1), RED = new THREE.Color(1, 0.35, 0.4);
 
 export class Herd {
-  constructor(scene, max = 40) {
+  // opt.gold: 白い所が金色に光る
+  constructor(scene, max = 40, opt = {}) {
     this.max = max;
+    const gold = !!opt.gold;
     const plane = (w, h, top) => { const g = new THREE.PlaneGeometry(w, h); if (top) g.translate(0, -h / 2, 0); return g; };
     const mk = (geo, m, n) => {
       const im = new THREE.InstancedMesh(geo, m, n);
@@ -135,9 +149,9 @@ export class Herd {
       for (let i = 0; i < n; i++) { im.setMatrixAt(i, HIDE); im.setColorAt(i, WHITE); }
       scene.add(im); return im;
     };
-    this.front = mk(plane(BODY.w, BODY.h), mat(drawBody(true)), max);
-    this.back = mk(plane(BODY.w, BODY.h), mat(drawBody(false)), max);
-    this.limbs = mk(plane(1, 1, true), mat(drawLimb(), THREE.DoubleSide), max * 4);
+    this.front = mk(plane(BODY.w, BODY.h), mat(drawBody(true, gold), THREE.FrontSide, gold), max);
+    this.back = mk(plane(BODY.w, BODY.h), mat(drawBody(false, gold), THREE.FrontSide, gold), max);
+    this.limbs = mk(plane(1, 1, true), mat(drawLimb(gold), THREE.DoubleSide, gold), max * 4);
     this.group = [this.front, this.back, this.limbs];
   }
 
