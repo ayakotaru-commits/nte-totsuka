@@ -52,6 +52,7 @@ export const SITE = {
   lead: W(AX, 5.8),   // 手本役 (社殿を背に、鳥居の方を向く)
   me: W(AX, 9.8),     // 自分 (石段の上から社殿へ 2〜3 m 進んだ所。社殿の方を向く)
   crowd: [5.8, 7.8, 9.8].flatMap((lz) => [-3.4, 3.4].map((d) => W(AX + d, lz))), // 見物人 (両脇)
+  cam: { back: 4.2, side: -1.5, up: 3.2 },   // 舞台のカメラ (view())
   // うな○ーの立ち位置 (見物人の外側。手水舎・石碑・石垣を避ける)
   fans: [5.0, 7.0].flatMap((d) => [4.8, 6.8, 8.8, 10.8].flatMap((lz) => [-d, d].map((s) => W(AX + s, lz)))),
 };
@@ -134,6 +135,7 @@ class Ofuda {
 
 export class Rhythm {
   constructor({ scene, world, player, camera, cam }) {
+    this.scene = scene;
     this.world = world; this.player = player; this.camera = camera; this.cam = cam;
     this.state = 'idle';        // idle / ask / play / result
     this.armed = true;          // 境内の外へ出たら、また聞く
@@ -198,7 +200,33 @@ export class Rhythm {
     this.show(this.ui.ask, on);
   }
 
+  // 舞台の中にある木 (幹や枝がカメラや人をさえぎる) を、曲の間だけ消す (社殿の局所座標で、舞台と見物人の範囲)
+  hideTrees() {
+    this.showTrees();
+    const fx = Math.sin(SH.yaw), fz = Math.cos(SH.yaw);
+    for (const name of ['trees_trunk', 'trees_crown']) {
+      const im = this.scene.getObjectByName(name);
+      if (!im) continue;
+      const m = new THREE.Matrix4(), z = new THREE.Matrix4().makeScale(0, 0, 0);
+      for (let i = 0; i < im.count; i++) {
+        im.getMatrixAt(i, m);
+        const x = m.elements[12] - SH.o[0], zz = m.elements[14] - SH.o[1];
+        const lx = x * fz - zz * fx, lz = x * fx + zz * fz;
+        if (lx < AX - 8 || lx > AX + 9 || lz < 2 || lz > 16) continue;
+        (this.hiddenTrees || (this.hiddenTrees = [])).push({ im, i, m: m.clone() });
+        im.setMatrixAt(i, z);
+      }
+      im.instanceMatrix.needsUpdate = true;
+    }
+  }
+  showTrees() {
+    if (!this.hiddenTrees) return;
+    for (const t of this.hiddenTrees) { t.im.setMatrixAt(t.i, t.m); t.im.instanceMatrix.needsUpdate = true; }
+    this.hiddenTrees = null;
+  }
+
   start() {
+    this.hideTrees();
     this.ask(false); this.show(this.ui.result, false);
     const pl = this.player, [mx, mz] = SITE.me;
     pl.teleport(mx, mz); pl.facing = this.faceMe;
@@ -326,7 +354,7 @@ export class Rhythm {
     this.state = 'idle';
     this.player.perf = null;
     for (const c of this.crowd) c.root.visible = false;
-    this.unaa.clear();
+    this.unaa.clear(); this.showTrees();
     for (const el of [this.ui.hud, this.ui.hint, this.ui.tap, this.ui.result]) this.show(el, false);
     this.setBanner('');
     if (this.ui.touch) this.ui.touch.style.visibility = '';
@@ -438,7 +466,8 @@ export class Rhythm {
     const [mx, mz] = SITE.me, [lx, lz] = SITE.lead;
     const ux = (lx - mx), uz = (lz - mz), L = Math.hypot(ux, uz), fx = ux / L, fz = uz / L;
     const g = this.ground(mx, mz);
-    const eye = new THREE.Vector3(mx - fx * 4.4 - fz * 1.8, g + 2.9, mz - fz * 4.4 + fx * 1.8);
+    const c = SITE.cam; // 自分の後ろ・横・上。横の符号で、左右どちらから見るか (木の幹が入らない側)
+    const eye = new THREE.Vector3(mx - fx * c.back - fz * c.side, g + c.up, mz - fz * c.back + fx * c.side);
     this.camera.position.copy(eye);
     this.camera.lookAt((mx + lx) / 2, g + 1.15, (mz + lz) / 2);
   }
