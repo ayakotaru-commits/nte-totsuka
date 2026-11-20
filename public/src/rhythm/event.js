@@ -335,8 +335,9 @@ export class Rhythm {
       let n = 0; for (let k = 0; k < 3; k++) if (this.unaa.add()) n++;
       if (n) this.hype = Math.min(1, this.hype + 0.1);
     }
+    if (g.res === 'ok') this.unaa.add(); // 吉は 1 体
     this.flash(g.res === 'good' ? '大吉！' : '吉', g.res);
-    this.omikuji(g, g.res === 'good' ? '大' : '吉');
+    this.omikuji(g, g.res === 'good' ? '大\n吉' : '吉');
     this.hype = Math.min(1, this.hype + (g.res === 'good' ? 0.3 : 0.15));
     if (g.kind === 'ofuda') this.ofuda.burst(mx, y, mz, dx, dz, g.res === 'good' ? 10 : 5);
     if (g.kind === 'final') {
@@ -457,7 +458,7 @@ export class Rhythm {
     this.cellEls.forEach((el, i) => {
       let cls = '', txt = '';
       if (isCall) { const c = call.find((c) => c.slot === i); if (c) cls = t >= c.t ? 'lit' : 'mark'; }
-      else { const g = resp.find((g) => g.slot === i); if (g) { cls = g.res ? g.res : 'mark'; txt = g.res ? (g.ch || (g.res === 'good' ? '大' : g.res === 'ok' ? '吉' : '凶')) : ''; } }
+      else { const g = resp.find((g) => g.slot === i); if (g) { cls = g.res ? g.res : 'mark'; txt = g.res ? (g.ch || (g.res === 'good' ? '大\n吉' : g.res === 'ok' ? '吉' : '凶')) : ''; } }
       if (!preview && i === slotNow && t >= 0 && bar < FINAL && !SILENT.has(bar)) cls += ' now';
       const ring = next && next.bar === bar && next.slot === i;
       if (ring) cls += ' ring';
