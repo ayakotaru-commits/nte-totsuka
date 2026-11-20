@@ -260,11 +260,14 @@ export class Rhythm {
     const [mx, mz] = SITE.me, [lx, lz] = SITE.lead;
     const y = this.ground(mx, mz) + 1.6, dx = lx - mx, dz = lz - mz;
     if (g.res === 'miss') {
-      A.play('miss'); this.flash(g.d == null ? 'ミス' : g.d < 0 ? 'はやい' : 'おそい', 'miss');
+      A.play('kyo'); this.flash(g.d == null ? '凶' : g.d < 0 ? '凶 はやい' : '凶 おそい', 'miss');
       this.hype = Math.max(0, this.hype - 0.25);
+      this.omikuji(g, '凶');
       return;
     }
-    this.flash(g.res === 'good' ? '良！' : '可', g.res);
+    A.play(g.res === 'good' ? 'daikichi' : 'kichi');
+    this.flash(g.res === 'good' ? '大吉！' : '吉', g.res);
+    this.omikuji(g, g.res === 'good' ? '大' : '吉');
     this.hype = Math.min(1, this.hype + (g.res === 'good' ? 0.3 : 0.15));
     if (g.kind === 'ofuda') this.ofuda.burst(mx, y, mz, dx, dz, g.res === 'good' ? 10 : 5);
     if (g.kind === 'final') {
@@ -273,6 +276,8 @@ export class Rhythm {
     }
   }
 
+  // 升目 (おみくじの短冊) に運勢の字を出す。字は次の手本の小節に切り替わるまで残る (drawCells が毎コマ付ける)
+  omikuji(g, ch) { g.ch = ch; }
   flash(text, cls) {
     const j = this.ui.judge;
     if (!j) return;
@@ -290,13 +295,14 @@ export class Rhythm {
     const c = { good: 0, ok: 0, miss: 0 };
     for (const g of T) c[g.res || 'miss']++;
     const score = (c.good + 0.6 * c.ok) / n;
-    const rank = score >= 0.85 ? '名人！' : score >= 0.55 ? 'まずまず' : 'もう一回…';
+    const rank = score >= 0.85 ? '大吉！' : score >= 0.55 ? '吉' : '凶…';
     this.last = { ...c, n, score, rank };
     if (this.ui.rank) { this.ui.rank.textContent = rank; this.ui.rank.className = score >= 0.85 ? 'top' : score >= 0.55 ? 'mid' : 'low'; }
-    if (this.ui.count) this.ui.count.textContent = `良 ${c.good}　可 ${c.ok}　ミス ${c.miss}`;
+    if (this.ui.count) this.ui.count.textContent = `大吉 ${c.good}　吉 ${c.ok}　凶 ${c.miss}`;
     this.show(this.ui.hud, false); this.show(this.ui.hint, false); this.show(this.ui.tap, false);
     this.show(this.ui.result, true); this.setBanner('');
     if (score >= 0.55) A.play('cheer', null, score >= 0.85 ? 1.2 : 0.7);
+    if (score >= 0.85) A.play('daikichi', this.clock() + 0.15, 1.3); else if (score < 0.55) A.play('kyo', this.clock() + 0.15, 1.2);
     this.answer = null;
   }
 
@@ -378,13 +384,14 @@ export class Rhythm {
     if (this.ui.hud) this.ui.hud.dataset.mode = isCall ? 'call' : resp.length ? 'resp' : '';
     const next = this.chart.targets.find((g) => !g.res && g.t - t > -OK && g.t - t < RING);
     this.cellEls.forEach((el, i) => {
-      let cls = '';
+      let cls = '', txt = '';
       if (isCall) { const c = call.find((c) => c.slot === i); if (c) cls = t >= c.t ? 'lit' : 'mark'; }
-      else { const g = resp.find((g) => g.slot === i); if (g) cls = g.res ? g.res : 'mark'; }
+      else { const g = resp.find((g) => g.slot === i); if (g) { cls = g.res ? g.res : 'mark'; txt = g.res ? (g.ch || (g.res === 'good' ? '大' : g.res === 'ok' ? '吉' : '凶')) : ''; } }
       if (!preview && i === slotNow && t >= 0 && bar < FINAL && !SILENT.has(bar)) cls += ' now';
       const ring = next && next.bar === bar && next.slot === i;
       if (ring) cls += ' ring';
       el.className = cls;
+      if (el.textContent !== txt) el.textContent = txt;
       el.style.outlineOffset = ring ? Math.max(0, (next.t - t) / RING * 16).toFixed(1) + 'px' : '';
     });
   }
