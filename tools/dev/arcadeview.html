@@ -3,7 +3,7 @@
 <title>arcade view (確認用)</title>
 <!-- ゲームセンターのリズムゲームの画面 (public/src/arcade/draw.js) だけを、街を読み込まずに確認するページ。
      使い方: リポジトリの直下を配信して開く → /tools/dev/arcadeview.html?t=24&diff=HARD&mode=play
-       t = 曲の時刻 (秒。自動で打った結果がそこまで進んだ画面)、diff = NORMAL / HARD、mode = play / bg / result、bot = 打たない割合 (0〜1)、speed = ノーツの降りる秒数
+       song = 曲の id (pipipi など。省くと pop1)、t = 曲の時刻 (秒。自動で打った結果がそこまで進んだ画面)、diff = NORMAL / HARD、mode = play / bg / result、bot = 打たない割合 (0〜1)、speed = ノーツの降りる秒数
      tools/dev/arcadeshot.js が、時刻と画面の大きさを変えて撮る -->
 <style>html,body{margin:0;height:100%;overflow:hidden;background:#fff}#ar-canvas{display:block;width:100%;height:100%}</style>
 <canvas id="ar-canvas"></canvas>
@@ -11,7 +11,9 @@
 import { Stage } from '../../public/src/arcade/draw.js';
 import { Game } from '../../public/src/arcade/game.js';
 const Q = new URLSearchParams(location.search);
-const chart = await (await fetch('../../public/arcade/chart.json')).json();
+const songs = (await (await fetch('../../public/arcade/songs.json')).json()).songs;
+const song = songs.find((x) => x.id === (Q.get('song') || 'pop1')) || songs[0];
+const chart = await (await fetch('../../public/arcade/' + song.chart)).json();
 const diff = Q.get('diff') || 'HARD', T = +(Q.get('t') || 10), mode = Q.get('mode') || 'play', skip = +(Q.get('bot') || 0), ap = +(Q.get('speed') || 1.15);
 const st = new Stage(document.getElementById('ar-canvas'), chart);
 const g = new Game(chart.difficulties[diff].notes);
@@ -30,7 +32,7 @@ if (mode === 'play') {
   let t = t0;
   for (; t < T - 1.2; t += dt) { bot(t); g.update(t, held); g.drain(); }
   const labels = ['S', 'D', 'F', 'J', 'K', 'L'];
-  for (; t <= T; t += dt) { bot(t); g.update(t, held); st.frame({ mode: 'play', t, dt, game: g, held, diff, approach: ap, count: t < 0 ? -t : null, labels, keysOn: true, title: 'ハイテンポ・ポップ' }); }
+  for (; t <= T; t += dt) { bot(t); g.update(t, held); st.frame({ mode: 'play', t, dt, game: g, held, diff, approach: ap, count: t < 0 ? -t : null, labels, keysOn: true, title: song.title, credit: song.credit }); }
 } else {
   if (mode === 'result') for (let i = 0; i < 90; i++) { st.confetti(2); st.frame({ mode, dt, mx: st.W * 0.15, my: st.H * 0.66, mr: Math.min(st.W, st.H) * 0.13 }); }
   else for (let i = 0; i < 60; i++) st.frame({ mode, dt, mx: st.W * 0.15, my: st.H * 0.66, mr: Math.min(st.W, st.H) * 0.13 });
