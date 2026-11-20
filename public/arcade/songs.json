@@ -1,0 +1,54 @@
+{
+ "songs": [
+  {
+   "id": "pipipi",
+   "title": "ぴぴぴ☆受信ちゅう！",
+   "credit": "音楽：フリーボーカルMusic【NeWorld】（作詞・作曲：R2　歌：aya）　https://music.freegame-contest.com/",
+   "audio": "pipipi.mp3",
+   "chart": "pipipi.chart.json",
+   "bpm": "150",
+   "duration": 190.765,
+   "note": "歌入り"
+  },
+  {
+   "id": "miraimirai",
+   "title": "ミライミライ",
+   "credit": "音楽：フリーボーカルMusic【NeWorld】（作詞・作曲：R2　歌：aya）　https://music.freegame-contest.com/",
+   "audio": "miraimirai.mp3",
+   "chart": "miraimirai.chart.json",
+   "bpm": "173",
+   "duration": 238.524,
+   "note": "歌入り"
+  },
+  {
+   "id": "okaeri",
+   "title": "おかえり、ただいま",
+   "credit": "音楽：フリーボーカルMusic【NeWorld】（作詞・作曲：R2　歌：aya）　https://music.freegame-contest.com/",
+   "audio": "okaeri.mp3",
+   "chart": "okaeri.chart.json",
+   "bpm": "141",
+   "duration": 278.354,
+   "note": "歌入り"
+  },
+  {
+   "id": "soap",
+   "title": "soap bubbles",
+   "credit": "音楽：フリーボーカルMusic【NeWorld】（作詞・作曲：R2　歌：aya）　https://music.freegame-contest.com/",
+   "audio": "soap.mp3",
+   "chart": "soap.chart.json",
+   "bpm": "142",
+   "duration": 244.56,
+   "note": "歌入り"
+  },
+  {
+   "id": "pop1",
+   "title": "ハイテンポ・ポップ（インスト）",
+   "credit": "曲：オリジナル（歌なし）",
+   "audio": "song_pop1.mp3",
+   "chart": "chart.json",
+   "bpm": "172 → 200",
+   "duration": 83.134,
+   "note": "サビ前でテンポがゆれるよ"
+  }
+ ]
+}
