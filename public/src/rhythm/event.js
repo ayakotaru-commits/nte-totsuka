@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { makeCharacter } from '../character.js';
 import { H } from '../terrain.js';
 import * as A from './audio.js';
+import { UnaaCrowd } from './unaa.js';
 
 export const BPM = 110;
 const BEAT = 60 / BPM, SLOT = BEAT / 2, BAR = BEAT * 4;
@@ -146,6 +147,15 @@ export class Rhythm {
       return m;
     });
     this.ofuda = new Ofuda(scene);
+    // 大吉のたびに加わるうな○ー (手本役と自分の間の両脇、見物人のさらに外側に並ぶ。境内の中だけ)
+    {
+      const ux = (lx - mx), uz = (lz - mz), L = Math.hypot(ux, uz), fx = ux / L, fz = uz / L, slots = [];
+      for (const lat of [5.6, 7.4, 9.2]) for (const ax of [1.2, 3.6, -1.2, 6.0, -3.6, 8.4]) for (const sd of [1, -1]) {
+        const x = mx + fx * ax - fz * lat * sd, z = mz + fz * ax + fx * lat * sd;
+        if (inPoly(SITE.area, x, z)) slots.push([x, z]);
+      }
+      this.unaa = new UnaaCrowd(scene, this.ground, slots, [(lx + mx) / 2, (lz + mz) / 2]);
+    }
     this.hype = 0;
     this.ui = {
       ask: $('rh-ask'), hud: $('rh-hud'), label: $('rh-label'), cells: $('rh-cells'), prog: $('rh-prog'), banner: $('rh-banner'),
@@ -195,6 +205,7 @@ export class Rhythm {
     this.t0 = null;                               // 音の準備ができたら begin() で決める
     this.useAudio = false; this.waitUntil = this.clock() + AUDIO_WAIT;
     if (A.wake()) this.begin();
+    this.unaa.clear();
     this.hype = 0; this.lastLead = -9; this.lastMe = -9; this.bannerOff = null;
     this.calls = this.chart.calls.slice();
     this.banners = [
@@ -266,6 +277,7 @@ export class Rhythm {
       return;
     }
     A.play(g.res === 'good' ? 'daikichi' : 'kichi');
+    if (g.res === 'good' && this.unaa.add()) this.hype = Math.min(1, this.hype + 0.1); // 大吉のたびに、うな○ーが 1 体加わる
     this.flash(g.res === 'good' ? '大吉！' : '吉', g.res);
     this.omikuji(g, g.res === 'good' ? '大' : '吉');
     this.hype = Math.min(1, this.hype + (g.res === 'good' ? 0.3 : 0.15));
@@ -312,6 +324,7 @@ export class Rhythm {
     this.state = 'idle';
     this.player.perf = null;
     for (const c of this.crowd) c.root.visible = false;
+    this.unaa.clear();
     for (const el of [this.ui.hud, this.ui.hint, this.ui.tap, this.ui.result]) this.show(el, false);
     this.setBanner('');
     if (this.ui.touch) this.ui.touch.style.visibility = '';
@@ -411,6 +424,10 @@ export class Rhythm {
       });
     }
     this.ofuda.update(dt, this.ground);
+    {
+      const e = this.state === 'result' ? (this.last && this.last.score >= 0.55 ? 1 : 0.2) : this.hype;
+      this.unaa.update(dt, this.camera, e, (this.state === 'play' && this.t0 != null ? this.songT() : now) / BEAT);
+    }
     if (play) this.view();
   }
 
