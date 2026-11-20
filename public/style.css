@@ -210,7 +210,7 @@ body.touch #ar-ask .tbtn b { display: none; }
 #ar-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 .ar-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 92vw); max-height: 94vh; overflow: auto; box-sizing: border-box; padding: 16px 22px 14px;
   border-radius: 32px; background: rgba(255,255,255,.9); border: 5px solid #fff; box-shadow: 0 10px 40px rgba(255,110,180,.5), 0 0 0 4px #ffb3da; color: #6a4a92; text-align: center; animation: ar-in .35s ease-out; }
-@media (min-aspect-ratio: 5/4) { .ar-card { left: 60%; } }
+@media (min-aspect-ratio: 5/4) and (min-width: 1000px) { .ar-card { left: 60%; } }   /* 広い画面だけ、左のマスコットが見えるように右へ寄せる */
 @keyframes ar-in { 0% { opacity: 0; transform: translate(-50%, -46%) scale(.92); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 .ar-head { font-size: 26px; font-weight: 900; letter-spacing: .12em; background: linear-gradient(90deg, #ff6fae, #ffa14a, #e8b800, #4cc88a, #4cb8ff, #b58cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .ar-head span { font-size: 16px; letter-spacing: .05em; }
@@ -253,7 +253,7 @@ body.touch #ar-ask .tbtn b { display: none; }
 #ar-counts .p { background: linear-gradient(160deg, #fff6c8, #ffd9ec); } #ar-counts .g { background: #ffdcec; } #ar-counts .o { background: #d6ecff; } #ar-counts .b { background: #e8e0f6; } #ar-counts .m { background: #e6e8ef; }
 #ar-sub { margin: 6px 0 2px; font-size: 13px; color: #8a6ab0; }
 body.ar-on #labels { visibility: hidden; }
-body.touch .ar-card { width: 94vw; padding: 12px 14px 10px; } body.touch .ar-btn { min-height: 44px; }
+body.touch .ar-card { width: min(94vw, 640px); left: 50%; padding: 12px 14px 10px; } body.touch .ar-btn { min-height: 44px; }
 @media (max-height: 480px) {
   .ar-card { padding: 8px 14px 8px; border-radius: 24px; } .ar-head { font-size: 19px; } .ar-song { margin: 4px 0; } .ar-jacket { width: 44px; height: 44px; border-radius: 14px; } .ar-jacket i { font-size: 15px; }
   .ar-title { font-size: 17px; } .ar-row { margin: 4px 0; } .ar-btn.diff { padding: 4px 6px; } .ar-btn.diff .d { font-size: 16px; } .ar-opts { margin: 4px 0 2px; gap: 3px; } .ar-btns { margin-top: 6px; }

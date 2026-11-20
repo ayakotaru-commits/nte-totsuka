@@ -95,8 +95,10 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await page.waitForFunction(() => window.__arcade.chartT(window.__arcade.now()) > 0.5);
   ok(await page.evaluate(() => window.__arcade.useAudio), `曲の音が鳴っている (autoplay 許可の環境)`);
   // 本物のキーを 1 回 (ノーツの無い所で押す = stray)
-  await page.keyboard.down('KeyF'); await page.waitForTimeout(60); await page.keyboard.up('KeyF');
-  ok(await page.evaluate(() => window.__arcade.game.stray) >= 1, '本物のキー (F) が、ゲームの押しとして届く');
+  await page.keyboard.down('KeyF'); await page.waitForTimeout(60);
+  ok(await page.evaluate(() => window.__arcade.held[2] === true && window.__arcade.heldN[2] === 1), '本物のキー (F) を押している間、3 番目のレーンが押された扱いになる');
+  await page.keyboard.up('KeyF'); await page.waitForTimeout(60);
+  ok(await page.evaluate(() => window.__arcade.held[2] === false), '離すと戻る');
   // 疑似キーで、最初の 12 ノーツを譜面の時刻ぴったりに打つ
   const res = await page.evaluate(async () => {
     const A = window.__arcade, g = A.game;
@@ -150,6 +152,8 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await waitState(mob, 'select');
   await mob.waitForTimeout(600);
   await shot(mob, '8_select_touch');
+  { const r = await mob.evaluate(() => { const b = document.getElementById('ar-select').getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: innerWidth, h: innerHeight }; });
+    ok(r.l >= 0 && r.r <= r.w && r.t >= 0 && r.b <= r.h + 1, `スマホ横向き: 曲えらびのカードが画面に収まる ${JSON.stringify(r)}`); }
   await mob.evaluate(() => window.__arcade.cfg.diff = 'HARD');
   await mob.touchscreen.tap(...(await mob.evaluate(() => { const r = document.querySelector('[data-act="start"]').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })));
   await waitState(mob, 'play');
