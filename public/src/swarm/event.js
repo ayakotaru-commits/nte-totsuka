@@ -7,12 +7,16 @@
 //     1・2 撃目は 1、3 撃目 (回転斬り) は 2 のダメージ。敵の体力は 2
 //   ・敵は近づくと、ためてから体当たりしてくる。5 回当たるとやられる。やられると、近くの敵が次々に飛び乗って山のように重なり、
 //     「やられた」の表示が出る。OK (Enter / Space / 画面のボタン) で門の外へ戻る (門をくぐると再挑戦)
+//   ・100 体たおすと、3 倍の大きさで金色に光る「黄金のうな○ー」が上空から降りてきて、「伝説のうな○ー刀」をくれる。
+//     受け取ると剣が金色 (刃に水玉、金の軌跡) になる。ブラウザに覚えておき、次に開いたときも金色のまま (localStorage)。
+//     URL に ?nolegend で元の剣に戻す (覚えた分も消える)
 //   ・中庭から遠く (DIST_GIVEUP m) 離れて数秒たつと、敵はいなくなる (R でスタート地点に戻ったときも)
 // 自分の画面だけの出来事 (マルチプレイのほかの人には見えない)。
 // 「いいえ」(N / 画面のボタン) を選ぶか、聞いている間に中庭から出ると、いったん中庭の外へ出るまでは聞かない。
 // URL: ?swarm 開いてすぐ中庭で始める (聞かずに始める。確認用) / ?noswarm イベントを無効に
 import { H } from '../terrain.js';
 import { trailOn } from '../attack.js';
+import * as THREE from 'three';
 import { Herd, Fx, BODY } from './model.js';
 
 export const TOTAL = 100, ALIVE = 50;
@@ -25,6 +29,26 @@ const HP_P = 100, DMG_P = 20, INVULN = 1.0;    // プレイヤーの体力、体
 const HEAL_KILL = 0;                           // 1 体倒すと戻る体力 (5 回でやられるよう、戻さない)
 const PILE_N = 16, PILE_DT = 0.09, PILE_H = 0.26; // やられたとき上に飛び乗って重なる数、飛び乗る間隔 (秒)、1 段の厚さ (m)
 const DIST_GIVEUP = 80, T_GIVEUP = 4;
+const GOLD = ['#fff3b0', '#ffd34d', '#ffe98a', '#ffffff', '#f2b832'];
+const GIANT = 3;                               // 黄金のうな○ーの大きさ (ふつうの何倍)
+const LEGEND_KEY = 'totsuka.unaLegend';        // 伝説のうな○ー刀を持っているか (localStorage)
+const sx = (u) => 1 - Math.pow(1 - Math.max(0, Math.min(1, u)), 3);
+
+// 伝説のうな○ー刀 (受け取る前に宙に浮かんで見えるもの)。金色の刃に水玉、赤い柄
+function makeLegendSword() {
+  const g = new THREE.Group();
+  const gold = new THREE.MeshStandardMaterial({ color: '#ffd84a', emissive: '#ffc21a', emissiveIntensity: 0.9, metalness: 0.6, roughness: 0.3 });
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.3, 0.025), gold); blade.position.y = 0.8; g.add(blade);
+  const tip = new THREE.Mesh(new THREE.CylinderGeometry(0, 0.05, 0.16, 4), gold); tip.scale.z = 0.25; tip.position.y = 1.53; g.add(tip);
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.08), new THREE.MeshStandardMaterial({ color: '#c8282e', emissive: '#5a0c10', metalness: 0.3, roughness: 0.5 })); guard.position.y = 0.13; g.add(guard);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.26, 10), new THREE.MeshStandardMaterial({ color: '#3a2a1a', roughness: 0.8 })); grip.position.y = -0.02; g.add(grip);
+  ['#f2789f', '#f6d34a', '#7cc4ea', '#e8434f', '#9ccc3c', '#b48ad8'].forEach((c, k) => {
+    const d = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.04, 12).rotateX(Math.PI / 2), new THREE.MeshBasicMaterial({ color: c }));
+    d.position.set(k % 2 ? 0.015 : -0.015, 0.35 + k * 0.19, 0); g.add(d);
+  });
+  g.scale.setScalar(1.5); g.visible = false;
+  return g;
+}
 
 // 場所 (グランシティ。data/appearance.json の garden.layout と、住棟 g5317b7beb1 の輪郭から)
 export const SITE = {
@@ -108,17 +132,25 @@ export class Swarm {
   constructor({ scene, world, player, camera, onRespawn }) {
     this.world = world; this.player = player; this.camera = camera; this.onRespawn = onRespawn;
     this.herd = new Herd(scene, ALIVE + 2);
+    this.goldHerd = new Herd(scene, 1, { gold: true }); // 最後に降りてくる黄金のうな○ー
+    this.sword = makeLegendSword(); scene.add(this.sword);
+    this.end = null;                // 最後の場面 { ph, t, x, y, z, ... }
+    // 伝説のうな○ー刀を持っていたら、最初から金色の剣 (?nolegend で元に戻して忘れる)
+    try {
+      if (new URLSearchParams(location.search).has('nolegend')) localStorage.removeItem(LEGEND_KEY);
+      else if (localStorage.getItem(LEGEND_KEY) === '1') player.model.setLegend?.(true);
+    } catch (e) { /* 使えないブラウザでは覚えない */ }
     this.fx = new Fx(scene);
     this.list = [];                 // 出ている敵
     this.state = 'idle';            // idle / run / down / done
     this.armed = true;              // 中庭の外へ出たら、また始められる
     this.asking = false;            // 受けるかどうかを聞いている
     this.answer = null;             // 画面のボタンで選んだ答え ('yes' / 'no')
-    this.ui = { over: $('swarm-over'), overText: $('swarm-over-text'), ask: $('swarm-ask'), box: $('swarm'), left: $('swarm-left'), hp: $('swarm-hp'), banner: $('swarm-banner'), hurt: $('mp-hurt'), time: $('swarm-time') };
+    this.ui = { end: $('swarm-end'), endTitle: $('swarm-end-title'), endText: $('swarm-end-text'), over: $('swarm-over'), overText: $('swarm-over-text'), ask: $('swarm-ask'), box: $('swarm'), left: $('swarm-left'), hp: $('swarm-hp'), banner: $('swarm-banner'), hurt: $('mp-hurt'), time: $('swarm-time') };
     this.spawns = this.findSpawns();
     this.lastSpawnAt = new Map();
     this.clock = 0;
-    for (const [id, a] of [['swarm-yes', 'yes'], ['swarm-no', 'no'], ['swarm-ok', 'ok']]) {
+    for (const [id, a] of [['swarm-yes', 'yes'], ['swarm-no', 'no'], ['swarm-ok', 'ok'], ['swarm-end-ok', 'ok']]) {
       const b = $(id);
       if (b) b.addEventListener('pointerdown', (ev) => { ev.preventDefault(); ev.stopPropagation(); this.answer = a; });
     }
@@ -244,7 +276,8 @@ export class Swarm {
       }
     }
     if (this.running) this.step(dt, input);
-    this.herd.flush();
+    if (this.state === 'ending') this.stepEnding(dt, input);
+    this.herd.flush(); this.goldHerd.flush();
     this.fx.update(dt, this.camera, this.list.map((e) => (e.st === 'perch' || e.st === 'fall') ? e.ring : null).filter(Boolean));
   }
 
@@ -400,9 +433,98 @@ export class Swarm {
         this.banner('門をくぐると再挑戦できます', 3);
       }
     } else if (this.state === 'run' && this.killed >= TOTAL) {
-      this.stop(false);
-      this.banner(`クリア！　${TOTAL} 体撃破　タイム ${fmt(this.time)}`, 6);
+      this.startEnding();
     }
+  }
+
+  // ---- 最後の場面: 黄金のうな○ーが降りてきて、伝説のうな○ー刀をくれる ----
+  startEnding() {
+    this.stop(false);
+    this.state = 'ending';
+    this.banner(`クリア！　${TOTAL} 体撃破　タイム ${fmt(this.time || 0)}`, 3.5);
+    // 降りてくる所: プレイヤーの前 7 m (建物の中なら中庭の真ん中)
+    const p = this.player.pos, f = this.player.facing;
+    let x = p.x + Math.sin(f) * 7, z = p.z + Math.cos(f) * 7;
+    if (!inPoly(SITE.yard, x, z) || this.world.insideAny(x, z)) [x, z] = SITE.center;
+    const gy = this.world.groundAt(x, z, p.y + 2);
+    this.end = { ph: 'wait', t: 0, x, z, gy, y: gy + 45, spark: 0 };
+  }
+
+  dialog(title, text) {
+    this.answer = null;
+    if (!this.ui.end) return;
+    this.ui.endTitle.textContent = title; this.ui.endText.textContent = text;
+    this.ui.end.hidden = !title;
+  }
+
+  stepEnding(dt, input) {
+    const E = this.end, p = this.player.pos;
+    E.t += dt;
+    const yaw = Math.atan2(p.x - E.x, p.z - E.z);
+    const ok = () => { const k = (c) => input && input.pressed(c); return k('Enter') || k('Space') || k('KeyY') || this.answer === 'ok'; };
+    const next = (ph) => { E.ph = ph; E.t = 0; };
+    const w = Math.sin(this.clock * 3);
+    // 姿勢 (ふつうのうな○ーの姿勢を 3 倍に)
+    const pose = { x: E.x, y: E.y, z: E.z, yaw, s: GIANT, arm: 2.2 + w * 0.12, leg: 0.15, pitch: 0, roll: w * 0.04 };
+    // まわりにきらきら
+    E.spark -= dt;
+    const sparkle = (n, sp = 2.5) => { if (E.spark <= 0) { E.spark = 0.08; this.fx.burst(E.x, E.y + BODY.y * GIANT, E.z, n, GOLD, sp, 0.18, 0.9, 1.5); } };
+    switch (E.ph) {
+      case 'wait': if (E.t > 1.6) { next('descend'); this.fx.burst(E.x, E.gy + 30, E.z, 40, GOLD, 8, 0.3, 1.5, 2); } break;
+      case 'descend': { // 両手をあげ、ゆっくりと降りてくる
+        const u = sx(E.t / 4.5);
+        E.y = E.gy + 45 * (1 - u);
+        pose.y = E.y; pose.leg = 0.35; pose.arm = 2.4 + w * 0.1;
+        sparkle(4);
+        if (E.t >= 4.5) { next('land'); E.y = E.gy; this.fx.dust(E.x, E.gy, E.z, 24, 2.4); this.fx.burst(E.x, E.gy + 1, E.z, 30, GOLD, 6, 0.25, 1.2, 6); }
+        break;
+      }
+      case 'land': // ふわっと着地して少し沈む
+        pose.y = E.gy; pose.sq = Math.sin(Math.min(1, E.t / 0.5) * Math.PI) * 0.15;
+        sparkle(2);
+        if (E.t > 0.9) { next('talk'); this.dialog('黄金のうな○ー', 'よくぞ 100 体のうな○ーをたおした……。その腕前をたたえ、伝説のうな○ー刀を授けよう。'); }
+        break;
+      case 'talk':
+        pose.y = E.gy; sparkle(2);
+        if (E.t > 0.5 && ok()) { this.dialog(null); next('give'); }
+        break;
+      case 'give': { // 両手を高くあげると刀が現れ、くるくる回りながらプレイヤーの前へ降りてくる
+        pose.y = E.gy; pose.arm = 2.75; pose.pitch = -0.12; sparkle(3, 3);
+        const u = Math.min(1, E.t / 2.6), a = sx(Math.max(0, (E.t - 0.6) / 2.0));
+        const hx = E.x, hy = E.gy + 5.6, hz = E.z;                    // 頭の上
+        const tx = p.x + Math.sin(yaw + Math.PI) * 1.2, ty = p.y + 1.1, tz = p.z + Math.cos(yaw + Math.PI) * 1.2; // プレイヤーの前
+        const S = this.sword;
+        S.visible = true;
+        S.position.set(hx + (tx - hx) * a, hy + (ty - hy) * a + Math.sin(a * Math.PI) * 1.2, hz + (tz - hz) * a);
+        S.rotation.set(0, this.clock * 5, 0.2 * Math.sin(this.clock * 2));
+        S.scale.setScalar(1.5 * Math.min(1, E.t / 0.5));
+        if (Math.random() < 0.5) this.fx.burst(S.position.x, S.position.y + 1, S.position.z, 1, GOLD, 1, 0.12, 0.6, 1);
+        if (u >= 1) { next('got'); this.dialog('伝説のうな○ー刀を手に入れた！', '金色に輝く二刀。斬ると金の軌跡が残る。'); }
+        break;
+      }
+      case 'got': {
+        pose.y = E.gy; sparkle(2);
+        const S = this.sword; S.rotation.y = this.clock * 2; S.position.y += Math.sin(this.clock * 3) * 0.002;
+        if (E.t > 0.5 && ok()) {
+          this.dialog(null);
+          S.visible = false;
+          this.fx.burst(S.position.x, S.position.y + 1, S.position.z, 40, GOLD, 5, 0.22, 1, 4);
+          this.player.model.setLegend?.(true);
+          this.player.armedT = 0; // 剣を出して見せる
+          try { localStorage.setItem(LEGEND_KEY, '1'); } catch (e) { /* 覚えられなくても続ける */ }
+          next('leave');
+        }
+        break;
+      }
+      case 'leave': { // 手を振りながら空へ帰っていく
+        const u = E.t / 3.5;
+        pose.y = E.y = E.gy + 45 * u * u; pose.armL = Math.sin(this.clock * 9) * 0.5; pose.arm = 2.3; pose.leg = 0.35;
+        sparkle(3);
+        if (u >= 1) { this.goldHerd.hide(0); this.end = null; this.state = 'idle'; this.banner('伝説のうな○ー刀で街を歩こう', 3); return; }
+        break;
+      }
+    }
+    this.goldHerd.setPose(0, pose);
   }
 
   // 体当たり: 正面の近くにプレイヤーがいたら当たる

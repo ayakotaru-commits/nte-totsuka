@@ -125,6 +125,26 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     S.stop(false); S.armed = true; pl.teleport(SITE.out[0], SITE.out[1]); tick(mk()); pl.teleport(p0.x, p0.z); tick(mk());
     pl.teleport(SITE.out[0], SITE.out[1]); tick(mk()); ask.closedOnLeave = !S.asking && document.getElementById('swarm-ask').hidden;
     out.ask = ask;
+    // 6: 100 体たおした後 (startEnding を直接呼ぶ): 黄金のうな○ーが降りて → 言葉 → 刀 → 受け取る → 帰る
+    pl.revive(); pl.teleport(p0.x, p0.z); S.auto = true; S.armed = true; tick(mk());
+    try { localStorage.removeItem('totsuka.unaLegend'); } catch (e) {}
+    S.startEnding();
+    const end = { phases: [], landY: null, swordToPlayer: null };
+    let last = '', et = 0, enters = 0;
+    while (S.state === 'ending' && et < 40) {
+      const E = S.end, ph = E ? E.ph : 'none';
+      if (ph !== last) { end.phases.push(ph + '@' + et.toFixed(1)); last = ph; }
+      if (ph === 'land' && end.landY === null) end.landY = +(E.y - E.gy).toFixed(2);
+      const dlg = !document.getElementById('swarm-end').hidden;
+      if (ph === 'got' && end.swordToPlayer === null) end.swordToPlayer = +Math.hypot(S.sword.position.x - pl.pos.x, S.sword.position.z - pl.pos.z).toFixed(2);
+      const press = dlg && E.t > 1 ? ['Enter'] : [];
+      if (press.length) enters++;
+      tick(mk([], press)); et += dt; chk();
+    }
+    end.endedAfter = +et.toFixed(1); end.state = S.state; end.enters = enters;
+    end.saved = (() => { try { return localStorage.getItem('totsuka.unaLegend'); } catch (e) { return 'err'; } })();
+    end.goldHidden = true;
+    out.ending = end;
     S.auto = true;
     out.nan = nan;
     return out;
@@ -138,6 +158,10 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     { name: 'swarm', run: 14, follow: true },
     { name: 'hit', run: 9, follow: true, atk: true },
     { name: 'pile', run: 12, follow: true, pile: true },
+    { name: 'end_descend', end: 'descend', endT: 2.8 },
+    { name: 'end_talk', end: 'talk', endT: 0.3 },
+    { name: 'end_give', end: 'give', endT: 1.6 },
+    { name: 'end_legend', end: 'legend' },
   ];
   for (const s of shots) {
     await page.evaluate(async (s) => {
@@ -164,19 +188,39 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
         pl.update(1 / 30, inp, g.cam); S.update(1 / 30);
         if (s.atk && k > n - 40 && S.list.some(e => e.tint > 0.6)) break; // 斬った瞬間で止める
       }
+      if (s.end) { // 最後の場面のその時点まで進める (表示は Enter で進める)
+        S.startEnding();
+        const order = ['wait', 'descend', 'land', 'talk', 'give', 'got', 'leave'];
+        const goal = s.end === 'legend' ? 99 : order.indexOf(s.end);
+        for (let k = 0; k < 2000 && S.state === 'ending'; k++) {
+          const E = S.end, i = order.indexOf(E.ph);
+          if (i === goal && E.t >= s.endT) break;
+          const press = (E.ph === 'talk' || E.ph === 'got') && i < goal && E.t > 0.6 ? ['Enter'] : [];
+          pl.update(1 / 30, mk(), g.cam); S.update(1 / 30, mk([], press));
+        }
+        if (s.end === 'legend') { // 金の剣で斬る (振っている途中で止める)
+          pl.facing = Math.PI / 2;
+          pl.update(1 / 30, mk([], ['KeyJ']), g.cam);
+          for (let k = 0; k < 13; k++) pl.update(1 / 30, mk(), g.cam);
+        }
+      }
       if (s.pile) { S.hp = 20; for (let k = 0; k < 900 && !S.overShown; k++) { pl.update(1 / 30, mk(), g.cam); S.update(1 / 30); } for (let k = 0; k < 120; k++) { pl.update(1 / 30, mk(), g.cam); S.update(1 / 30); } }
       g.look.render = g.renderSave;
       if (s.cam) {
         g.cam.update = () => {};
         const c = g.cam.camera, gy = g.world.groundAt(s.cam[0], s.cam[2], 0);
         c.position.set(s.cam[0], gy + s.cam[1], s.cam[2]); c.lookAt(s.cam[3], gy + s.cam[4], s.cam[5]);
+      } else if (s.end && s.end !== 'legend') { // プレイヤーの後ろから黄金のうな○ーを見上げる
+        g.cam.yaw = Math.atan2(S.end.x - pl.pos.x, S.end.z - pl.pos.z) + Math.PI + 0.35; g.cam.pitch = 0.05; g.cam.dist = 7.5; g.cam.update(0, pl.pos, true);
+      } else if (s.end === 'legend') {
+        g.cam.yaw = pl.facing + Math.PI / 2 + 0.3; g.cam.pitch = 0.2; g.cam.dist = 4; g.cam.update(0, pl.pos, true);
       } else {
         g.cam.yaw = pl.facing + Math.PI + 0.5; g.cam.pitch = 0.35; g.cam.dist = 7; g.cam.update(0, pl.pos, true);
       }
       // 撮影の間は止める (描画だけ続く)
       const pu = pl.update; pl.update = () => {}; g.restorePl = () => { pl.update = pu; };
       S.update = () => { S.herd.flush(); };
-      g.endAsk = () => S.ask(false);
+      g.endAsk = () => { S.ask(false); S.dialog(null); if (S.state === 'ending') { S.goldHerd.hide(0); S.sword.visible = false; S.end = null; S.state = 'idle'; } };
     }, s);
     await page.waitForTimeout(4000);
     await page.screenshot({ path: path.join(out, s.name + '.png'), timeout: 300000 });

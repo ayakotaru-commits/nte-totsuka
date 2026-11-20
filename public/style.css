@@ -183,3 +183,11 @@ body.touch #rh-ask, body.touch #rh-result { width: 82vw; padding: 12px 14px; }
 body.touch #rh-ask .tbtn, body.touch #rh-result .tbtn { min-width: 110px; height: 46px; }
 body.touch #rh-ask .tbtn b, body.touch #rh-result .tbtn b { display: none; }
 body.rh-on #labels { visibility: hidden; }
+/* クエストの最後 (黄金のうな○ーの言葉)。降りてきた姿が見えるよう、画面の下に出す */
+#swarm-end { position: fixed; left: 50%; bottom: 6%; transform: translateX(-50%); z-index: 8; width: min(560px, 86vw); padding: 12px 18px 12px; border-radius: 12px; background: rgba(40,28,6,.78); border: 2px solid #ffd34d; color: #fff; text-align: center; text-shadow: 0 1px 3px #000; box-shadow: 0 0 24px rgba(255,200,60,.45); }
+#swarm-end .q-title { font-size: 19px; font-weight: 700; color: #ffe08a; }
+#swarm-end .q-body { margin: 6px 0 10px; font-size: 14px; line-height: 1.6; }
+#swarm-end .tbtn { min-width: 96px; height: 34px; font-size: 14px; background: rgba(255,200,60,.45); cursor: pointer; }
+#swarm-end .tbtn b { margin-right: 6px; padding: 0 4px; border: 1px solid rgba(255,255,255,.7); border-radius: 4px; font-size: 11px; }
+body.touch #swarm-end .tbtn { height: 42px; min-width: 110px; }
+body.touch #swarm-end .tbtn b { display: none; }
