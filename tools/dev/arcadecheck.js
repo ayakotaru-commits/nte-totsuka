@@ -3,7 +3,7 @@
 //   1. 入口に立つと聞く表示が出る → N で閉じる → 出て入り直すとまた出る → Y で曲えらびへ (画面が全部おおわれ、キャラが歩かない)
 //   2. 曲えらびの操作 (難易度・速さ・効果音・タイミング・ボタンでスタート) → 本物のキーを 1 回押す → 疑似キーで譜面どおり打つ (判定の数)
 //   3. Esc で曲えらびへ戻る → もう一度 → 自動で最後まで (bot) → 結果の画面・ベストの記録
-//   4. スマホの画面 (タッチ): タップで入る・スタート・レーンのタップ・長押し・上へのフリック
+//   4. スマホの画面 (タッチ): タップで入る・スタート・レーンのタップ・長押し・上へのフリック (--touch-only でこの 4 だけ)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -55,6 +55,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   const waitState = (page, s, ms = 60000) => page.waitForFunction((s) => window.__arcade.state === s, s, { timeout: ms });
 
   // ===== 1・2・3: PC =====
+  if (!process.argv.includes('--touch-only')) {
   const page = await open('?shot&arcade=ask&x=-190.5&z=164.1&face=-1.5708&yaw=1.2&pitch=0.25&dist=7');
   await waitState(page, 'ask');
   ok(await page.evaluate(() => !document.getElementById('ar-ask').hidden), '入口に少し立つと、聞く表示が出る');
@@ -158,6 +159,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await waitState(page, 'idle');
   ok(await page.evaluate(() => document.getElementById('ar-root').hidden && !document.body.classList.contains('ar-on')), 'おしまいで、街に戻る');
   await page.close();
+  }
 
   // ===== 4: スマホ (タッチ) =====
   const mob = await open('?shot&arcade=ask&x=-190.5&z=164.1&face=-1.5708&touch', { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
@@ -169,6 +171,8 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await shot(mob, '8_select_touch');
   { const r = await mob.evaluate(() => { const b = document.getElementById('ar-select').getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: innerWidth, h: innerHeight }; });
     ok(r.l >= 0 && r.r <= r.w && r.t >= 0 && r.b <= r.h + 1, `スマホ横向き: 曲えらびのカードが画面に収まる ${JSON.stringify(r)}`); }
+  { const r = await mob.evaluate(() => { const c = document.getElementById('ar-select'), b = document.querySelector('[data-act="start"]').getBoundingClientRect(); return { scroll: c.scrollHeight - c.clientHeight, startBottom: b.bottom, h: innerHeight }; });
+    ok(r.scroll <= 1 && r.startBottom <= r.h, `スマホ横向き: 曲えらびの中身が全部見える (はみ出し ${r.scroll}px、スタートの下端 ${Math.round(r.startBottom)} / 画面 ${r.h})`); }
   await mob.evaluate(() => window.__arcade.cfg.diff = 'HARD');
   await mob.touchscreen.tap(...(await mob.evaluate(() => { const r = document.querySelector('[data-act="start"]').getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })));
   await waitState(mob, 'play');

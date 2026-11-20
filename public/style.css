@@ -265,4 +265,12 @@ body.touch .ar-card { width: min(94vw, 640px); left: 50%; padding: 12px 14px 10p
 .ar-chip.song { max-width: 48%; padding: 5px 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ar-credit { margin-top: 3px; font-size: 11px; color: #9a82bb; line-height: 1.4; }
 #ar-rsong { margin-top: 1px; font-size: 15px; font-weight: 800; color: #7a5aa8; }
-@media (max-height: 480px) { .ar-songs { margin: 3px 0 0; max-height: 52px; } .ar-chip.song { padding: 3px 9px; font-size: 12px; } #ar-credit { display: none; } }
+@media (max-height: 480px) {   /* 短い横長の画面 (スマホの横向き): 1 画面に収める */
+  .ar-card { padding: 6px 12px 6px; } .ar-head { font-size: 17px; line-height: 1.2; }
+  .ar-songs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overflow-y: hidden; max-height: none; margin: 3px 0 0; padding-bottom: 2px; }
+  .ar-chip.song { flex: none; max-width: none; padding: 3px 10px; font-size: 12px; }
+  .ar-song { margin: 3px 0; gap: 8px; } .ar-jacket { width: 34px; height: 34px; border-radius: 11px; } .ar-jacket i { font-size: 12px; } .ar-title { font-size: 15px; } .ar-meta { font-size: 10px; } #ar-credit { display: none; }
+  .ar-row { margin: 3px 0; gap: 8px; } .ar-btn.diff { grid-auto-flow: column; justify-content: center; align-items: center; gap: 6px; padding: 5px 6px; } .ar-btn.diff .s, .ar-btn.diff .b { display: none; } .ar-btn.diff .d { font-size: 15px; } .ar-btn.diff .n { font-size: 11px; }
+  .ar-opts { grid-template-columns: 1fr 1fr; gap: 2px 8px; margin: 3px 0 0; } .ar-opt > span { min-width: 0; font-size: 11px; } .ar-chip { padding: 3px 9px; font-size: 12px; }
+  #ar-info { min-height: 12px; margin-top: 0; font-size: 11px; } .ar-btns { margin-top: 4px; } .ar-btn { padding: 6px 14px; } .ar-btn.go { font-size: 15px; min-width: 110px; } .ar-keys { display: none; }
+}
