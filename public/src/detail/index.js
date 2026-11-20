@@ -82,6 +82,18 @@ export async function loadDetail({ scene, city, world, built, props }) {
 
   // 当たり判定 (V キーで見た目を消すと一緒に外す)
   if (props) world.addColliders(props.colliders);
+  // ホームの床: 見た目 (上面) の高さに立てるようにする。床がないと足元が地面の高さのままで、ホームに腰まで埋まる
+  if (props && props.rail) {
+    const poly = [];
+    const lift = props.rail.dims.platH;
+    for (const pf of props.rail.platforms) {
+      for (let k = 0; k + 1 < pf.y.length; k++) {
+        const y = (pf.y[k] + pf.y[k + 1]) / 2;
+        poly.push([[pf.left[k], pf.left[k + 1], pf.right[k + 1], pf.right[k]], y - lift, y]);
+      }
+    }
+    world.addColliders({ poly });
+  }
 
   let on = true;
   return {
