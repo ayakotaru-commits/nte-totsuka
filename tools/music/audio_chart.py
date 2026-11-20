@@ -121,9 +121,20 @@ def sections(y, beats, dur):
     while i < n - 1 and sm[i] < lo and i < 4: cls[i] = 'intro'; i += 1
     j = n - 1
     while j > i and sm[j] < lo and n - 1 - j < 3: cls[j] = 'outro'; j -= 1
-    # 1 小節だけの区間は前に合わせる
-    for k in range(1, n - 1):
-        if cls[k] != cls[k - 1] and cls[k] != cls[k + 1] and cls[k - 1] == cls[k + 1]: cls[k] = cls[k - 1]
+    # 4 小節より短い区間は、前の区間に合わせる (背景の色が頻繁に変わらないように)
+    changed = True
+    while changed:
+        changed = False
+        runs, k = [], 0
+        while k < n:
+            j = k
+            while j + 1 < n and cls[j + 1] == cls[k]: j += 1
+            runs.append((k, j)); k = j + 1
+        for (a0, b0) in runs[1:-1]:
+            if b0 - a0 + 1 < 4 and cls[a0] not in ('intro', 'outro'):
+                for q in range(a0, b0 + 1): cls[q] = cls[a0 - 1]
+                changed = True
+                break
     out = []
     for k, c in enumerate(cls):
         a, b = float(bars[k]), float(bars[k + 1]) if k + 1 < len(bars) else dur
