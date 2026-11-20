@@ -117,6 +117,26 @@ export function play(kind, t = null, v = 1) {
       osc('triangle', 300, 150, T, 0.12, env(T, 0.003, 0.25 * v, 0.12));
       break;
     }
+    case 'daikichi': { // 大吉: 鈴が上がっていく (ドミソド) + しゃん + 拍子木の「カッ」
+      [1047, 1319, 1568, 2093].forEach((f, k) => {
+        const t = T + k * 0.055;
+        osc('sine', f, f, t, 0.55, env(t, 0.003, 0.2 * v, 0.55));
+        osc('triangle', f * 2.01, f * 2.01, t, 0.3, env(t, 0.003, 0.06 * v, 0.3));
+      });
+      noise(T + 0.17, 0.5, 'highpass', 6000, 0.7, env(T + 0.17, 0.01, 0.1 * v, 0.5));
+      osc('square', 1850, 1800, T, 0.04, env(T, 0.001, 0.1 * v, 0.045));
+      break;
+    }
+    case 'kichi': { // 吉: 鈴を 2 つ (ちりん)
+      for (const [f, k] of [[1568, 0], [2093, 0.07]]) osc('sine', f, f, T + k, 0.4, env(T + k, 0.003, 0.15 * v, 0.4));
+      break;
+    }
+    case 'kyo': { // 凶: 低くにごった「ぼよん」と、下がる音
+      osc('sawtooth', 220, 110, T, 0.35, env(T, 0.005, 0.18 * v, 0.35));
+      osc('sine', 150, 70, T, 0.4, env(T, 0.004, 0.4 * v, 0.4));
+      noise(T, 0.1, 'lowpass', 500, 0.7, env(T, 0.002, 0.2 * v, 0.1));
+      break;
+    }
     case 'cheer': { // わーっ: 帯域を絞った雑音を、ふくらませてから消す
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, T);

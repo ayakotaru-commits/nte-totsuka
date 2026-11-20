@@ -104,7 +104,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     out.movedAfterQuit = +Math.hypot(pl.pos.x - x0, pl.pos.z - z0).toFixed(2);
     // 4. 本物のキー・タップ (時計は本物に戻す)
     delete R.clock;
-    pl.teleport(-386, 623.4);
+    pl.teleport(...window.__rhythmSite.me);
     R.state = 'idle'; R.armed = true;
     const tick2 = (inp = mk()) => { R.update(dt, inp); pl.update(dt, inp, g.cam); };
     tick2(); // 境内 → 聞く
@@ -113,7 +113,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     out.afterN = R.state;
     tick2(); out.noReask = R.state;
     pl.teleport(-386, 590); tick2(); // 境内の外
-    pl.teleport(-386, 623.4); tick2();
+    pl.teleport(...window.__rhythmSite.me); tick2();
     out.reask = R.state;
     tick2(mk(['KeyY']));
     out.afterY = R.state;

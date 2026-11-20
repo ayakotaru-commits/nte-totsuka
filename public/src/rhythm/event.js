@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { makeCharacter } from '../character.js';
 import { H } from '../terrain.js';
 import * as A from './audio.js';
+import { UnaaCrowd } from './unaa.js';
 
 export const BPM = 110;
 const BEAT = 60 / BPM, SLOT = BEAT / 2, BAR = BEAT * 4;
@@ -38,12 +39,22 @@ const CUE = 6;                           // 「はい！」の合図を出す位
 const RING = BEAT * 1.5;                 // 次に打つ升目のまわりの輪が、この秒数前から縮み始める
 const AUDIO_WAIT = 1.5;                  // 音の準備を待つ長さ (秒)。過ぎたら音なしで始める
 
-// 場所 (八坂神社。city.json の境内の輪郭と、社殿 gc2537e880a の北の空き地)
+// 場所 (八坂神社。city.json の境内の輪郭と、社殿の正面 = 石段の上のすぐ先)
+// 社殿 (props.json の shrines[0]) の局所座標 (lx = 右手、lz = 正面の向き) → 世界。舞台は社殿の正面、石段 (鳥居) の上のすぐ先
+const SH = { o: [-386.21, 634.48], yaw: 1.274 };
+const W = (lx, lz) => {
+  const fx = Math.sin(SH.yaw), fz = Math.cos(SH.yaw);
+  return [+(SH.o[0] + fz * lx + fx * lz).toFixed(2), +(SH.o[1] - fx * lx + fz * lz).toFixed(2)];
+};
+const AX = -0.6; // 参道の筋 (石段・鳥居と社殿の正面を結ぶ線) の lx
 export const SITE = {
   area: [[-401.6, 604.8], [-375.3, 610.0], [-369.3, 635.2], [-362.4, 637.5], [-364.6, 647.4], [-375.5, 643.8], [-379.3, 644.4], [-382.2, 651.7], [-392.1, 636.1], [-399.6, 616.5]],
-  lead: [-386.0, 627.6],   // 手本役 (社殿を背に、北を向く)
-  me: [-386.0, 623.4],     // 自分
-  crowd: [[-390.3, 622.6], [-390.6, 625.0], [-390.1, 627.4], [-381.8, 622.6], [-381.5, 625.0], [-381.9, 627.4]], // 見物人 (両脇)
+  lead: W(AX, 5.8),   // 手本役 (社殿を背に、鳥居の方を向く)
+  me: W(AX, 9.8),     // 自分 (石段の上から社殿へ 2〜3 m 進んだ所。社殿の方を向く)
+  crowd: [5.8, 7.8, 9.8].flatMap((lz) => [-3.4, 3.4].map((d) => W(AX + d, lz))), // 見物人 (両脇)
+  cam: { back: 4.2, side: -1.5, up: 3.2 },   // 舞台のカメラ (view())
+  // うな○ーの立ち位置 (見物人の外側。手水舎・石碑・石垣を避ける)
+  fans: [5.0, 7.0].flatMap((d) => [4.8, 6.8, 8.8, 10.8].flatMap((lz) => [-d, d].map((s) => W(AX + s, lz)))),
 };
 const CROWD_COL = [
   { hair: '#2a2226', jacket: '#3d5a8a', accent: '#f2e6c8' }, { hair: '#4a3328', jacket: '#8a3d4a', accent: '#f6d06a' },
@@ -124,6 +135,7 @@ class Ofuda {
 
 export class Rhythm {
   constructor({ scene, world, player, camera, cam }) {
+    this.scene = scene;
     this.world = world; this.player = player; this.camera = camera; this.cam = cam;
     this.state = 'idle';        // idle / ask / play / result
     this.armed = true;          // 境内の外へ出たら、また聞く
@@ -146,6 +158,8 @@ export class Rhythm {
       return m;
     });
     this.ofuda = new Ofuda(scene);
+    // 大吉のたびに加わるうな○ー (SITE.fans の順に。境内の外に出る所は使わない)
+    this.unaa = new UnaaCrowd(scene, this.ground, SITE.fans.filter(([x, z]) => inPoly(SITE.area, x, z)), [(lx + mx) / 2, (lz + mz) / 2]);
     this.hype = 0;
     this.ui = {
       ask: $('rh-ask'), hud: $('rh-hud'), label: $('rh-label'), cells: $('rh-cells'), prog: $('rh-prog'), banner: $('rh-banner'),
@@ -186,7 +200,33 @@ export class Rhythm {
     this.show(this.ui.ask, on);
   }
 
+  // 舞台の中にある木 (幹や枝がカメラや人をさえぎる) を、曲の間だけ消す (社殿の局所座標で、舞台と見物人の範囲)
+  hideTrees() {
+    this.showTrees();
+    const fx = Math.sin(SH.yaw), fz = Math.cos(SH.yaw);
+    for (const name of ['trees_trunk', 'trees_crown']) {
+      const im = this.scene.getObjectByName(name);
+      if (!im) continue;
+      const m = new THREE.Matrix4(), z = new THREE.Matrix4().makeScale(0, 0, 0);
+      for (let i = 0; i < im.count; i++) {
+        im.getMatrixAt(i, m);
+        const x = m.elements[12] - SH.o[0], zz = m.elements[14] - SH.o[1];
+        const lx = x * fz - zz * fx, lz = x * fx + zz * fz;
+        if (lx < AX - 8 || lx > AX + 9 || lz < 2 || lz > 16) continue;
+        (this.hiddenTrees || (this.hiddenTrees = [])).push({ im, i, m: m.clone() });
+        im.setMatrixAt(i, z);
+      }
+      im.instanceMatrix.needsUpdate = true;
+    }
+  }
+  showTrees() {
+    if (!this.hiddenTrees) return;
+    for (const t of this.hiddenTrees) { t.im.setMatrixAt(t.i, t.m); t.im.instanceMatrix.needsUpdate = true; }
+    this.hiddenTrees = null;
+  }
+
   start() {
+    this.hideTrees();
     this.ask(false); this.show(this.ui.result, false);
     const pl = this.player, [mx, mz] = SITE.me;
     pl.teleport(mx, mz); pl.facing = this.faceMe;
@@ -195,6 +235,7 @@ export class Rhythm {
     this.t0 = null;                               // 音の準備ができたら begin() で決める
     this.useAudio = false; this.waitUntil = this.clock() + AUDIO_WAIT;
     if (A.wake()) this.begin();
+    this.unaa.clear();
     this.hype = 0; this.lastLead = -9; this.lastMe = -9; this.bannerOff = null;
     this.calls = this.chart.calls.slice();
     this.banners = [
@@ -260,11 +301,15 @@ export class Rhythm {
     const [mx, mz] = SITE.me, [lx, lz] = SITE.lead;
     const y = this.ground(mx, mz) + 1.6, dx = lx - mx, dz = lz - mz;
     if (g.res === 'miss') {
-      A.play('miss'); this.flash(g.d == null ? 'ミス' : g.d < 0 ? 'はやい' : 'おそい', 'miss');
+      A.play('kyo'); this.flash(g.d == null ? '凶' : g.d < 0 ? '凶 はやい' : '凶 おそい', 'miss');
       this.hype = Math.max(0, this.hype - 0.25);
+      this.omikuji(g, '凶');
       return;
     }
-    this.flash(g.res === 'good' ? '良！' : '可', g.res);
+    A.play(g.res === 'good' ? 'daikichi' : 'kichi');
+    if (g.res === 'good' && this.unaa.add()) this.hype = Math.min(1, this.hype + 0.1); // 大吉のたびに、うな○ーが 1 体加わる
+    this.flash(g.res === 'good' ? '大吉！' : '吉', g.res);
+    this.omikuji(g, g.res === 'good' ? '大' : '吉');
     this.hype = Math.min(1, this.hype + (g.res === 'good' ? 0.3 : 0.15));
     if (g.kind === 'ofuda') this.ofuda.burst(mx, y, mz, dx, dz, g.res === 'good' ? 10 : 5);
     if (g.kind === 'final') {
@@ -273,6 +318,8 @@ export class Rhythm {
     }
   }
 
+  // 升目 (おみくじの短冊) に運勢の字を出す。字は次の手本の小節に切り替わるまで残る (drawCells が毎コマ付ける)
+  omikuji(g, ch) { g.ch = ch; }
   flash(text, cls) {
     const j = this.ui.judge;
     if (!j) return;
@@ -290,13 +337,14 @@ export class Rhythm {
     const c = { good: 0, ok: 0, miss: 0 };
     for (const g of T) c[g.res || 'miss']++;
     const score = (c.good + 0.6 * c.ok) / n;
-    const rank = score >= 0.85 ? '名人！' : score >= 0.55 ? 'まずまず' : 'もう一回…';
+    const rank = score >= 0.85 ? '大吉！' : score >= 0.55 ? '吉' : '凶…';
     this.last = { ...c, n, score, rank };
     if (this.ui.rank) { this.ui.rank.textContent = rank; this.ui.rank.className = score >= 0.85 ? 'top' : score >= 0.55 ? 'mid' : 'low'; }
-    if (this.ui.count) this.ui.count.textContent = `良 ${c.good}　可 ${c.ok}　ミス ${c.miss}`;
+    if (this.ui.count) this.ui.count.textContent = `大吉 ${c.good}　吉 ${c.ok}　凶 ${c.miss}`;
     this.show(this.ui.hud, false); this.show(this.ui.hint, false); this.show(this.ui.tap, false);
     this.show(this.ui.result, true); this.setBanner('');
     if (score >= 0.55) A.play('cheer', null, score >= 0.85 ? 1.2 : 0.7);
+    if (score >= 0.85) A.play('daikichi', this.clock() + 0.15, 1.3); else if (score < 0.55) A.play('kyo', this.clock() + 0.15, 1.2);
     this.answer = null;
   }
 
@@ -306,6 +354,7 @@ export class Rhythm {
     this.state = 'idle';
     this.player.perf = null;
     for (const c of this.crowd) c.root.visible = false;
+    this.unaa.clear(); this.showTrees();
     for (const el of [this.ui.hud, this.ui.hint, this.ui.tap, this.ui.result]) this.show(el, false);
     this.setBanner('');
     if (this.ui.touch) this.ui.touch.style.visibility = '';
@@ -378,13 +427,14 @@ export class Rhythm {
     if (this.ui.hud) this.ui.hud.dataset.mode = isCall ? 'call' : resp.length ? 'resp' : '';
     const next = this.chart.targets.find((g) => !g.res && g.t - t > -OK && g.t - t < RING);
     this.cellEls.forEach((el, i) => {
-      let cls = '';
+      let cls = '', txt = '';
       if (isCall) { const c = call.find((c) => c.slot === i); if (c) cls = t >= c.t ? 'lit' : 'mark'; }
-      else { const g = resp.find((g) => g.slot === i); if (g) cls = g.res ? g.res : 'mark'; }
+      else { const g = resp.find((g) => g.slot === i); if (g) { cls = g.res ? g.res : 'mark'; txt = g.res ? (g.ch || (g.res === 'good' ? '大' : g.res === 'ok' ? '吉' : '凶')) : ''; } }
       if (!preview && i === slotNow && t >= 0 && bar < FINAL && !SILENT.has(bar)) cls += ' now';
       const ring = next && next.bar === bar && next.slot === i;
       if (ring) cls += ' ring';
       el.className = cls;
+      if (el.textContent !== txt) el.textContent = txt;
       el.style.outlineOffset = ring ? Math.max(0, (next.t - t) / RING * 16).toFixed(1) + 'px' : '';
     });
   }
@@ -404,6 +454,10 @@ export class Rhythm {
       });
     }
     this.ofuda.update(dt, this.ground);
+    {
+      const e = this.state === 'result' ? (this.last && this.last.score >= 0.55 ? 1 : 0.2) : this.hype;
+      this.unaa.update(dt, this.camera, e, (this.state === 'play' && this.t0 != null ? this.songT() : now) / BEAT);
+    }
     if (play) this.view();
   }
 
@@ -412,7 +466,8 @@ export class Rhythm {
     const [mx, mz] = SITE.me, [lx, lz] = SITE.lead;
     const ux = (lx - mx), uz = (lz - mz), L = Math.hypot(ux, uz), fx = ux / L, fz = uz / L;
     const g = this.ground(mx, mz);
-    const eye = new THREE.Vector3(mx - fx * 4.4 - fz * 1.8, g + 2.9, mz - fz * 4.4 + fx * 1.8);
+    const c = SITE.cam; // 自分の後ろ・横・上。横の符号で、左右どちらから見るか (木の幹が入らない側)
+    const eye = new THREE.Vector3(mx - fx * c.back - fz * c.side, g + c.up, mz - fz * c.back + fx * c.side);
     this.camera.position.copy(eye);
     this.camera.lookAt((mx + lx) / 2, g + 1.15, (mz + lz) / 2);
   }
