@@ -36,14 +36,29 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await page.addStyleTag({ content: '#help{display:none!important}' });
   const frames = (n) => page.evaluate((n) => new Promise(r => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
   const st = () => page.evaluate(() => ({ open: __g.menu.open, screen: __g.menu.screen, money: __g.wardrobe.money, owned: [...__g.wardrobe.owned], eq: __g.wardrobe.equipped, y: +__g.player.pos.y.toFixed(2) }));
-  const goto = async (x, z) => { await page.evaluate(([x, z]) => { __g.player.teleport(x, z); __g.cam.update(0, __g.player.pos, true); }, [x, z]); };
+  // y を渡すと、その高さに立たせる (2 階のデッキ。teleport は地面に置くので、足元をデッキの高さに上げる)
+  const goto = async (x, z, y) => { await page.evaluate(([x, z, y]) => { __g.player.teleport(x, z); if (y > 1) { __g.player.pos.y = y; __g.player.vy = 0; } __g.cam.update(0, __g.player.pos, true); }, [x, z, y ?? null]); };
   const waitAsk = async () => { for (let i = 0; i < 14; i++) { await frames(2); if ((await st()).open) return true; } return false; };
   const places = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'data', 'shops.json'), 'utf8')).places;
   const ent = {}; for (const p of places) p.entrances.forEach((e, i) => { ent[p.id + i] = e; });
 
   // 入口の足元の高さ (ここに立ったときのプレイヤーの y)
-  for (const [k, e] of Object.entries(ent)) { await goto(e.x, e.z); await frames(2); console.log('入口', k, e.label, '足元 y =', (await st()).y, '(指定 y =', e.y, ')'); }
+  for (const [k, e] of Object.entries(ent)) { await goto(e.x, e.z, e.y); await frames(2); console.log('入口', k, e.label, '足元 y =', (await st()).y, '(指定 y =', e.y, ')'); }
   await goto(0, 40); await frames(2);
+
+  if (process.argv.includes('--deck')) { // 2 階の入口だけ確認する
+    await goto(ent.modi0.x, ent.modi0.z); // 地面に立つ: 2 階の入口は反応しない
+    await frames(8);
+    ok(!(await st()).open, '地面に立っていても、2 階の入口は反応しない (高さが違う)');
+    await goto(ent.modi0.x, ent.modi0.z, ent.modi0.y);
+    ok(await waitAsk(), '2 階のデッキに立つと出る (足元 y = ' + (await st()).y + ')');
+    await page.screenshot({ path: path.join(out, 'g_deck.png') });
+    await page.keyboard.press('KeyY'); await frames(2);
+    ok((await st()).screen === 'place', '2 階の入口からも店の一覧に入れる');
+    await browser.close(); server.close();
+    console.log(bad ? `NG ${bad} 件` : '全部 OK');
+    process.exit(bad ? 1 : 0);
+  }
 
   // 1 階の入口 (南東の角): とどまると出る → N で断る → 離れるまで出ない → 離れて戻ると出る
   await goto(ent.modi1.x, ent.modi1.z);
@@ -85,7 +100,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   // 2 階の入口・駅の側の入口・個人店でも出る
   for (const k of ['modi0', 'modi2', 'shirayama0']) {
     await goto(0, 40); await frames(3);
-    await goto(ent[k].x, ent[k].z);
+    await goto(ent[k].x, ent[k].z, ent[k].y);
     ok(await waitAsk(), ent[k].label + ' でも出る (足元 y = ' + (await st()).y + ')');
     await page.screenshot({ path: path.join(out, 'e_' + k + '.png') });
     if (k === 'shirayama0') {
