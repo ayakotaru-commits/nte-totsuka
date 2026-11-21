@@ -150,9 +150,10 @@ export class Stage {
   setChart(chart) {
     this.chart = chart;
     // 曲ごとの動く背景 (scenes.js)。無い曲は、いつもの背景
-    const Sc = SCENES[chart.id];
+    const sid = chart.id || 'pop1';   // 自作のインスト曲の譜面 (chart.json) は id が無い
+    const Sc = SCENES[sid];
     this.scenes = this.scenes || {};
-    this.scene = Sc ? (this.scenes[chart.id] || (this.scenes[chart.id] = new Sc(this))) : null;
+    this.scene = Sc ? (this.scenes[sid] || (this.scenes[sid] = new Sc(this))) : null;
     this.beats = [];
     const bs = chart.barStart || [], bb = chart.barBpm || [];
     for (let i = 0; i < bb.length; i++) for (let k = 0; k < 4; k++) this.beats.push(bs[i] + k * 60 / bb[i]);
