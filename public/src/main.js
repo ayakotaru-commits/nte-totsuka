@@ -233,7 +233,10 @@ async function main() {
   }
   if (restore) { overlay.hidden = true; editor.show(); cam.dist = restore.dist; cam.update(0, player.pos, true); }
   // 操作の開始・中断。PC はマウスを固定する。タッチ操作は固定が要らない (使えない端末もある) ので、開始の表示を消すだけ
-  const lock = () => { if (TOUCH) overlay.hidden = true; else renderer.domElement.requestPointerLock?.(); };
+  const lock = () => { // Esc キーは「操作」と数えられず、固定が断られることがある (メニューを Esc で閉じたとき)。その場合は「クリックで再開」を出す
+    if (TOUCH) overlay.hidden = true;
+    else { const p = renderer.domElement.requestPointerLock?.(); p?.catch?.(() => { overlay.hidden = false; }); }
+  };
   const unlock = () => document.exitPointerLock?.();
   overlay.addEventListener('click', lock);
   renderer.domElement.addEventListener('click', () => { if (!TOUCH && !cam.locked && !editor.open) lock(); });
