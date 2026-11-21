@@ -212,7 +212,7 @@ body.touch #ar-ask .tbtn b { display: none; }
   border-radius: 32px; background: rgba(255,255,255,.9); border: 5px solid #fff; box-shadow: 0 10px 40px rgba(255,110,180,.5), 0 0 0 4px #ffb3da; color: #6a4a92; text-align: center; animation: ar-in .35s ease-out; }
 @media (min-aspect-ratio: 5/4) and (min-width: 1000px) { .ar-card { left: 60%; } }   /* 広い画面だけ、左のマスコットが見えるように右へ寄せる */
 @keyframes ar-in { 0% { opacity: 0; transform: translate(-50%, -46%) scale(.92); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
-.ar-head { font-size: 26px; font-weight: 900; letter-spacing: .12em; background: linear-gradient(90deg, #ff6fae, #ffa14a, #e8b800, #4cc88a, #4cb8ff, #b58cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ar-head { font-size: 20px; font-weight: 900; letter-spacing: .03em; line-height: 1.3; background: linear-gradient(90deg, #ff6fae, #ffa14a, #e8b800, #4cc88a, #4cb8ff, #b58cff); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .ar-head span { font-size: 16px; letter-spacing: .05em; }
 .ar-song { display: flex; align-items: center; gap: 12px; margin: 10px 0 8px; text-align: left; }
 .ar-jacket { flex: none; width: 66px; height: 66px; border-radius: 20px; background: linear-gradient(135deg, #ff9ccd, #ffd36a 50%, #8fd8ff); border: 3px solid #fff; box-shadow: 0 4px 12px rgba(255,110,180,.4); position: relative; overflow: hidden; }
@@ -266,7 +266,7 @@ body.touch .ar-card { width: min(94vw, 640px); left: 50%; padding: 12px 14px 10p
 #ar-credit { margin-top: 3px; font-size: 11px; color: #9a82bb; line-height: 1.4; }
 #ar-rsong { margin-top: 1px; font-size: 15px; font-weight: 800; color: #7a5aa8; }
 @media (max-height: 480px) {   /* 短い横長の画面 (スマホの横向き): 1 画面に収める */
-  .ar-card { padding: 6px 12px 6px; } .ar-head { font-size: 17px; line-height: 1.2; }
+  .ar-card { padding: 6px 12px 6px; } .ar-head { font-size: 14px; line-height: 1.2; }
   .ar-songs { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; overflow-y: hidden; max-height: none; margin: 3px 0 0; padding-bottom: 2px; }
   .ar-chip.song { flex: none; max-width: none; padding: 3px 10px; font-size: 12px; }
   .ar-song { margin: 3px 0; gap: 8px; } .ar-jacket { width: 34px; height: 34px; border-radius: 11px; } .ar-jacket i { font-size: 12px; } .ar-title { font-size: 15px; } .ar-meta { font-size: 10px; } #ar-credit { display: none; }
