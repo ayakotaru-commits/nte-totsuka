@@ -194,9 +194,9 @@ body.touch #swarm-end .tbtn b { display: none; }
 
 /* ---- ゲームセンター リズムステージ (src/arcade/event.js)。パステルでかわいい見た目 ---- */
 #ar-ask, #ar-root { font-family: "Hiragino Maru Gothic ProN", "Yu Gothic UI", "Meiryo", "Arial Rounded MT Bold", sans-serif; }
-#ar-ask { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%); z-index: 9; padding: 18px 26px 16px; border-radius: 28px; text-align: center; color: #6a4a92;
+#ar-ask { position: fixed; left: 50%; top: 36%; transform: translate(-50%, -50%); width: max-content; max-width: 92vw; box-sizing: border-box; z-index: 9; padding: 18px 26px 16px; border-radius: 28px; text-align: center; color: #6a4a92;
   background: linear-gradient(160deg, #fff 0%, #ffeaf6 55%, #e6f1ff 100%); border: 4px solid #fff; box-shadow: 0 8px 30px rgba(255,110,180,.5), 0 0 0 3px #ffb3da; text-shadow: none; }
-#ar-ask .q-title { font-size: 21px; font-weight: 800; color: #ff6fae; letter-spacing: .04em; }
+#ar-ask .q-title { font-size: 19px; font-weight: 800; color: #ff6fae; letter-spacing: .03em; text-wrap: balance; }
 #ar-ask .q-body { margin: 8px 0 14px; font-size: 14px; line-height: 1.7; color: #7a5aa8; }
 #ar-ask .q-btns { display: flex; gap: 12px; justify-content: center; }
 #ar-ask .tbtn { min-width: 112px; height: 44px; border-radius: 22px; border: 3px solid #fff; background: #fff; color: #7a5aa8; font-size: 15px; font-weight: 800; box-shadow: 0 4px 0 #e2d0f5; cursor: pointer; }
@@ -274,3 +274,5 @@ body.touch .ar-card { width: min(94vw, 640px); left: 50%; padding: 12px 14px 10p
   .ar-opts { grid-template-columns: 1fr 1fr; gap: 2px 8px; margin: 3px 0 0; } .ar-opt > span { min-width: 0; font-size: 11px; } .ar-chip { padding: 3px 9px; font-size: 12px; }
   #ar-info { min-height: 12px; margin-top: 0; font-size: 11px; } .ar-btns { margin-top: 4px; } .ar-btn { padding: 6px 14px; } .ar-btn.go { font-size: 15px; min-width: 110px; } .ar-keys { display: none; }
 }
+
+.nw { white-space: nowrap; }   /* イベント名の途中で折り返さない */
