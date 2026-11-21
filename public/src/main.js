@@ -126,6 +126,7 @@ async function main() {
   const wardrobe = await loadWardrobe();                       // お金・買った服・着ている服 (端末に保存)
   player.model.setOutfit(wardrobe.urlOf(wardrobe.equipped));    // 着ていた服を着る (キャラの読み込み後)
   let menu = null;                                              // メニュー (下で作る)
+  let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
   const minimap = new Minimap(city, $('minimap'));
   const labels = new Labels(city.pois, scene);
@@ -258,7 +259,7 @@ async function main() {
     actions: { map: () => { rhythm.stop(); toggleMap(); }, time: () => { $('hud-time').textContent = tod.next(); }, help: () => { $('help').hidden = !$('help').hidden; } },
   });
   $('menu-btn').addEventListener('click', () => { if (!bigmap.open && !arcade.active) menu.toggle(); });
-  const shops = new ShopTrigger({ places: await loadShops(), player, menu }); // 洋服屋の入口 (とどまると「入りますか？」)
+  shops = new ShopTrigger({ places: await loadShops(), player, menu }); // 洋服屋の入口 (とどまると「入りますか？」)
   addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Escape' && bigmap.open) toggleMap();
