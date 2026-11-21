@@ -18,6 +18,8 @@ import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
 import { setTerrain, setCover, setLowMemory } from './terrain.js';
 import { TOUCH, setupTouch } from './touch.js';
+import { loadWardrobe } from './wardrobe.js';
+import { Menu } from './menu.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
 import { startMultiplayer } from './net/index.js';
 import { Look } from './look.js';
@@ -120,6 +122,9 @@ async function main() {
 
   const input = new Input();
   const player = new Player(world, scene);
+  const wardrobe = await loadWardrobe();                       // お金・買った服・着ている服 (端末に保存)
+  player.model.setOutfit(wardrobe.urlOf(wardrobe.equipped));    // 着ていた服を着る (キャラの読み込み後)
+  let menu = null;                                              // メニュー (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
   const minimap = new Minimap(city, $('minimap'));
   const labels = new Labels(city.pois, scene);
@@ -232,7 +237,7 @@ async function main() {
   const unlock = () => document.exitPointerLock?.();
   overlay.addEventListener('click', lock);
   renderer.domElement.addEventListener('click', () => { if (!TOUCH && !cam.locked && !editor.open) lock(); });
-  document.addEventListener('pointerlockchange', () => { overlay.hidden = document.pointerLockElement === renderer.domElement || bigmap.open || editor.open; });
+  document.addEventListener('pointerlockchange', () => { overlay.hidden = document.pointerLockElement === renderer.domElement || bigmap.open || editor.open || !!menu?.open; });
   const toggleMap = () => {
     if (bigmap.open) {
       bigmap.hide(); $('map-help').hidden = true; $('map-touch').hidden = true;
@@ -244,6 +249,11 @@ async function main() {
     }
   };
   if (TOUCH) setupTouch({ dom: renderer.domElement, input, cam, streetView, warp: () => bigmap.warp() });
+  menu = new Menu({
+    wardrobe, player, cam, dom: renderer.domElement, lock, unlock,
+    actions: { map: () => { rhythm.stop(); toggleMap(); }, time: () => { $('hud-time').textContent = tod.next(); }, help: () => { $('help').hidden = !$('help').hidden; } },
+  });
+  $('menu-btn').addEventListener('click', () => { if (!bigmap.open && !arcade.active) menu.toggle(); });
   addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Escape' && bigmap.open) toggleMap();
@@ -273,20 +283,22 @@ async function main() {
     // 長く止まった後 (タブの切り替えなど) に飛ばないよう、上限は 0.25 秒
     const dt = Math.min(clock.getDelta(), 0.25);
 
-    if (input.pressed('KeyV')) detail.on = !detail.on; // detail (お試し)
-    if (input.pressed('KeyT')) $('hud-time').textContent = tod.next();
-    if (input.pressed('KeyR')) respawn();
-    if (input.pressed('KeyH')) $('help').hidden = !$('help').hidden;
-    if (input.pressed('KeyG')) exportGLB(built.group);
+    if (input.pressed('Tab') && (menu.open || (!bigmap.open && !arcade.active))) menu.toggle(); // メニュー (着替えなど)
+    const keys = menu.open ? NOIN : input; // メニューを開いている間は、ほかのキー (T・R・M など) を効かせない
+    if (keys.pressed('KeyV')) detail.on = !detail.on; // detail (お試し)
+    if (keys.pressed('KeyT')) $('hud-time').textContent = tod.next();
+    if (keys.pressed('KeyR')) respawn();
+    if (keys.pressed('KeyH')) $('help').hidden = !$('help').hidden;
+    if (keys.pressed('KeyG')) exportGLB(built.group);
 
-    if (input.pressed('KeyM') && !arcade.active) { rhythm.stop(); toggleMap(); }
+    if (keys.pressed('KeyM') && !arcade.active) { rhythm.stop(); toggleMap(); }
     if (bigmap.open && input.pressed('KeyF')) bigmap.centerOnPlayer();
 
     // マップ表示中はキャラを止める
     if (!bigmap.open) {
       // キャラの動きは 1/30 秒以下に刻んで進める (すり抜け防止)。ジャンプなどの「押した瞬間」は最初の 1 刻みだけに効かせる
       const n = Math.ceil(dt / (1 / 30) - 1e-6) || 1;
-      const inp = arcade.active ? NOIN : input; // ゲームセンターのゲーム画面の間は、キャラ・扉・ほかのイベントに入力を渡さない
+      const inp = (arcade.active || menu.open) ? NOIN : input; // ゲームセンターのゲーム画面の間は、キャラ・扉・ほかのイベントに入力を渡さない
       doors.update(dt, player, inp);     // 扉の開け閉め (F)。押した瞬間を player より先に見る
       swarm.update(dt, inp);             // イベント (受けるか聞く表示の Y / N も、押した瞬間を player より先に見る)
       rhythm.update(dt, inp);            // イベント「お札まき」(同上。曲の間のカメラもここで決めるので、cam.update の後でもう一度)

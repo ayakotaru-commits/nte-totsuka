@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { shrinkTextures } from './lowmem.js';
 import { samplePose, trailOn, LEGS, LEGS_UNTIL, TRAIL_STYLE, FX, TWIRL, MOCAP } from './attack.js';
 import { sampleMotion, loadMotion, getMotion } from './motion.js';
+import { Outfitter } from './outfit.js';
 
 // 歩き・走り・待機・空中・着地を、動きのデータ (Quaternius の Universal Animation Library、CC0) で動かす。
 // URL に ?handmade で、以前の手作りの動きに戻す。階段は手作りのまま (データに階段の動きが無いため)
@@ -952,6 +953,10 @@ export function makeCharacter(opt = {}) {
     vrm.update(Math.min(dt, 1 / 30));
   }
 
+  // 着せ替え: setOutfit(服のファイルの URL)。null でいつもの服。VRM の読み込み前に呼ばれたら、読み込み後に着る
+  let outfitter = null, wantOutfit = null;
+  const setOutfit = (url) => { wantOutfit = url; return outfitter ? outfitter.set(url) : Promise.resolve(); };
+
   async function loadVRM(url) {
     try {
       const gltf = await takeVRM(url);
@@ -1001,6 +1006,8 @@ export function makeCharacter(opt = {}) {
       vrmRig = { vrm, scale, nodes, minY, soles, fingers, flip: vrm.meta?.metaVersion === '0', hx0: nodes.hips.position.x, hz0: nodes.hips.position.z }; // 腰の高さは、以後 applyVRM が毎フレーム決める
       body.visible = false;
       root.add(vrm.scene);
+      outfitter = new Outfitter(vrm); // 着せ替え (VRM のときだけ。ほかの人の組み立て式のキャラは対象外)
+      if (wantOutfit) outfitter.set(wantOutfit);
       console.info('VRM を読み込みました: ' + url);
     } catch (e) {
       console.warn('VRM を読み込めなかったので、組み立て式のキャラのままにします:', e);
@@ -1020,5 +1027,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfit };
 }
