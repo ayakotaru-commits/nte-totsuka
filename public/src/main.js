@@ -20,6 +20,7 @@ import { setTerrain, setCover, setLowMemory } from './terrain.js';
 import { TOUCH, setupTouch } from './touch.js';
 import { loadWardrobe } from './wardrobe.js';
 import { Menu } from './menu.js';
+import { loadShops, ShopTrigger } from './shop.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
 import { startMultiplayer } from './net/index.js';
 import { Look } from './look.js';
@@ -257,6 +258,7 @@ async function main() {
     actions: { map: () => { rhythm.stop(); toggleMap(); }, time: () => { $('hud-time').textContent = tod.next(); }, help: () => { $('help').hidden = !$('help').hidden; } },
   });
   $('menu-btn').addEventListener('click', () => { if (!bigmap.open && !arcade.active) menu.toggle(); });
+  const shops = new ShopTrigger({ places: await loadShops(), player, menu }); // 洋服屋の入口 (とどまると「入りますか？」)
   addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Escape' && bigmap.open) toggleMap();
@@ -308,6 +310,7 @@ async function main() {
       arcade.update(dt, input);          // イベント「ゲームセンター リズムステージ」(同上)
       for (let i = 0; i < n; i++) { player.update(dt / n, inp, cam); if (n > 1) input.endFrame(); }
       cam.update(dt, player.pos, false, player);
+      if (!menu.open && !arcade.active && !rhythm.playing) shops.update(dt); // 洋服屋の入口
       if (rhythm.playing) rhythm.view();
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
