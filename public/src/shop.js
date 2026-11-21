@@ -15,7 +15,7 @@ export class ShopTrigger {
     this.player = player; this.menu = menu;
     this.list = [];
     for (const p of places) for (const e of p.entrances) this.list.push({ place: p, e, dwell: 0, hold: false });
-    menu.onDecline = () => { if (this.cur) this.cur.hold = true; };
+    menu.onLeave = () => { if (this.cur) this.cur.hold = true; }; // 断った・店を出たあとは、入口を離れるまで聞かない
     this.cur = null;
   }
 

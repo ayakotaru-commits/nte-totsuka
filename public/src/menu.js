@@ -15,7 +15,7 @@ export class Menu {
     this.place = null;     // 洋服屋の入口から開いたとき: { name, entrances, shops }
     this.entrance = null;  // 入った入口 { label, ... }
     this.shop = null;      // 見ている店 { key, name, floor }
-    this.onDecline = null; // 「入りますか」を断ったときに呼ぶ (shop.js が、入口を離れるまで聞かない印にする)
+    this.onLeave = null;   // 洋服屋の画面を閉じたとき (断った・店を出た) に呼ぶ (shop.js が、入口を離れるまで聞かない印にする)
     this.el = document.getElementById('menu');
     this.el.addEventListener('click', (e) => this.click(e));
     // 画面の外をクリックしても閉じない (誤タップ防止)。キーボード
@@ -47,13 +47,15 @@ export class Menu {
   close() {
     if (!this.open) return;
     this.restoreCam();
+    const fromShop = !!this.place;
     this.open = false;
     this.el.hidden = true;
     this.place = null;
+    if (fromShop) this.onLeave?.();
     this.lock();
   }
 
-  decline() { this.onDecline?.(); this.close(); }
+  decline() { this.close(); }
 
   go(screen) {
     this.screen = screen; this.msg = ''; this.sel = 0;
