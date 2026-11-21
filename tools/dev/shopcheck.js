@@ -44,7 +44,8 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
 
   // 入口の足元の高さ (ここに立ったときのプレイヤーの y)
   for (const [k, e] of Object.entries(ent)) { await goto(e.x, e.z, e.y); await frames(2); console.log('入口', k, e.label, '足元 y =', (await st()).y, '(指定 y =', e.y, ')'); }
-  await goto(0, 40); await frames(2);
+  if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); } // 高さを測るループで開いた画面 (2 階の入口) を閉じる
+  await goto(0, 40); await frames(3);
 
   if (process.argv.includes('--deck')) { // 2 階の入口だけ確認する
     if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); } // 高さを測るループで開いた画面を閉じる
