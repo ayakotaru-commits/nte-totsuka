@@ -15,6 +15,7 @@ const songs = (await (await fetch('../../public/arcade/songs.json')).json()).son
 const song = songs.find((x) => x.id === (Q.get('song') || 'pop1')) || songs[0];
 const chart = await (await fetch('../../public/arcade/' + song.chart)).json();
 const diff = Q.get('diff') || 'HARD', T = +(Q.get('t') || 10), mode = Q.get('mode') || 'play', skip = +(Q.get('bot') || 0), ap = +(Q.get('speed') || 1.15);
+const sway = +(Q.get('sway') ?? 1);   // 0 = なし / 1 = ふつう / 1.7 = おおきく
 const st = new Stage(document.getElementById('ar-canvas'), chart);
 const g = new Game(chart.difficulties[diff].notes);
 const held = new Array(6).fill(false);
@@ -32,10 +33,10 @@ if (mode === 'play') {
   let t = t0;
   for (; t < T - 1.2; t += dt) { bot(t); g.update(t, held); g.drain(); }
   const labels = ['S', 'D', 'F', 'J', 'K', 'L'];
-  for (; t <= T; t += dt) { bot(t); g.update(t, held); st.frame({ mode: 'play', t, dt, game: g, held, diff, approach: ap, count: t < 0 ? -t : null, labels, keysOn: true, title: song.title, credit: song.credit }); }
+  for (; t <= T; t += dt) { bot(t); g.update(t, held); st.frame({ mode: 'play', t, dt, game: g, held, diff, approach: ap, sway, count: t < 0 ? -t : null, labels, keysOn: true, title: song.title, credit: song.credit }); }
 } else {
-  if (mode === 'result') for (let i = 0; i < 90; i++) { st.confetti(2); st.frame({ mode, dt, mx: st.W * 0.15, my: st.H * 0.66, mr: Math.min(st.W, st.H) * 0.13 }); }
-  else for (let i = 0; i < 60; i++) st.frame({ mode, dt, mx: st.W * 0.15, my: st.H * 0.66, mr: Math.min(st.W, st.H) * 0.13 });
+  if (mode === 'result') for (let i = 0; i < 90; i++) { st.confetti(2); st.frame({ mode, dt, sway, mx: st.W * 0.15, my: st.H * 0.66, mr: Math.min(st.W, st.H) * 0.13 }); }
+  else for (let i = 0; i < 60; i++) st.frame({ mode, dt, sway, mx: st.W * 0.15, my: st.H * 0.66, mr: Math.min(st.W, st.H) * 0.13 });
 }
 window.__done = true;
 </script>

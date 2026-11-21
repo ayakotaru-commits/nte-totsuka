@@ -22,6 +22,8 @@ const SPEEDS = { slow: 1.5, normal: 1.15, fast: 0.9 };
 const READY = 2.0;                 // 「はい」ではなく「スタート」から、曲の頭まで (秒)
 const STORE = 'arcade.v1';
 const STARS = { NORMAL: '★★☆☆', HARD: '★★★★' };
+const SWAY = { off: 0, normal: 1, big: 1.7 };   // レーンのうねり・疾走線の強さ (draw.js の updateFx)
+const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };   // 動きを減らす設定の人は、最初は「なし」
 
 const inPoly = (poly, x, z) => {
   let c = false;
@@ -41,7 +43,7 @@ export class Arcade {
     this.state = 'idle';        // idle / ask / loading / select / play / result
     this.armed = true; this.dwell = 0; this.answer = null;
     this.chart = null; this.buf = null; this.stage = null; this.game = null;
-    this.cfg = Object.assign({ speed: 'normal', sfx: true, offset: 0, diff: 'NORMAL', song: null, best: {} }, load());
+    this.cfg = Object.assign({ speed: 'normal', sway: reducedMotion() ? 'off' : 'normal', sfx: true, offset: 0, diff: 'NORMAL', song: null, best: {} }, load());
     for (const d of ['NORMAL', 'HARD']) if (this.cfg.best[d] != null) { this.cfg.best['pop1:' + d] = this.cfg.best[d]; delete this.cfg.best[d]; }  // 曲が 1 つだったころの記録は、最初の曲 (pop1) のものにする
     this.delta = 0; this.held = new Array(6).fill(false); this.heldN = new Array(6).fill(0); this.ptrs = new Map();
     this.ui = {
@@ -150,6 +152,7 @@ export class Arcade {
   act(a, v) {
     if (a === 'diff' && this.state === 'select') { this.cfg.diff = v; save(this.cfg); this.renderSelect(); }
     else if (a === 'song') this.pickSong(v);
+    else if (a === 'sway') { this.cfg.sway = v; save(this.cfg); this.renderSelect(); }
     else if (a === 'speed') { this.cfg.speed = v; save(this.cfg); this.renderSelect(); }
     else if (a === 'sfx') { this.cfg.sfx = !this.cfg.sfx; save(this.cfg); this.renderSelect(); }
     else if (a === 'off') { this.cfg.offset = Math.max(-300, Math.min(300, this.cfg.offset + (+v))); save(this.cfg); this.renderSelect(); }
@@ -256,6 +259,7 @@ export class Arcade {
       b.querySelector('.s').textContent = STARS[d];
     }
     for (const b of el.querySelectorAll('[data-act="speed"]')) b.classList.toggle('on', this.cfg.speed === b.dataset.v);
+    for (const b of el.querySelectorAll('[data-act="sway"]')) b.classList.toggle('on', this.cfg.sway === b.dataset.v);
     const sfx = el.querySelector('[data-act="sfx"]'); sfx.textContent = this.cfg.sfx ? '効果音 ON' : '効果音 OFF'; sfx.classList.toggle('on', this.cfg.sfx);
     el.querySelector('#ar-off').textContent = (this.cfg.offset > 0 ? '+' : '') + this.cfg.offset + ' ms';
     const info = el.querySelector('#ar-info');
@@ -356,13 +360,13 @@ export class Arcade {
       if (this.autoPlay) this.bot(t);
       this.game.update(t, this.held);
       if (this.endAt == null && this.game.finished) this.endAt = Math.max(t, ...this.game.notes.map((n) => n.end)) + 1.4;
-      st.frame({ mode: 'play', t, dt, game: this.game, held: this.held, diff: this.diff, approach: this.approach, count: t < 0 ? -t : null,
+      st.frame({ mode: 'play', t, dt, sway: SWAY[this.cfg.sway] ?? 1, game: this.game, held: this.held, diff: this.diff, approach: this.approach, count: t < 0 ? -t : null,
         labels: LABELS, keysOn: !document.body.classList.contains('touch'), title: this.song ? this.song.title : '', credit: this.song ? this.song.credit : '' });
       if (this.endAt != null && t > this.endAt) this.finishPlay();
       if (!this.endAt && t > this.chart.duration + 2) this.finishPlay();
     } else {
       if (this.state === 'result') st.confetti(this.last && (this.last.rank === 'S' || this.last.rank === 'A') ? 2 : 0);
-      st.frame({ mode: this.state === 'result' ? 'result' : 'bg', dt, mx: port ? st.W * 0.5 : st.W * 0.15, my: port ? st.H * 0.9 : st.H * 0.66, mr: port ? Math.min(st.W, st.H) * 0.09 : Math.min(st.W, st.H) * 0.13 });
+      st.frame({ mode: this.state === 'result' ? 'result' : 'bg', dt, sway: SWAY[this.cfg.sway] ?? 1, mx: port ? st.W * 0.5 : st.W * 0.15, my: port ? st.H * 0.9 : st.H * 0.66, mr: port ? Math.min(st.W, st.H) * 0.09 : Math.min(st.W, st.H) * 0.13 });
     }
   }
 
