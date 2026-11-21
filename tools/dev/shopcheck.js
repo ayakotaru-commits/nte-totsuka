@@ -47,6 +47,8 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await goto(0, 40); await frames(2);
 
   if (process.argv.includes('--deck')) { // 2 階の入口だけ確認する
+    if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); } // 高さを測るループで開いた画面を閉じる
+    await goto(0, 40); await frames(3);
     await goto(ent.modi0.x, ent.modi0.z); // 地面に立つ: 2 階の入口は反応しない
     await frames(8);
     ok(!(await st()).open, '地面に立っていても、2 階の入口は反応しない (高さが違う)');
