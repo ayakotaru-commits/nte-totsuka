@@ -1,5 +1,5 @@
 // メニュー・着替え (src/menu.js, wardrobe.js, outfit.js) の確認: ゲーム本体を開き、Tab でメニュー → 着替え → 服を選ぶ、までを画面と値で確かめる。
-// 使い方: node tools/dev/wardrobecheck.js <出力フォルダ>   (準備は charshot.js と同じ。three.js と three-vrm が tools/dev/.cache にあること。数分)
+// 使い方: node tools/dev/wardrobecheck.js <出力フォルダ> [--reload]   (準備は charshot.js と同じ。three.js と three-vrm が tools/dev/.cache にあること。数分)
 const { chromium } = require('playwright');
 const fs = require('fs'), http = require('http'), path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..'), PUBLIC = path.join(ROOT, 'public'), CACHE = path.join(__dirname, '.cache');
@@ -36,13 +36,15 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   const frames = (n) => page.evaluate((n) => new Promise(r => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
   const outfitOn = () => page.evaluate(() => { const g = []; __g.player.model.root.traverse(o => { if (o.name === 'outfit' && o.visible) g.push(o); }); return g.length; });
   const groups = () => page.evaluate(() => { let n = 0; __g.player.model.root.traverse(o => { if (o.name === 'outfit' && o.visible) n++; }); return n; });
-  const waitGroups = (n) => page.waitForFunction((n) => { let k = 0; __g.player.model.root.traverse(o => { if (o.name === 'outfit' && o.visible) k++; }); return k === n; }, n, { timeout: 120000 });
+  const waitGroups = (n, ms = 400000) => page.waitForFunction((n) => { let k = 0; __g.player.model.root.traverse(o => { if (o.name === 'outfit' && o.visible) k++; }); return k === n; }, n, { timeout: ms }); // この環境は描画が遅く、服 1 点の読み込みに 30〜40 秒かかることがある
   const worn = () => page.evaluate(() => JSON.stringify(__g.wardrobe.worn));
   const ownVisible = () => page.evaluate(() => { const r = {}; __g.player.model.root.traverse(o => { if (!o.isMesh) return; for (const m of Array.isArray(o.material) ? o.material : [o.material]) for (const k of ['Tops', 'Bottoms', 'Shoes']) if (m.name.includes('F00_') && m.name.includes(k)) r[k] = m.visible; }); return r; });
   await frames(3);
   await page.screenshot({ path: path.join(out, 'a_default.png') });
   ok(await groups() === 0, '最初はいつもの服 (服のパーツが出ていない)');
 
+  const RELOAD = process.argv.includes('--reload'); // --reload: 開き直したときの確認だけ (以前の保存の引き継ぎ・起動時に服を着る)
+  if (!RELOAD) {
   await page.keyboard.press('Tab'); await frames(3);
   ok(await page.evaluate(() => __g.menu.open), 'Tab でメニューが開く');
   const t0 = await page.evaluate(() => document.getElementById('hud-time').textContent);
@@ -94,6 +96,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   const sv = await page.evaluate(() => JSON.parse(localStorage.getItem('totsuka.save.v1')));
   ok(sv && sv.v === 2 && sv.worn.tops === 'nona_tshirt' && sv.owned.includes('tanuki_yukata'), '保存された (v2: ' + JSON.stringify(sv.worn) + ')');
 
+  }
   // 以前の保存 (v1: セットの id) を読むと、パーツに置き換わる
   await page.evaluate(() => localStorage.setItem('totsuka.save.v1', JSON.stringify({ v: 1, money: 700, owned: ['lyla_hoodie'], equipped: 'lyla_hoodie' })));
   await page.goto(base + '/?shot', { timeout: 240000 });
