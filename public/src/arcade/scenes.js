@@ -119,6 +119,7 @@ export class PipipiScene {
     this.ensure();
     const { g, t, dt, pulse, key, bi, mode, combo } = P, st = this.st, { W, H, L } = st, m = Math.min(W, H);
     this.tm += dt;
+    this.dr = P.drift ?? this.tm;   // 雲・キャンディの流れの進み (サビで速くなる)
     const hot = key === 'chorus' || key === 'big' ? 1 : 0;
     this.cf += (hot - this.cf) * clamp(dt * 1.6, 0, 1);
     const cf = this.cf;
@@ -183,7 +184,7 @@ export class PipipiScene {
     // 7. 中くらいの雲・キャンディ
     this.drawClouds(g, W, H, 1, pls);
     for (const c of this.candies) {
-      const y = ((c.y - this.tm * c.sp) % 1 + 1) % 1, x = c.x + Math.sin(this.tm * 0.7 + c.ph) * 0.03, z = c.size * m * (1 + pls * 0.14);
+      const y = ((c.y - this.dr * c.sp) % 1 + 1) % 1, x = c.x + Math.sin(this.tm * 0.7 + c.ph) * 0.03, z = c.size * m * (1 + pls * 0.14);
       const im = c.k === 0 ? this.S.lolli[c.c] : c.k === 1 ? this.S.wrap[c.c] : c.k === 2 ? this.S.heart[c.c] : this.S.star[c.c];
       const ar = im.height / im.width;
       g.save(); g.globalAlpha = 0.92; g.translate(x * W, y * H); g.rotate(c.rot + Math.sin(this.tm * 0.9 + c.ph) * 0.25);
@@ -203,7 +204,7 @@ export class PipipiScene {
     for (const c of this.clouds) {
       if (c.layer !== layer) continue;
       const w = c.w * W, im = (c.face ? this.S.cloudFace : this.S.cloud)[c.c], h = w * im.height / im.width;
-      const x = (((c.x + this.tm * c.sp / W) % 1.4) + 1.4) % 1.4 - 0.3, y = c.y * H + Math.sin(this.tm * 0.8 + c.x * 9) * H * 0.006 - pls * H * 0.004 * (layer + 1);
+      const x = (((c.x + this.dr * c.sp / W) % 1.4) + 1.4) % 1.4 - 0.3, y = c.y * H + Math.sin(this.tm * 0.8 + c.x * 9) * H * 0.006 - pls * H * 0.004 * (layer + 1);
       g.globalAlpha = [0.78, 0.9, 0.96][layer]; g.drawImage(im, x * W, y, w, h);
     }
     g.globalAlpha = 1;

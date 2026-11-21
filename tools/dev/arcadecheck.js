@@ -83,6 +83,9 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await page.click('[data-act="off"][data-v="10"]');
   await page.click('[data-act="off"][data-v="10"]');
   await page.click('[data-act="sfx"]');
+  await page.click('[data-act="sway"][data-v="big"]');
+  ok(await page.evaluate(() => window.__arcade.cfg.sway) === 'big', 'レーンのうねりの設定ボタン (おおきく)');
+  await page.click('[data-act="sway"][data-v="normal"]');
   let cfg = await page.evaluate(() => window.__arcade.cfg);
   ok(cfg.diff === 'NORMAL' && cfg.speed === 'fast' && cfg.offset === 20 && cfg.sfx === false, `設定ボタン: ${JSON.stringify({ diff: cfg.diff, speed: cfg.speed, offset: cfg.offset, sfx: cfg.sfx })}`);
   await page.keyboard.press('ArrowRight');
@@ -131,6 +134,12 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   });
   const good = res.counts.perfect + res.counts.great;
   ok(good >= 10, `疑似キーで 12 ノーツを打つ: ${JSON.stringify(res.counts)} 最大コンボ ${res.maxCombo}`);
+  // レーンのうねり: 判定線の位置は動かず、タップの判定 (レーンの当たり) もそのまま
+  { const r = await page.evaluate(() => { const S = window.__arcade.stage; const out = { sw: S.swA, c0: Math.abs(S.cxAt(0) - S.L.cx), lanes: [], far: Math.abs(S.cxAt(1) - S.L.cx) };
+      for (let i = 0; i < 6; i++) out.lanes.push(Math.abs(S.px(i, 0) - (S.L.cx + (i - 2.5) * S.L.wJ / 6)) < 1e-6 && S.laneAt(S.px(i, 0)) === i);
+      return out; });
+    ok(r.sw > 0 && r.c0 < 1e-9 && r.lanes.every(Boolean), `うねりの最中も、判定線は動かない (振れ幅 ${r.sw.toFixed(1)} px、判定線のずれ ${r.c0}、レーンの当たり ${r.lanes.every(Boolean)})`);
+    ok(r.far > 0.5, `奥では実際に振れている (${r.far.toFixed(1)} px)`); }
   await shot(page, '3_play');
   // Esc で曲えらびへ
   await page.keyboard.press('Escape');

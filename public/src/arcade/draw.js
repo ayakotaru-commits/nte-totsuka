@@ -26,6 +26,8 @@ const PAL = {
   big: ['#ffe8f4', '#fff3b0', '#d6f0ff'],
   outro: ['#ffd0ea', '#e3d2ff', '#cdeeff'],
 };
+// 区間ごとの勢い (うねりの大きさ・疾走線の数・背景の流れの速さに効く)
+const ENERGY = { intro: 0.25, A: 0.4, B: 0.6, chorus: 1.0, big: 1.0, interlude: 0.7, outro: 0.5 };
 const secKey = (n) => (n === 'A2' ? 'A' : n === 'B2' ? 'B' : n === 'chorus2' ? 'chorus' : n);
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -124,6 +126,10 @@ export class Stage {
     this.beams = new Array(6).fill(0);
     this.rings = [];          // 判定線の輪
     this.judge = null;        // { grade, t0, fl }
+    // 動き (レーンのうねり・疾走感)。updateFx が毎コマ決める
+    this.energy = 0.3; this.swT = 0; this.swA = 0; this.fxk = 0; this.rush = 0; this.breath = 0; this.nStreak = 0; this.wTcur = null;
+    this.drift = 0;           // 背景の流れの進み (サビで速くなる)
+    this.streaks = Array.from({ length: 44 }, () => ({ u: Math.random() * 6, p: Math.random() * 1.1, sp: 0.5 + Math.random() * 0.6, len: 0.1 + Math.random() * 0.14, c: Math.floor(Math.random() * 6) }));
     this.comboPop = 0;
     this.mood = { kind: 'happy', until: 0 };
     this.banner = null;
@@ -162,10 +168,13 @@ export class Stage {
     const port = W < H * 0.85;
     const wJ = port ? W * 0.96 : Math.min(W * 0.58, H * 1.08);
     this.L = { cx: W / 2, yJ: port ? H * 0.8 : H * 0.83, yT: port ? H * 0.2 : H * 0.13, wJ, wT: wJ * 0.52, port };
+    this.wTcur = this.L.wT;
   }
   // 手前 (p = 0 = 判定線) から奥 (p = 1) への位置
-  lw(p) { return lerp(this.L.wJ, this.L.wT, p) / 6; }
-  px(lane, p) { return this.L.cx + (lane - 2.5) * this.lw(p); }
+  lw(p) { return lerp(this.L.wJ, this.wTcur ?? this.L.wT, p) / 6 * (1 + this.breath * Math.max(0, p)); }
+  // うねり: 判定線 (p = 0) では 0 (打つ位置は動かない)、奥ほど大きく振れる。波は手前 (判定線) へ向かって進む
+  cxAt(p) { if (!this.swA) return this.L.cx; const q = Math.max(0, p); return this.L.cx + this.swA * Math.pow(q, 1.25) * Math.sin(this.swT + q * 6.0); }
+  px(lane, p) { return this.cxAt(p) + (lane - 2.5) * this.lw(p); }
   py(p) { return lerp(this.L.yJ, this.L.yT, p); }
   laneAt(x) { const k = (x - (this.L.cx - this.L.wJ / 2)) / (this.L.wJ / 6); return clamp(Math.floor(k), 0, 5); }
 
@@ -234,12 +243,34 @@ export class Stage {
   // ---- 1 コマ ----
   // S: { t: 曲の時刻 (秒。始まる前は負)、dt、game、held: [6]、diff、approach (ノーツが降りる秒数)、mode: 'bg' | 'play' | 'result'、
   //      count: 始まるまでの秒数 (あれば READY / GO を出す)、labels: ['S','D',…]、keysOn }
+  // 毎コマの動きの値: うねりの大きさ・位相、サビの勢い、疾走線。S.sway = 0 (なし) / 1 (ふつう) / 1.7 (おおきく)
+  updateFx(t, dt, S, bi, pulse) {
+    const k = S.sway ?? 0;
+    const key = S.mode === 'play' ? secKey(this.section(t).name) : 'intro';
+    this.energy += ((ENERGY[key] ?? 0.5) - this.energy) * Math.min(1, dt * 1.6);
+    this.fxk = k;
+    const hard = S.diff === 'HARD' ? 0.75 : 1;                                   // HARD は、ノーツが読みやすいように小さめ
+    this.swA = k * hard * (this.L.wJ / 6) * (0.22 + 0.8 * this.energy + 0.2 * pulse);
+    if (S.mode === 'play' && bi.i >= 0) this.swT = (bi.i + bi.ph) * (Math.PI / 4);   // 8 拍で 1 回り (テンポが変わっても曲に合う)
+    else this.swT += dt * 1.2;
+    this.rush = k > 0 ? this.energy : 0;
+    this.breath = k * 0.04 * pulse;                                                // 拍でレーンが少し息をする (判定線は変わらない)
+    this.wTcur = this.L.wJ * (0.52 - 0.07 * this.rush * Math.min(k, 1));          // サビは奥がぎゅっと狭い = 遠近が強い = 速く見える
+    this.drift += dt * (1 + 1.5 * this.rush);
+    this.nStreak = k > 0 ? Math.min(this.streaks.length, Math.round(6 + 26 * this.energy * Math.min(k, 1.4))) : 0;
+    for (const s of this.streaks) {
+      s.p -= dt * s.sp * (0.55 + 1.5 * this.rush);
+      if (s.p < -0.2) { s.p = 1.05 + Math.random() * 0.2; s.u = Math.random() * 6; s.sp = 0.5 + Math.random() * 0.6; s.len = 0.1 + Math.random() * 0.14; s.c = Math.floor(Math.random() * 6); }
+    }
+  }
+
   frame(S) {
     const g = this.g, { W, H } = this, dt = Math.min(S.dt || 0.016, 0.05);
     this.t += dt;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const t = S.mode === 'play' ? S.t : -1, bi = this.beatInfo(t);
     const pulse = S.mode !== 'play' ? Math.pow(0.5 + 0.5 * Math.sin(this.t * Math.PI * 2 * 1.4), 3) : bi.i < 0 ? 0 : Math.pow(1 - bi.ph, 3);
+    this.updateFx(t, dt, S, bi, pulse);
     this.drawBackground(t, dt, pulse, S.mode, S);
     if (S.mode === 'play' && S.game) {
       this.consume(S.game.drain(), S);
@@ -258,7 +289,7 @@ export class Stage {
     const g = this.g, { W, H } = this;
     if (this.scene) {   // 曲の場面 (その曲のイメージの絵)
       const key = mode === 'play' ? secKey(this.section(t).name) : 'intro';
-      this.scene.draw({ g, t, dt, pulse, key, bi: this.beatInfo(mode === 'play' ? t : -1), mode, combo: S && S.game ? S.game.combo : 0 });
+      this.scene.draw({ g, t, dt, pulse, key, bi: this.beatInfo(mode === 'play' ? t : -1), mode, combo: S && S.game ? S.game.combo : 0, rush: this.rush, drift: this.drift });
       return;
     }
     const key = mode === 'play' ? secKey(this.section(t).name) : 'intro';
@@ -292,7 +323,7 @@ export class Stage {
     g.save(); g.globalAlpha = 0.5; g.translate((this.t * 6) % 72, (this.t * 10) % 72); g.fillStyle = this.pat; g.fillRect(-72, -72, W + 144, H + 144); g.restore();
     // ふわふわ漂う星・ハート・音符
     for (const f of this.floaters) {
-      const y = ((f.y - this.t * f.sp) % 1 + 1) % 1, x = f.x + Math.sin(this.t * 0.8 + f.ph) * 0.03;
+      const y = ((f.y - this.drift * f.sp) % 1 + 1) % 1, x = f.x + Math.sin(this.t * 0.8 + f.ph) * 0.03;
       const s = f.size * Math.min(W, H) * (1 + pulse * 0.25) * (f.kind === 'spark' ? 0.6 + 0.4 * Math.abs(Math.sin(this.t * 2 + f.ph)) : 1);
       const im = this.S.tint[f.kind][f.col];
       g.save(); g.globalAlpha = 0.75; g.translate(x * W, y * H); g.rotate(f.rot + this.t * 0.4 * (f.kind === 'spark' ? 0 : 1));
@@ -302,11 +333,19 @@ export class Stage {
 
   drawField(t, S, pulse) {
     const g = this.g, L = this.L;
-    const p1 = 1.04;
-    const xl = (p) => this.L.cx - this.lw(p) * 3, xr = (p) => this.L.cx + this.lw(p) * 3;
+    const p1 = 1.04, N = 16;
+    const edge = (i, p) => this.cxAt(p) + (i - 3) * this.lw(p);   // レーンの境目 i (0〜6) の、位置 p での x
+    // 境目 i0 〜 i1 の帯 (うねりに沿って曲がる)
+    const band = (i0, i1) => {
+      g.beginPath(); g.moveTo(edge(i0, 0), this.py(0));
+      for (let k = 1; k <= N; k++) { const p = p1 * k / N; g.lineTo(edge(i0, p), this.py(p)); }
+      for (let k = N; k >= 0; k--) { const p = p1 * k / N; g.lineTo(edge(i1, p), this.py(p)); }
+      g.closePath();
+    };
+    const xl = (p) => edge(0, p), xr = (p) => edge(6, p);
     // 土台 (白いすりガラス)
     g.save();
-    g.beginPath(); g.moveTo(xl(0), this.py(0)); g.lineTo(xl(p1), this.py(p1)); g.lineTo(xr(p1), this.py(p1)); g.lineTo(xr(0), this.py(0)); g.closePath();
+    band(0, 6);
     const gr = g.createLinearGradient(0, this.py(p1), 0, this.py(0));
     gr.addColorStop(0, 'rgba(255,255,255,.18)'); gr.addColorStop(1, 'rgba(255,255,255,.5)');
     g.fillStyle = gr; g.fill();
@@ -316,8 +355,7 @@ export class Stage {
     for (let i = 0; i < 6; i++) {
       const a = (S.held && S.held[i] ? 0.34 : 0) + this.beams[i] * 0.4;
       const base = i % 2 ? 0.07 : 0.13;
-      g.beginPath(); g.moveTo(this.px(i, 0) - this.lw(0) / 2, this.py(0)); g.lineTo(this.px(i, p1) - this.lw(p1) / 2, this.py(p1));
-      g.lineTo(this.px(i, p1) + this.lw(p1) / 2, this.py(p1)); g.lineTo(this.px(i, 0) + this.lw(0) / 2, this.py(0)); g.closePath();
+      band(i, i + 1);
       g.fillStyle = rgb(hex(LANE_COL[i]), base + a * 0.6); g.fill();
       if (a > 0.02) {
         const bg = g.createLinearGradient(0, this.py(0), 0, this.py(0.9));
@@ -326,10 +364,16 @@ export class Stage {
       }
       this.beams[i] = Math.max(0, this.beams[i] - 0.06);
     }
+    // 疾走線 (レーンの上を手前へ流れる)
+    this.drawStreaks(g);
     // レーンの線
     g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 2;
-    for (let i = 1; i < 6; i++) { g.beginPath(); g.moveTo(this.L.cx + (i - 3) * this.lw(0), this.py(0)); g.lineTo(this.L.cx + (i - 3) * this.lw(p1), this.py(p1)); g.stroke(); }
-    // 判定線 (太い白い帯 + ピンクの光)
+    for (let i = 1; i < 6; i++) {
+      g.beginPath(); g.moveTo(edge(i, 0), this.py(0));
+      for (let k = 1; k <= N; k++) { const p = p1 * k / N; g.lineTo(edge(i, p), this.py(p)); }
+      g.stroke();
+    }
+    // 判定線 (太い白い帯 + ピンクの光)。うねりは判定線では 0 なので、動かない
     g.save(); g.shadowColor = 'rgba(255,90,170,.8)'; g.shadowBlur = 16 + pulse * 10;
     g.fillStyle = '#fff'; const y = this.py(0), th = Math.max(5, this.lw(0) * 0.07);
     g.beginPath(); g.roundRect ? g.roundRect(xl(0) - 8, y - th / 2, xr(0) - xl(0) + 16, th, th / 2) : g.rect(xl(0) - 8, y - th / 2, xr(0) - xl(0) + 16, th); g.fill(); g.restore();
@@ -346,6 +390,22 @@ export class Stage {
         g.fillStyle = LANE_DARK[i]; g.fillText(S.labels[i], x, y + 1);
       }
     }
+  }
+  // 疾走線: レーンの上を、奥から手前へ流れる光の線 (サビでは数が増え、速くなる)
+  drawStreaks(g) {
+    if (!this.nStreak) return;
+    g.save(); g.lineCap = 'round';
+    for (let i = 0; i < this.nStreak; i++) {
+      const s = this.streaks[i], pa = Math.max(0, s.p), pb = s.p + s.len;
+      if (pb <= 0.01) continue;
+      const x0 = this.cxAt(pa) + (s.u - 3) * this.lw(pa), y0 = this.py(pa), x1 = this.cxAt(pb) + (s.u - 3) * this.lw(pb), y1 = this.py(pb);
+      const k = clamp(1.1 - pa * 0.6, 0, 1);
+      const gr = g.createLinearGradient(x1, y1, x0, y0);
+      gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, rgb(mix(hex(LANE_COL[s.c]), [255, 255, 255], 0.5), 0.9 * k * (0.6 + 0.4 * this.rush)));
+      g.strokeStyle = gr; g.lineWidth = Math.max(1.5, this.lw(pa) * 0.05);
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+    }
+    g.restore();
   }
 
   drawNotes(t, S) {
@@ -390,10 +450,12 @@ export class Stage {
   drawRibbon(lane, pa, pb, active, missed, t) {
     const g = this.g, col = LANE_COL[lane], dk = LANE_DARK[lane];
     const hw = (p) => this.lw(p) * 0.3;
+    const n = Math.max(2, Math.ceil((pb - pa) * 18)), pAt = (k) => pa + (pb - pa) * k / n;   // うねりに沿って曲げる
     g.save();
     g.beginPath();
-    g.moveTo(this.px(lane, pa) - hw(pa), this.py(pa)); g.lineTo(this.px(lane, pb) - hw(pb), this.py(pb));
-    g.lineTo(this.px(lane, pb) + hw(pb), this.py(pb)); g.lineTo(this.px(lane, pa) + hw(pa), this.py(pa)); g.closePath();
+    for (let k = 0; k <= n; k++) { const p = pAt(k), x = this.px(lane, p) - hw(p); if (k) g.lineTo(x, this.py(p)); else g.moveTo(x, this.py(p)); }
+    for (let k = n; k >= 0; k--) { const p = pAt(k); g.lineTo(this.px(lane, p) + hw(p), this.py(p)); }
+    g.closePath();
     const gr = g.createLinearGradient(0, this.py(pa), 0, this.py(pb));
     const a = missed ? 0.3 : active ? 0.95 : 0.7;
     gr.addColorStop(0, rgb(hex(col), a)); gr.addColorStop(1, rgb(hex(dk), a * 0.85));
@@ -407,7 +469,11 @@ export class Stage {
     }
     g.restore();
     g.save(); g.lineWidth = 3; g.strokeStyle = missed ? 'rgba(255,255,255,.3)' : '#fff'; g.globalAlpha = active ? 1 : 0.9;
-    g.beginPath(); g.moveTo(this.px(lane, pa) - hw(pa), this.py(pa)); g.lineTo(this.px(lane, pb) - hw(pb), this.py(pb)); g.moveTo(this.px(lane, pa) + hw(pa), this.py(pa)); g.lineTo(this.px(lane, pb) + hw(pb), this.py(pb)); g.stroke();
+    for (const sg of [-1, 1]) {
+      g.beginPath();
+      for (let k = 0; k <= n; k++) { const p = pAt(k), x = this.px(lane, p) + sg * hw(p); if (k) g.lineTo(x, this.py(p)); else g.moveTo(x, this.py(p)); }
+      g.stroke();
+    }
     g.restore();
     if (active && !missed) { // 押している間、判定線でキラキラ
       if (Math.random() < 0.5) this.burst(this.px(lane, 0), this.L.yJ, lane, 1, 'ring');
