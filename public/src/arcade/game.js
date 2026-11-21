@@ -2,14 +2,18 @@
 // 時刻はすべて「曲の頭からの秒」(chartT)。入力は press / release / swipe に時刻を渡す。
 //
 // ノーツ: tap (押す) / flick (押して上へはじく) / hold (押し続ける。end で離す)
-// 判定 (ずれの大きさ ±秒): perfect 0.045 / great 0.09 / good 0.135 / bad 0.18。それより外れる (遅い) とミス。早すぎる押しは無視。
+// 判定 (ずれの大きさ ±秒): perfect 0.06 / great 0.115 / good 0.17 / bad 0.22 (少し甘め)。それより外れる (遅い) とミス。早すぎる押しは無視。
 // コンボ: perfect・great・good でつながり、bad・ミス・長押しの離しすぎで 0 に戻る。
 // 点: perfect 1 / great 0.8 / good 0.5 / bad 0.2 / miss 0 の平均 × 100000。S 92000〜 / A 80000〜 / B 60000〜 / C。
+// 長押しのなかには、途中でレーンをまたぐもの (via: [[時刻, レーン], …]) がある: 時刻の前後 0.25 秒のうちに、移る先のレーンを押す (指ならそのまま指をすべらせる)。
+//   元のレーンを先に離してもよい。間に合わないと失敗 (早く離したのと同じ)。
 // 長押しは 1 つのノーツ: 押した瞬間の判定がそのノーツの判定になり、最後まで押し続けるとその判定のまま、早く離すとミス (点は 0.3 倍)。
 // フリック: キーボードは押すだけでよい。画面を指で触る人 (needSwipe) は、押してから上へ FLICK_PX 以上はじく。
 //   はじかずに離す・0.3 秒待つと good まで (perfect・great は good になる)。
 
-export const WIN = { perfect: 0.045, great: 0.09, good: 0.135, bad: 0.18 };
+export const WIN = { perfect: 0.06, great: 0.115, good: 0.17, bad: 0.22 };
+export const SLIDE_EARLY = 0.25;   // レーンをまたぐ長押し: 乗り移りの時刻の、この前から
+export const SLIDE_LATE = 0.25;    // この後まで、移った先のレーンを押せば乗り移れる
 export const WEIGHT = { perfect: 1, great: 0.8, good: 0.5, bad: 0.2, miss: 0 };
 export const GRADES = ['perfect', 'great', 'good', 'bad', 'miss'];
 export const FLICK_PX = 26;
@@ -28,6 +32,7 @@ export class Game {
     this.notes = notes.map((n, i) => ({
       i, t: n.t, lane: n.lane, type: n.type, end: n.type === 'hold' ? n.end : n.t, flickEnd: !!n.flickEnd,
       state: 'wait', grade: null, d: 0, head: null,
+      path: n.type === 'hold' && n.via && n.via.length ? [{ t: n.t, lane: n.lane }, ...n.via.map(([t, lane]) => ({ t, lane }))] : null, seg: 0, cur: n.lane,
     })).sort((a, b) => a.t - b.t || a.lane - b.lane);
     this.byLane = Array.from({ length: lanes }, () => []);
     for (const n of this.notes) this.byLane[n.lane].push(n);
@@ -69,6 +74,7 @@ export class Game {
 
   // 押した (lane, 時刻 t, needSwipe = 指で触る入力)。戻り値: 当たったノーツ (無ければ null)
   press(lane, t, needSwipe = false) {
+    if (this.slideTo(null, lane, t)) return null;                   // 長押しの乗り移り
     const n = this.head(lane);
     if (!n || n.state !== 'wait') { this.stray++; return null; }
     const d = t - n.t, ad = Math.abs(d);
@@ -83,6 +89,20 @@ export class Game {
     }
     this.hit(n, grade, d, t);
     return n;
+  }
+  nextSeg(n) { return n.path && n.seg + 1 < n.path.length ? n.path[n.seg + 1] : null; }
+  // 長押しの乗り移り: from (null なら どのレーンからでも) → to。窓に入っていれば移して true
+  slideTo(from, to, t) {
+    for (let l = 0; l < this.lanes; l++) {
+      const n = this.holding[l];
+      if (!n || (from != null && l !== from)) continue;
+      const nx = this.nextSeg(n);
+      if (!nx || nx.lane !== to || t < nx.t - SLIDE_EARLY || t > nx.t + SLIDE_LATE) continue;
+      this.holding[l] = null; n.cur = to; n.seg++; this.holding[to] = n;
+      this.emit({ type: 'holdMove', lane: to, from: l, note: n, t });
+      return true;
+    }
+    return false;
   }
   hit(n, grade, d, t) {
     if (n.type === 'hold') {
@@ -120,6 +140,8 @@ export class Game {
     if (this.pend[lane]) this.giveUp(lane, t);
     const n = this.holding[lane];
     if (!n) return;
+    const nx = this.nextSeg(n);
+    if (nx && t >= nx.t - SLIDE_EARLY - 0.05 && t <= nx.t + SLIDE_LATE) return;   // 乗り移りの前後なら、離してよい (移る先を押せば続く)
     this.holding[lane] = null;
     if (t >= n.end - TAIL_SLACK) this.finishHold(n, true, t);
     else this.finishHold(n, false, t);
@@ -127,13 +149,13 @@ export class Game {
   finishHold(n, ok, t) {
     if (ok) {
       this.settle(n, n.head, n.d);
-      this.emit({ type: 'holdEnd', lane: n.lane, note: n, t, ok: true });
+      this.emit({ type: 'holdEnd', lane: n.cur, note: n, t, ok: true });
     } else {
       const head = n.head;
       n.head = 'miss';
       this.settle(n, 'miss', n.d, HOLD_FAIL_W * WEIGHT[head]);
       this.combo = 0;
-      this.emit({ type: 'holdEnd', lane: n.lane, note: n, t, ok: false });
+      this.emit({ type: 'holdEnd', lane: n.cur, note: n, t, ok: false });
     }
   }
 
@@ -144,6 +166,8 @@ export class Game {
       if (p && t - p.pt > SWIPE_WAIT) this.giveUp(l, t);
       // 長押しが終わりの時刻に届いた
       const h = this.holding[l];
+      const hn = h && this.nextSeg(h);
+      if (hn && t > hn.t + SLIDE_LATE) { this.holding[l] = null; this.finishHold(h, false, t); continue; }   // 乗り移れなかった
       if (h && t >= h.end) {
         if (!held || held[l] !== false) { this.holding[l] = null; this.finishHold(h, true, t); }
         else { this.holding[l] = null; this.finishHold(h, false, t); }

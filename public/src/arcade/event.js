@@ -126,8 +126,14 @@ export class Arcade {
   }
   onPtrMove(ev) {
     const p = this.ptrs.get(ev.pointerId);
-    if (!p || p.swiped || this.state !== 'play') return;
-    const y = ev.clientY - ev.target.getBoundingClientRect().top;
+    if (!p || this.state !== 'play' || !this.game) return;
+    const rc = ev.target.getBoundingClientRect(), nl = this.stage.laneAt(ev.clientX - rc.left);
+    if (nl !== p.lane && this.game.slideTo(p.lane, nl, this.chartT(this.evT(ev.timeStamp)))) {   // 長押しのまま、となりのレーンへ指をすべらせた
+      this.heldN[p.lane] = Math.max(0, this.heldN[p.lane] - 1); this.held[p.lane] = this.heldN[p.lane] > 0;
+      this.heldN[nl]++; this.held[nl] = true; p.lane = nl;
+    }
+    if (p.swiped) return;
+    const y = ev.clientY - rc.top;
     if (p.y0 - y >= FLICK_PX) { p.swiped = true; this.game.swipe(p.lane, this.chartT(this.evT(ev.timeStamp))); }
   }
   onPtrUp(ev) {
@@ -381,7 +387,11 @@ export class Arcade {
         g.press(n.lane, n.t + n.jit, false);
         if (n.type !== 'hold') { this.heldN[n.lane]--; this.held[n.lane] = this.heldN[n.lane] > 0; }
       }
-      if (n.state === 'hold' && t >= n.end) { this.heldN[n.lane] = 0; this.held[n.lane] = false; g.release(n.lane, n.end); }
+      if (n.state === 'hold') {
+        const nx = g.nextSeg(n);
+        if (nx && t >= nx.t) { const from = n.cur; g.press(nx.lane, nx.t, false); if (n.cur !== from) { this.heldN[from] = 0; this.held[from] = false; this.heldN[n.cur] = 1; this.held[n.cur] = true; } }
+        if (t >= n.end) { this.heldN[n.cur] = 0; this.held[n.cur] = false; g.release(n.cur, n.end); }
+      }
     }
   }
 }

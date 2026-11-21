@@ -24,7 +24,11 @@ for (const n of g.notes) { n.jit = (rnd() - 0.5) * 0.03; n.skip = rnd() < skip; 
 const bot = (t) => {
   for (const n of g.notes) {
     if (n.state === 'wait' && t >= n.t + n.jit && !n.skip) { held[n.lane] = true; g.press(n.lane, n.t + n.jit, false); if (n.type !== 'hold') held[n.lane] = false; }
-    if (n.state === 'hold' && t >= n.end) { held[n.lane] = false; g.release(n.lane, n.end); }
+    if (n.state === 'hold') {
+      const nx = g.nextSeg(n);
+      if (nx && t >= nx.t) { const from = n.cur; g.press(nx.lane, nx.t, false); if (n.cur !== from) { held[from] = false; held[n.cur] = true; } }
+      if (t >= n.end) { held[n.cur] = false; g.release(n.cur, n.end); }
+    }
   }
 };
 const dt = 1 / 60;
