@@ -4,6 +4,7 @@
 //   ヒット: 輪・星のはじけ・レーンの光の柱。判定の文字 (PERFECT は虹色)。コンボは大きく弾む
 //   マスコット: 丸いこぶた風の「ぽよ」(原作のあるキャラではなく、この画面用の絵)。拍に乗って弾み、成功で喜び、ミスで泣く
 // 使い方: const st = new Stage(canvas, chart); st.resize(); 毎コマ st.frame({...}) (event.js)
+import { SCENES } from './scenes.js';
 export const FONT = '"Hiragino Maru Gothic ProN","Yu Gothic UI","Meiryo","Arial Rounded MT Bold","Noto Sans CJK JP","Noto Sans JP",sans-serif';
 export const LANE_COL = ['#ff7eb6', '#ffa86b', '#ffd84d', '#6fdc9a', '#62c6ff', '#b48cff'];
 export const LANE_DARK = ['#ff3d8f', '#ff7a2e', '#f0b400', '#2fb870', '#1e9cf0', '#8a54f0'];
@@ -142,6 +143,10 @@ export class Stage {
   // 曲を替える: 拍の時刻 (テンポが変わる曲でも合うように、小節ごとに作る)・区間・長さを、この譜面のものにする
   setChart(chart) {
     this.chart = chart;
+    // 曲ごとの動く背景 (scenes.js)。無い曲は、いつもの背景
+    const Sc = SCENES[chart.id];
+    this.scenes = this.scenes || {};
+    this.scene = Sc ? (this.scenes[chart.id] || (this.scenes[chart.id] = new Sc(this))) : null;
     this.beats = [];
     const bs = chart.barStart || [], bb = chart.barBpm || [];
     for (let i = 0; i < bb.length; i++) for (let k = 0; k < 4; k++) this.beats.push(bs[i] + k * 60 / bb[i]);
@@ -235,7 +240,7 @@ export class Stage {
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const t = S.mode === 'play' ? S.t : -1, bi = this.beatInfo(t);
     const pulse = S.mode !== 'play' ? Math.pow(0.5 + 0.5 * Math.sin(this.t * Math.PI * 2 * 1.4), 3) : bi.i < 0 ? 0 : Math.pow(1 - bi.ph, 3);
-    this.drawBackground(t, dt, pulse, S.mode);
+    this.drawBackground(t, dt, pulse, S.mode, S);
     if (S.mode === 'play' && S.game) {
       this.consume(S.game.drain(), S);
       this.drawField(t, S, pulse);
@@ -249,8 +254,13 @@ export class Stage {
     if (S.mode === 'play') this.drawOverlayText(t, S);
   }
 
-  drawBackground(t, dt, pulse, mode) {
+  drawBackground(t, dt, pulse, mode, S) {
     const g = this.g, { W, H } = this;
+    if (this.scene) {   // 曲の場面 (その曲のイメージの絵)
+      const key = mode === 'play' ? secKey(this.section(t).name) : 'intro';
+      this.scene.draw({ g, t, dt, pulse, key, bi: this.beatInfo(mode === 'play' ? t : -1), mode, combo: S && S.game ? S.game.combo : 0 });
+      return;
+    }
     const key = mode === 'play' ? secKey(this.section(t).name) : 'intro';
     const target = (PAL[key] || PAL.intro).map(hex);
     this.pal = this.pal.map((c, i) => mix(c, target[i], clamp(dt * 2.2, 0, 1)));
