@@ -28,7 +28,7 @@ const vrm = g.userData.vrm; VRMUtils.rotateVRM0(vrm); scene.add(vrm.scene);
 vrm.scene.updateMatrixWorld(true);
 if (!qs.has('none')) {
   const sl = new GLTFLoader(); sl.register(p => new VRMLoaderPlugin(p)); const sg = await sl.loadAsync('../../' + src); // 材質 (MToon) と模様もそのまま読む
-  const { group, used } = await fitOutfit(sg, vrm, { parts });
+  const { group, used } = await fitOutfit(sg, vrm, { parts, scale: +(qs.get('sc') || 1.04) });
   console.log('rror? used', used.join(','));
   vrm.scene.add(group);
   // 元の服を隠す

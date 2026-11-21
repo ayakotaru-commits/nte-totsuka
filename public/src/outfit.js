@@ -26,8 +26,8 @@ function humanoidNames(src) {
   return Promise.all(jobs).then(() => map);
 }
 
-// 材質名で服のパーツを選ぶ。parts は材質名にあてる正規表現 (例: /Tops|Bottoms|Shoes/)
-export async function fitOutfit(src, vrm, { parts, scale = 1 } = {}) {
+// 材質名で服のパーツを選ぶ。scale は服全体の膨らみ (1.04 = 4% 大きく。今のキャラの肩甲骨などが服から突き出るのを防ぐ)。parts は材質名にあてる正規表現 (例: /Tops|Bottoms|Shoes/)
+export async function fitOutfit(src, vrm, { parts, scale = 1.04 } = {}) {
   const hmap = await humanoidNames(src);
   src.scene.updateMatrixWorld(true);
   vrm.scene.updateMatrixWorld(true);
