@@ -47,13 +47,10 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await page.screenshot({ path: path.join(out, 'b_menu.png') });
   await page.click('[data-do=wardrobe]'); await frames(6);
   await page.screenshot({ path: path.join(out, 'c_wardrobe.png') });
-  ok(await page.evaluate(() => document.querySelectorAll('.mn-item[data-wear]').length) >= 2, '着替えの一覧が出る');
-
-  // 持っていない服は着られない → 持っている服にして着る
-  await page.click('[data-wear=nishi_dress]'); await frames(3);
-  ok(await outfitOn() === 0, '持っていない服は着られない');
-  ok((await page.textContent('.mn-msg')).includes('買えます'), 'どこで買えるか出る');
+  ok(await page.evaluate(() => document.querySelectorAll('.mn-item[data-wear]').length) === 1, '買っていないあいだは「いつもの服」だけが並ぶ');
+  ok((await page.textContent('.mn-msg')).includes('洋服屋'), '買った服はここに並ぶ、の案内が出る');
   await page.evaluate(() => { __g.wardrobe.owned.add('nishi_dress'); __g.wardrobe.owned.add('tanuki_yukata'); __g.wardrobe.owned.add('lyla_hoodie'); __g.menu.render(); });
+  ok(await page.evaluate(() => [...document.querySelectorAll('.mn-item[data-wear]')].map(b => b.dataset.wear).join()) === 'default,lyla_hoodie,nishi_dress,tanuki_yukata', '買った 3 着だけが一覧に増える (持っていない服は出ない)');
   for (const id of ['nishi_dress', 'tanuki_yukata', 'lyla_hoodie']) {
     await page.click(`[data-wear=${id}]`);
     await page.waitForFunction(() => { let n = 0; __g.player.model.root.traverse(o => { if (o.name === 'outfit' && o.visible) n++; }); return n === 1; }, null, { timeout: 120000 });

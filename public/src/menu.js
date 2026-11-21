@@ -54,7 +54,8 @@ export class Menu {
     Object.assign(this.cam, this.saved); this.saved = null;
   }
 
-  list() { return [{ id: 'default', name: 'いつもの服' }, ...this.wardrobe.items]; }
+  // 一覧に出すのは、持っている服だけ (買っていない服は洋服屋で見る)
+  list() { return [{ id: 'default', name: 'いつもの服' }, ...this.wardrobe.items.filter((o) => this.wardrobe.has(o.id))]; }
 
   render() {
     const w = this.wardrobe;
@@ -69,21 +70,17 @@ export class Menu {
     } else {
       h += '<div class="mn-list">';
       this.list().forEach((o, i) => {
-        const have = w.has(o.id), on = w.equipped === o.id;
-        const sub = on ? '着ている' : have ? '持っている' : `${o.shop}で ${yen(o.price)}`;
-        h += `<button class="mn-item${on ? ' on' : ''}${have ? '' : ' locked'}${i === this.sel ? ' sel' : ''}" data-wear="${o.id}">${o.name}<small>${sub}</small></button>`;
+        const on = w.equipped === o.id;
+        h += `<button class="mn-item${on ? ' on' : ''}${i === this.sel ? ' sel' : ''}" data-wear="${o.id}">${o.name}<small>${on ? '着ている' : ''}</small></button>`;
       });
-      h += `</div><div class="mn-msg">${this.msg || (w.items.length ? '' : '服はまだありません')}</div><button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>`;
+      h += `</div><div class="mn-msg">${this.msg || (this.list().length > 1 ? '' : '買った服はここに並びます。洋服屋で買えます')}</div><button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>`;
     }
     this.el.innerHTML = h;
   }
 
   wear(id) {
     const w = this.wardrobe;
-    if (!w.has(id)) {
-      const o = w.byId.get(id);
-      this.msg = `${o.shop} で買えます (${yen(o.price)})`; this.render(); return;
-    }
+    if (!w.has(id)) return; // 一覧には持っている服しか出ないが、念のため
     w.equip(id);
     this.player.model.setOutfit(w.urlOf(id));
     this.msg = '';
