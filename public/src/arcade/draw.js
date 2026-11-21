@@ -6,6 +6,8 @@
 // 使い方: const st = new Stage(canvas, chart); st.resize(); 毎コマ st.frame({...}) (event.js)
 import { SCENES } from './scenes.js';
 export const FONT = '"Hiragino Maru Gothic ProN","Yu Gothic UI","Meiryo","Arial Rounded MT Bold","Noto Sans CJK JP","Noto Sans JP",sans-serif';
+// ノーツの色は、レーンに関係なく種類で決まる: 押す = ピンク、フリック = 金の星、長押し = 水色
+export const TAP_COL = '#ff7eb6', TAP_DK = '#d6407f', HOLD_COL = '#4cc3ff', HOLD_DK = '#2b8fd6', FLICK_COL = '#ffc84a';
 export const LANE_COL = ['#ff7eb6', '#ffa86b', '#ffd84d', '#6fdc9a', '#62c6ff', '#b48cff'];
 export const LANE_DARK = ['#ff3d8f', '#ff7a2e', '#f0b400', '#2fb870', '#1e9cf0', '#8a54f0'];
 export const GRADE_STYLE = {
@@ -64,8 +66,8 @@ function notePath(g, cx, cy, s) { // ♪
 // ---- 絵 (最初に 1 度だけ作る) ----
 function makeSprites() {
   const S = {};
-  S.tap = LANE_COL.map((col, i) => { // 丸いキャンディ
-    const c = mk(160, 160), g = c.getContext('2d'), base = hex(col), dk = hex(LANE_DARK[i]);
+  const candy = (col, dkc) => { // 丸いキャンディ
+    const c = mk(160, 160), g = c.getContext('2d'), base = hex(col), dk = hex(dkc);
     g.shadowColor = rgb(dk, 0.55); g.shadowBlur = 10; g.shadowOffsetY = 4;
     g.fillStyle = '#fff'; g.beginPath(); g.arc(80, 78, 70, 0, 7); g.fill();
     g.shadowColor = 'transparent';
@@ -73,16 +75,15 @@ function makeSprites() {
     gr.addColorStop(0, rgb(mix(base, [255, 255, 255], 0.55))); gr.addColorStop(0.55, col); gr.addColorStop(1, rgb(dk));
     g.fillStyle = gr; g.beginPath(); g.arc(80, 78, 59, 0, 7); g.fill();
     g.fillStyle = 'rgba(255,255,255,.62)'; g.beginPath(); g.ellipse(62, 50, 26, 14, -0.5, 0, 7); g.fill();
-    g.fillStyle = 'rgba(255,255,255,.95)'; starPath(g, 80, 84, 20, 9); g.fill();
-    return c;
-  });
-  S.hold = LANE_COL.map((col, i) => { // 長押しの頭: 丸 + 中に白いハート
-    const c = mk(160, 160), g = c.getContext('2d');
-    g.drawImage(S.tap[i], 0, 0);
-    g.fillStyle = LANE_COL[i]; g.beginPath(); g.arc(80, 84, 26, 0, 7); g.fill();
+    return { c, g };
+  };
+  S.tap = (() => { const { c, g } = candy(TAP_COL, TAP_DK); g.fillStyle = 'rgba(255,255,255,.95)'; starPath(g, 80, 84, 20, 9); g.fill(); return c; })();
+  S.hold = (() => { // 長押しの頭: 水色の丸 + 中に白いハート
+    const { c, g } = candy(HOLD_COL, HOLD_DK);
+    g.fillStyle = HOLD_COL; g.beginPath(); g.arc(80, 84, 26, 0, 7); g.fill();
     g.fillStyle = '#fff'; heartPath(g, 80, 84, 17); g.fill();
     return c;
-  });
+  })();
   S.flick = (() => { // 星
     const c = mk(176, 176), g = c.getContext('2d');
     g.shadowColor = 'rgba(255,90,160,.6)'; g.shadowBlur = 12; g.shadowOffsetY = 4;
@@ -94,13 +95,13 @@ function makeSprites() {
     g.fillStyle = '#fff'; g.beginPath(); g.moveTo(88, 62); g.lineTo(112, 96); g.lineTo(96, 96); g.lineTo(96, 120); g.lineTo(80, 120); g.lineTo(80, 96); g.lineTo(64, 96); g.closePath(); g.fill();
     return c;
   })();
-  S.heart = LANE_COL.map((col) => {
+  S.heart = (() => { // 長押しの終わりのハート
     const c = mk(96, 96), g = c.getContext('2d');
     g.fillStyle = '#fff'; heartPath(g, 48, 50, 36); g.fill();
-    g.fillStyle = col; heartPath(g, 48, 50, 28); g.fill();
+    g.fillStyle = HOLD_COL; heartPath(g, 48, 50, 28); g.fill();
     g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.ellipse(34, 36, 8, 4, -0.6, 0, 7); g.fill();
     return c;
-  });
+  })();
   const glyph = (draw, size = 64) => { const c = mk(size, size), g = c.getContext('2d'); draw(g, size); return c; };
   S.star = glyph((g, s) => { g.fillStyle = '#fff'; starPath(g, s / 2, s / 2 + 2, s * 0.46, s * 0.2); g.fill(); });
   S.spark = glyph((g, s) => { g.fillStyle = '#fff'; starPath(g, s / 2, s / 2, s * 0.48, s * 0.09, 4, 0); g.fill(); });
@@ -111,7 +112,7 @@ function makeSprites() {
   // 色をつけた小さな絵 (パーティクル用): 白い絵を、色ごとに塗り直す
   const tint = (src, col) => { const c = mk(src.width, src.height), g = c.getContext('2d'); g.drawImage(src, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = col; g.fillRect(0, 0, c.width, c.height); return c; };
   S.tint = {};
-  for (const k of ['star', 'spark', 'hrt', 'note']) S.tint[k] = [...LANE_COL, '#ffffff', '#ffe14a'].map((col) => tint(S[k], col));
+  for (const k of ['star', 'spark', 'hrt', 'note']) S.tint[k] = [...LANE_COL, '#ffffff', '#ffe14a', TAP_COL, FLICK_COL, HOLD_COL, '#7dffd2', '#a98bff'].map((col) => tint(S[k], col));
   return S;
 }
 
@@ -134,7 +135,7 @@ export class Stage {
     this.mood = { kind: 'happy', until: 0 };
     this.banner = null;
     this.scoreShown = 0;
-    this.holdOn = new Array(6).fill(false);
+    this.holdOn = new Array(6).fill(false); this.auras = []; this.holdFx = 0;
     this.t = 0;
     this.floaters = Array.from({ length: 34 }, (_, i) => ({
       x: Math.random(), y: Math.random(), kind: ['star', 'hrt', 'note', 'spark'][i % 4], size: 0.018 + Math.random() * 0.03,
@@ -175,6 +176,17 @@ export class Stage {
   lw(p) { return lerp(this.L.wJ, this.wTcur ?? this.L.wT, p) / 6 * (1 + this.breath * Math.max(0, p)); }
   // うねり: 判定線 (p = 0) では 0 (打つ位置は動かない)、奥ほど大きく振れる。波は手前 (判定線) へ向かって進む
   cxAt(p) { if (!this.swA) return this.L.cx; const q = Math.max(0, p); return this.L.cx + this.swA * Math.pow(q, 1.25) * Math.sin(this.swT + q * 6.0); }
+  pxf(lf, p) { return this.cxAt(p) + (lf - 2.5) * this.lw(p); }   // 小数のレーン (またぐ長押し用)
+  // 長押し n の、時刻 tt でのレーン (またぐ所では、乗り移りの時刻の 0.25 秒前から、なめらかに移る)
+  laneF(n, tt) {
+    if (!n.path) return n.lane;
+    let l = n.path[0].lane;
+    for (let i = 1; i < n.path.length; i++) {
+      const u = clamp((tt - (n.path[i].t - 0.25)) / 0.25, 0, 1); if (u <= 0) break;
+      const v = u * u * (3 - 2 * u); l = n.path[i - 1].lane + (n.path[i].lane - n.path[i - 1].lane) * v;
+    }
+    return l;
+  }
   px(lane, p) { return this.cxAt(p) + (lane - 2.5) * this.lw(p); }
   py(p) { return lerp(this.L.yJ, this.L.yT, p); }
   laneAt(x) { const k = (x - (this.L.cx - this.L.wJ / 2)) / (this.L.wJ / 6); return clamp(Math.floor(k), 0, 5); }
@@ -198,12 +210,15 @@ export class Stage {
       const lane = e.lane, x = this.px(lane, 0), y = L.yJ;
       if (e.type === 'hit') {
         this.beams[lane] = 1;
+        const tc = e.flick ? 9 : e.hold ? 10 : 8;   // 色: 押す = ピンク、フリック = 金、長押し = 水色
         this.rings.push({ lane, age: 0, col: lane, big: e.grade === 'perfect' });
+        if (e.grade !== 'bad') this.aurora(lane, e.grade, e.flick ? 'flick' : e.hold ? 'hold' : 'tap');
         this.judge = { grade: e.grade, t0: this.t, fl: e.grade === 'perfect' || e.grade === 'miss' ? 0 : e.d < 0 ? -1 : 1 };
         if (e.grade === 'perfect' || e.grade === 'great' || e.grade === 'good') { this.comboPop = 1; }
         const n = e.grade === 'perfect' ? 12 : e.grade === 'great' ? 8 : e.grade === 'good' ? 5 : 2;
-        this.burst(x, y, lane, n, e.flick ? 'up' : 'ring');
-        if (e.grade === 'perfect') this.burst(x, y, 6, 4, 'sparkle');
+        this.burst(x, y, tc, n * 2, e.flick ? 'up' : 'ring');
+        if (e.grade === 'perfect') this.burst(x, y, 6, 10, 'sparkle');
+        if (e.grade === 'perfect' || e.grade === 'great') this.burst(x, y, 11, 6, 'up');
         if (e.grade === 'perfect' || e.grade === 'great') this.mood = { kind: 'joy', until: this.t + 0.5 };
         if (e.grade === 'bad') this.mood = { kind: 'sad', until: this.t + 0.5 };
       } else if (e.type === 'miss') {
@@ -212,12 +227,48 @@ export class Stage {
         this.burst(this.px(lane, 0), L.yJ, 7, 3, 'cloud');
       } else if (e.type === 'holdOn') {
         this.holdOn[lane] = true;
+      } else if (e.type === 'holdMove') {   // レーンをまたいだ: 元の所から新しい所へ、オーロラが走る
+        this.holdOn[e.from] = false; this.holdOn[lane] = true;
+        this.aurora(lane, 'great', 'hold'); this.aurora(e.from, 'good', 'hold'); this.rings.push({ lane, age: 0, col: lane, big: true });
+        this.burst(this.px(lane, 0), y, 10, 10, 'up');
       } else if (e.type === 'holdEnd') {
         this.holdOn[lane] = false;
-        if (e.ok) { this.burst(x, y, lane, 8, 'ring'); this.rings.push({ lane, age: 0, col: lane, big: false }); this.beams[lane] = 0.8; }
+        if (e.ok) { this.burst(x, y, 10, 14, 'ring'); this.burst(x, y, 6, 8, 'sparkle'); this.rings.push({ lane, age: 0, col: lane, big: true }); this.beams[lane] = 0.8; this.aurora(lane, 'perfect', 'hold'); }
         else { this.judge = { grade: 'miss', t0: this.t, fl: 0 }; this.mood = { kind: 'sad', until: this.t + 0.9 }; }
       }
     }
+  }
+  // オーロラ: 判定線から立ちのぼる光のカーテン (加算合成)。完璧ほど高く・広く、種類で色あいが変わる
+  aurora(lane, grade, type) {
+    const big = grade === 'perfect' ? 1 : grade === 'great' ? 0.8 : 0.55;
+    const hue = type === 'tap' ? [330, 290, 190, 160] : type === 'flick' ? [50, 20, 330, 170] : [190, 170, 260, 300];
+    this.auras.push({ lane, age: 0, big, hue, seed: Math.random() * 6.28, life: 0.5 + 0.35 * big });
+    if (this.auras.length > 8) this.auras.shift();
+  }
+  drawAuras(dt) {
+    const g = this.g, L = this.L;
+    this.auras = this.auras.filter((a) => (a.age += dt) < a.life);
+    if (!this.auras.length) return;
+    g.save(); g.globalCompositeOperation = 'lighter';
+    for (const a of this.auras) {
+      const k = a.age / a.life, e = 1 - Math.pow(1 - Math.min(1, k * 1.6), 3), fade = Math.pow(1 - k, 1.3);
+      const cx = this.px(a.lane, 0), w0 = this.lw(0), h = this.H * (0.2 + 0.2 * a.big) * (0.35 + 0.65 * e);
+      // 足もとのかがやき
+      const gl = g.createRadialGradient(cx, L.yJ, 0, cx, L.yJ, w0 * (1.1 + a.big));
+      gl.addColorStop(0, `hsla(${a.hue[0]},100%,66%,${0.5 * fade})`); gl.addColorStop(1, `hsla(${a.hue[0]},100%,60%,0)`); g.fillStyle = gl; g.fillRect(cx - w0 * 2.4, L.yJ - w0 * 2.4, w0 * 4.8, w0 * 4.8);
+      // カーテン (ゆらゆらした帯を、色をずらして重ねる)
+      for (let j = 0; j < a.hue.length; j++) {
+        const hw = w0 * (0.2 + 0.09 * j) * (0.8 + a.big * 0.4), off = (j - 1.5) * w0 * 0.22, N = 14;
+        const gr = g.createLinearGradient(0, L.yJ, 0, L.yJ - h);
+        gr.addColorStop(0, `hsla(${a.hue[j]},100%,62%,${0.44 * fade})`); gr.addColorStop(0.5, `hsla(${a.hue[(j + 1) % 4]},100%,60%,${0.17 * fade})`); gr.addColorStop(1, `hsla(${a.hue[(j + 2) % 4]},100%,58%,0)`);
+        g.fillStyle = gr; g.beginPath();
+        const wave = (i, side) => { const f = i / N, y = L.yJ - h * f; return [cx + off + Math.sin(f * 5 + a.seed + j * 1.3 + a.age * 9) * w0 * 0.22 * f + side * hw * (1 - f * 0.55) * (1 + 0.25 * Math.sin(f * 7 + j + a.age * 6)), y]; };
+        for (let i = 0; i <= N; i++) { const [x, y] = wave(i, -1); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
+        for (let i = N; i >= 0; i--) { const [x, y] = wave(i, 1); g.lineTo(x, y); }
+        g.closePath(); g.fill();
+      }
+    }
+    g.restore();
   }
   burst(x, y, col, n, kind) {
     for (let i = 0; i < n; i++) {
@@ -231,7 +282,7 @@ export class Stage {
   }
 
   resetPlay() { // 曲を始めるたびに、演出の状態を戻す
-    this.parts = []; this.rings = []; this.beams.fill(0); this.holdOn.fill(false);
+    this.parts = []; this.rings = []; this.auras = []; this.beams.fill(0); this.holdOn.fill(false);
     this.judge = null; this.comboPop = 0; this.banner = null; this.bannerFor = null; this.scoreShown = 0; this.mood = { kind: 'happy', until: 0 };
   }
   confetti(n = 3) { // 結果の画面: 上から色とりどりの紙吹雪
@@ -279,6 +330,7 @@ export class Stage {
       this.drawBanner(t);
       this.drawNotes(t, S);
       this.drawRings(dt, S);
+      this.drawAuras(dt);
     }
     this.drawParts(dt);
     if (S.mode === 'play') this.drawHud(t, S, pulse);
@@ -425,16 +477,17 @@ export class Stage {
       if (n.type === 'hold') {
         const active = n.state === 'hold';
         const pa = Math.max(active ? 0 : p, -0.02), pb = Math.min(pe, 1.08);
-        if (pb > pa) this.drawRibbon(lane, pa, pb, active, missed, t);
+        const lfAt = (p) => this.laneF(n, t + p * ap);
+        if (pb > pa) this.drawRibbon(lfAt, pa, pb, active, missed, t);
         // 終わりのハート
-        if (pe > -0.02 && pe < 1.08) { const s = this.lw(pe) * 0.46, y = this.py(pe), x = this.px(lane, pe); g.globalAlpha = missed ? 0.35 : 1; g.drawImage(S_.heart[lane], x - s, y - s, s * 2, s * 2); g.globalAlpha = 1; }
-        if (n.flickEnd && pe > 0 && pe < 1.08) this.arrowAt(lane, pe);
+        if (pe > -0.02 && pe < 1.08) { const s = this.lw(pe) * 0.46, y = this.py(pe), x = this.pxf(lfAt(pe), pe); g.globalAlpha = missed ? 0.35 : 1; g.drawImage(S_.heart, x - s, y - s, s * 2, s * 2); g.globalAlpha = 1; }
+        if (n.flickEnd && pe > 0 && pe < 1.08) this.arrowAt(lfAt(pe), pe);
       }
       // 頭 (押す所)。長押しは押している間、判定線に残る
       const hp = n.type === 'hold' && n.state === 'hold' ? 0 : p;
       if (hp < -0.34 || hp > 1.08) continue;
-      const s = this.lw(hp) * 0.5, x = this.px(lane, hp), y = this.py(hp);
-      const sprite = n.type === 'flick' ? S_.flick : n.type === 'hold' ? S_.hold[lane] : S_.tap[lane];
+      const s = this.lw(hp) * 0.5, x = n.type === 'hold' ? this.pxf(this.laneF(n, t + hp * ap), hp) : this.px(lane, hp), y = this.py(hp);
+      const sprite = n.type === 'flick' ? S_.flick : n.type === 'hold' ? S_.hold : S_.tap;
       const k = n.type === 'flick' ? 1.12 : 1;
       g.save(); g.globalAlpha = missed ? 0.4 * clamp(1 + hp * 2.2, 0, 1) : 1;
       if (missed) { g.filter = 'grayscale(1)'; }
@@ -444,40 +497,43 @@ export class Stage {
     }
   }
   arrowAt(lane, p) {
-    const g = this.g, x = this.px(lane, p), y = this.py(p) - this.lw(p) * 0.6, s = this.lw(p) * 0.3;
+    const g = this.g, x = this.pxf(lane, p), y = this.py(p) - this.lw(p) * 0.6, s = this.lw(p) * 0.3;
     g.fillStyle = '#fff'; g.strokeStyle = '#ff6fae'; g.lineWidth = 2;
     g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y + s * 0.4); g.lineTo(x + s * 0.35, y + s * 0.4); g.lineTo(x + s * 0.35, y + s); g.lineTo(x - s * 0.35, y + s); g.lineTo(x - s * 0.35, y + s * 0.4); g.lineTo(x - s, y + s * 0.4); g.closePath(); g.fill(); g.stroke();
   }
-  drawRibbon(lane, pa, pb, active, missed, t) {
-    const g = this.g, col = LANE_COL[lane], dk = LANE_DARK[lane];
-    const hw = (p) => this.lw(p) * 0.3;
-    const n = Math.max(2, Math.ceil((pb - pa) * 18)), pAt = (k) => pa + (pb - pa) * k / n;   // うねりに沿って曲げる
+  drawRibbon(lfAt, pa, pb, active, missed, t) {
+    const g = this.g, col = HOLD_COL, dk = HOLD_DK;
+    const hw = (p) => this.lw(p) * 0.3, X = (p) => this.pxf(lfAt(p), p);
+    const n = Math.max(2, Math.ceil((pb - pa) * 26)), pAt = (k) => pa + (pb - pa) * k / n;   // うねり・またぐ所に沿って曲げる
     g.save();
     g.beginPath();
-    for (let k = 0; k <= n; k++) { const p = pAt(k), x = this.px(lane, p) - hw(p); if (k) g.lineTo(x, this.py(p)); else g.moveTo(x, this.py(p)); }
-    for (let k = n; k >= 0; k--) { const p = pAt(k); g.lineTo(this.px(lane, p) + hw(p), this.py(p)); }
+    for (let k = 0; k <= n; k++) { const p = pAt(k), x = X(p) - hw(p); if (k) g.lineTo(x, this.py(p)); else g.moveTo(x, this.py(p)); }
+    for (let k = n; k >= 0; k--) { const p = pAt(k); g.lineTo(X(p) + hw(p), this.py(p)); }
     g.closePath();
     const gr = g.createLinearGradient(0, this.py(pa), 0, this.py(pb));
     const a = missed ? 0.3 : active ? 0.95 : 0.7;
     gr.addColorStop(0, rgb(hex(col), a)); gr.addColorStop(1, rgb(hex(dk), a * 0.85));
     g.fillStyle = gr; g.fill();
     g.clip();
-    // キャンディのしま模様
+    // キャンディのしま模様 (またぐ所では、帯の向きにあわせて斜め)
     g.strokeStyle = `rgba(255,255,255,${missed ? 0.15 : active ? 0.5 : 0.35})`; g.lineWidth = Math.max(3, this.lw(0) * 0.1);
     const step = 0.06, off = active ? (t * 0.8) % step : 0;
     for (let p = pa - step * 2 + off; p < pb + step; p += step) {
-      g.beginPath(); g.moveTo(this.px(lane, p) - this.lw(p), this.py(p) + this.lw(p) * 0.35); g.lineTo(this.px(lane, p) + this.lw(p), this.py(p) - this.lw(p) * 0.35); g.stroke();
+      const x = X(p);
+      g.beginPath(); g.moveTo(x - this.lw(p), this.py(p) + this.lw(p) * 0.35); g.lineTo(x + this.lw(p), this.py(p) - this.lw(p) * 0.35); g.stroke();
     }
     g.restore();
     g.save(); g.lineWidth = 3; g.strokeStyle = missed ? 'rgba(255,255,255,.3)' : '#fff'; g.globalAlpha = active ? 1 : 0.9;
     for (const sg of [-1, 1]) {
       g.beginPath();
-      for (let k = 0; k <= n; k++) { const p = pAt(k), x = this.px(lane, p) + sg * hw(p); if (k) g.lineTo(x, this.py(p)); else g.moveTo(x, this.py(p)); }
+      for (let k = 0; k <= n; k++) { const p = pAt(k), x = X(p) + sg * hw(p); if (k) g.lineTo(x, this.py(p)); else g.moveTo(x, this.py(p)); }
       g.stroke();
     }
     g.restore();
-    if (active && !missed) { // 押している間、判定線でキラキラ
-      if (Math.random() < 0.5) this.burst(this.px(lane, 0), this.L.yJ, lane, 1, 'ring');
+    if (active && !missed) { // 押している間、判定線でキラキラ・ときどきオーロラ
+      const lf = lfAt(0);
+      if (Math.random() < 0.6) this.burst(this.pxf(lf, 0), this.L.yJ, 10, 1, 'ring');
+      if (t - (this.holdFx || -9) > 0.3 || t < this.holdFx) { this.holdFx = t; this.aurora(Math.round(lf), 'good', 'hold'); }
     }
   }
   drawRings(dt) {

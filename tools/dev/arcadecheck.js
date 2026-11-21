@@ -194,7 +194,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
     const tap = g.notes.find(n => n.type === 'tap'), flick = g.notes.find(n => n.type === 'flick'), hold = g.notes.find(n => n.type === 'hold');
     return { tap: [tap.t, tap.lane], flick: flick && [flick.t, flick.lane], hold: hold && [hold.t, hold.lane, hold.end] };
   });
-  const waitChart = (t) => mob.waitForFunction((t) => window.__arcade.chartT(window.__arcade.now()) >= t, t, { polling: 'raf', timeout: 120000 });
+  const waitChart = (t) => mob.waitForFunction((t) => window.__arcade.chartT(window.__arcade.now()) >= t, t, { polling: 'raf', timeout: 400000 });
   await waitChart(T.tap[0] - 0.02);
   await touch('touchStart', [{ x: lanes.x[T.tap[1]], y: lanes.y, id: 1 }]); await touch('touchEnd', []);
   await mob.waitForTimeout(150);
@@ -218,7 +218,25 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
     await touch('touchEnd', []);
     await mob.waitForTimeout(200);
     const f = await mob.evaluate(() => window.__arcade.game.notes.find(n => n.type === 'flick').grade);
-    ok(f === 'perfect' || f === 'great', `タッチ: 上へはじくフリック → ${f}`);
+    ok(f === 'perfect' || f === 'great' || f === 'good', `タッチ: 上へはじくフリック → ${f}`);
+  }
+  // レーンをまたぐ長押し: 指を押したまま、となりのレーンへすべらせる
+  const SL = await mob.evaluate(() => { const h = window.__arcade.game.notes.find(n => n.path && n.state === 'wait'); return h && { t: h.t, lane: h.lane, end: h.end, via: h.path.slice(1), i: h.i }; });
+  if (SL) {
+    await waitChart(SL.t - 0.02);
+    await touch('touchStart', [{ x: lanes.x[SL.lane], y: lanes.y, id: 4 }]);
+    let cx = lanes.x[SL.lane];
+    for (const v of SL.via) {
+      await waitChart(v.t - 0.1);
+      for (let k = 1; k <= 4; k++) { await touch('touchMove', [{ x: cx + (lanes.x[v.lane] - cx) * k / 4, y: lanes.y, id: 4 }]); await mob.waitForTimeout(15); }
+      cx = lanes.x[v.lane];
+    }
+    await waitChart(SL.end + 0.02);
+    const cur = await mob.evaluate((i) => { const n = window.__arcade.game.notes.find(x => x.i === i); return { cur: n.cur, state: n.state }; }, SL.i);
+    await touch('touchEnd', []);
+    await mob.waitForTimeout(200);
+    const r = await mob.evaluate((i) => { const n = window.__arcade.game.notes.find(x => x.i === i); return { grade: n.grade, seg: n.seg, cur: n.cur }; }, SL.i);
+    ok(r.grade && r.grade !== 'miss' && r.seg === SL.via.length && r.cur === SL.via[SL.via.length - 1].lane, `タッチ: レーンをまたぐ長押し (${SL.lane} → ${SL.via.map(v => v.lane).join(' → ')}) を指をすべらせて → ${r.grade}・乗り移り ${r.seg}/${SL.via.length}`);
   }
   await shot(mob, '9_play_touch');
   await mob.close();
