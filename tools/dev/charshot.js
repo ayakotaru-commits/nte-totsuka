@@ -7,6 +7,7 @@
 // 使い方: node tools/dev/charshot.js <出力フォルダ> "<charview.html の ? より後ろ>" ...
 //   例: node tools/dev/charshot.js out "act=vault&h=0.85&s=0.3" "act=vault&h=0.85&s=0.5" "act=climb&h=1.8&s=0.4"
 //   出力は 000.png, 001.png, ... (指定した順)。--novrm を付けると VRM を読まず、組み立て式のキャラで撮る。
+//   --page <名前> で tools/dev/<名前>.html を撮る (既定 charview。着せ替えは outfitview)。
 //   --scale 3 で 3 倍の解像度 (細部を切り出して見るとき)。
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -20,6 +21,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.json': '
 (async () => {
   const args = process.argv.slice(2);
   const novrm = args.includes('--novrm'); if (novrm) args.splice(args.indexOf('--novrm'), 1);
+  const pi = args.indexOf('--page'); const pageName = pi < 0 ? 'charview' : args.splice(pi, 2)[1]; // --page outfitview で別の確認ページを撮る
   const si = args.indexOf('--scale'); const scale = si < 0 ? 1 : +args.splice(si, 2)[1]; // 細部を見るときの拡大率
   const [out, ...queries] = args;
   if (!out || !queries.length) { console.error('usage: node tools/dev/charshot.js <出力フォルダ> "<クエリ>" ...'); process.exit(1); }
@@ -31,7 +33,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.json': '
     if (req.method === 'HEAD') res.end(); else fs.createReadStream(p).pipe(res);
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  const base = `http://127.0.0.1:${server.address().port}/tools/dev/charview.html?`;
+  const base = `http://127.0.0.1:${server.address().port}/tools/dev/${pageName}.html?`;
   const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const page = await browser.newPage({ viewport: { width: 960, height: 720 }, deviceScaleFactor: scale });
   await page.route('https://cdn.jsdelivr.net/npm/three@0.170.0/**', r =>

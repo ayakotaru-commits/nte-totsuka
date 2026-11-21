@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- 着せ替え (public/src/outfit.js) の確認ページ。charshot.js の --page outfitview で撮る:
+  node tools/dev/charshot.js out --page outfitview "src=data/raw/outfits/up1.vrm&parts=Tops|Bottoms|Shoes&pose=0"
+    src = 服の元の VRM (リポジトリ直下からの相対パス)、parts = 着るパーツの材質名 (正規表現)、
+    pose = 0 基準の姿勢 / 1 腕を下ろして膝を曲げた姿勢 / 2 腕を上げて脚を開いた姿勢、none=1 で服を着せない (比較用)。
+  画面は 正面 / 横 / 後ろ / 上半身のアップ。-->
+<html lang="ja"><head><meta charset="utf-8"><title>outfitview</title>
+<style>html,body{margin:0;overflow:hidden;background:#8fa3b8}</style>
+<script type="importmap">{"imports":{
+ "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+ "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+ "@pixiv/three-vrm":"https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.3/lib/three-vrm.module.min.js"}}</script>
+</head><body><script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { fitOutfit } from '../../public/src/outfit.js';
+const qs = new URLSearchParams(location.search);
+const src = qs.get('src') || 'data/raw/outfits/up1.vrm', parts = new RegExp(qs.get('parts') || 'Tops|Bottoms|Shoes'), pose = +(qs.get('pose') || 0);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight); document.body.appendChild(renderer.domElement);
+renderer.setScissorTest(true);
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#8fa3b8');
+scene.add(new THREE.HemisphereLight('#ffffff', '#778', 2.2)); const sun = new THREE.DirectionalLight('#fff', 2); sun.position.set(2, 4, 3); scene.add(sun);
+const loader = new GLTFLoader(); loader.register(p => new VRMLoaderPlugin(p));
+const g = await loader.loadAsync('../../public/models/player.vrm');
+const vrm = g.userData.vrm; VRMUtils.rotateVRM0(vrm); scene.add(vrm.scene);
+vrm.scene.updateMatrixWorld(true);
+if (!qs.has('none')) {
+  const sl = new GLTFLoader(); sl.register(p => new VRMLoaderPlugin(p)); const sg = await sl.loadAsync('../../' + src); // 材質 (MToon) と模様もそのまま読む
+  const { group, used } = await fitOutfit(sg, vrm, { parts });
+  console.log('rror? used', used.join(','));
+  vrm.scene.add(group);
+  // 元の服を隠す
+  vrm.scene.traverse(o => { if (o.isMesh && o !== group && !group.children.includes(o)) { const ms = Array.isArray(o.material) ? o.material : [o.material]; for (const m of ms) if (/Tops|Bottoms|Shoes/.test(m.name) && !(o.parent === group)) m.visible = false; } });
+}
+const R = (n, x, y, z) => { const b = vrm.humanoid.getNormalizedBoneNode(n); b.rotation.set(x, y, z); };
+if (pose === 1) { R('leftUpperArm', 0, 0, -1.1); R('rightUpperArm', 0, 0, 1.1); R('leftUpperLeg', -0.7, 0, 0); R('leftLowerLeg', 1.0, 0, 0); R('rightUpperLeg', 0.3, 0, 0); R('spine', 0.25, 0, 0); }
+if (pose === 2) { R('leftUpperArm', 0, 0, 0.9); R('rightUpperArm', 0, 0, -0.9); R('leftUpperLeg', 0, 0, -0.4); R('rightUpperLeg', 0, 0, 0.4); R('leftLowerArm', 0, -0.8, 0); }
+vrm.update(0); vrm.scene.updateMatrixWorld(true);
+const W = innerWidth / 4, H = innerHeight;
+const views = [[0, 1.0, 3.0, 0, 0.9], [3.0, 1.0, 0, 0, 0.9], [0, 1.0, -3.0, 0, 0.9], [0.6, 1.3, 1.4, 0, 1.15]];
+views.forEach((v, i) => {
+  const cam = new THREE.PerspectiveCamera(i === 3 ? 30 : 32, W / H, 0.1, 50); cam.position.set(v[0], v[1], v[2]); cam.lookAt(v[3], v[4], 0);
+  renderer.setViewport(i * W, 0, W, H); renderer.setScissor(i * W, 0, W, H); renderer.render(scene, cam);
+});
+document.title = 'done';
+</script></body></html>
