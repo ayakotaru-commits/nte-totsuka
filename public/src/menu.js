@@ -1,14 +1,16 @@
 // メニュー画面 (Tab / 画面の「メニュー」ボタン)。着替え・地図・時間帯・ヘルプ。
 // 洋服屋の入口 (shop.js) からも開く: 入りますか？ → 店の一覧 → 服を買う。
 // 開いている間は、キャラ・イベントへの操作を止める (main.js が menu.open を見る)。街は動き続ける。
-// 着替えの画面では、カメラをキャラの正面へ寄せ、選ぶとすぐ着替える。服は買ってから (wardrobe.js)。
-import { yen } from './wardrobe.js';
+// 着替えの画面は 枠 (トップス・ボトムス・くつ・ワンピース) ごとのタブで、選ぶとすぐ着替える。服は買ってから (wardrobe.js)。
+// カメラは、キャラの正面へ寄せる。
+import { yen, SLOTS } from './wardrobe.js';
 
 export class Menu {
   constructor({ wardrobe, player, cam, dom, lock, unlock, actions }) {
     Object.assign(this, { wardrobe, player, cam, lock, unlock, actions });
     this.open = false;
     this.screen = 'main';
+    this.slot = 'tops';    // 着替えで見ている枠
     this.sel = 0;
     this.msg = '';
     this.saved = null;
@@ -60,7 +62,7 @@ export class Menu {
   go(screen) {
     this.screen = screen; this.msg = ''; this.sel = 0;
     if (screen === 'wardrobe') {
-      this.sel = Math.max(0, this.list().findIndex((o) => o.id === this.wardrobe.equipped));
+      this.sel = this.selIndex();
       // カメラをキャラの正面・近くへ (戻すときのために今の値を覚える)
       if (!this.saved) this.saved = { yaw: this.cam.yaw, pitch: this.cam.pitch, dist: this.cam.dist };
       this.cam.yaw = this.player.facing + 0.35; this.cam.pitch = 0.12; this.cam.dist = 3.4;
@@ -74,16 +76,26 @@ export class Menu {
     Object.assign(this.cam, this.saved); this.saved = null;
   }
 
-  // 一覧に出すのは、持っている服だけ (買っていない服は洋服屋で見る)
-  list() { return [{ id: 'default', name: 'いつもの服' }, ...this.wardrobe.items.filter((o) => this.wardrobe.has(o.id))]; }
+  slotName(k) { return (this.wardrobe.slots.find((s) => s.key === k) || { name: k }).name; }
+
+  // 着替えの一覧 (いまの枠): 先頭は「いつもの」(ワンピースは「着ない」)、続いて持っている服
+  list() {
+    const w = this.wardrobe, k = this.slot;
+    return [{ id: 'none:' + k, name: k === 'onepiece' ? 'ワンピースを着ない' : 'いつもの' + this.slotName(k) }, ...w.items.filter((o) => o.slot === k && w.has(o.id))];
+  }
+
+  // 着ている服の位置 (一覧の何番目か)
+  selIndex() {
+    const id = this.wardrobe.worn[this.slot];
+    return Math.max(0, this.list().findIndex((o) => o.id === id));
+  }
 
   // 店で売っている服 (outfits.json の shop が、店の key と同じもの)
   stock(shop) { return this.wardrobe.items.filter((o) => o.shop === shop.key); }
 
   title() {
     if (this.screen === 'wardrobe') return '着替え';
-    if (this.screen === 'ask') return this.place.name;
-    if (this.screen === 'place') return this.place.name;
+    if (this.screen === 'ask' || this.screen === 'place') return this.place.name;
     if (this.screen === 'shop') return this.shop.name;
     return 'メニュー';
   }
@@ -107,35 +119,43 @@ export class Menu {
       h += '<div class="mn-list">';
       this.place.shops.forEach((s, i) => {
         const n = this.stock(s).length;
-        h += `<button class="mn-item${i === this.sel ? ' sel' : ''}" data-shop="${s.key}">${s.name}<small>${s.floor ? s.floor + '・' : ''}服 ${n} 着</small></button>`;
+        h += `<button class="mn-item${i === this.sel ? ' sel' : ''}" data-shop="${s.key}">${s.name}<small>${s.floor ? s.floor + '・' : ''}服 ${n} 点</small></button>`;
       });
       h += `</div><div class="mn-msg">${this.msg}</div><button class="mn-item mn-close" data-do="close">出る<small>Esc</small></button>`;
     } else if (this.screen === 'shop') {
       h += '<div class="mn-list">';
       const items = this.stock(this.shop);
       items.forEach((o, i) => {
-        const have = w.has(o.id), on = w.equipped === o.id;
-        const sub = on ? '着ている' : have ? '持っている・着る' : `買う ${yen(o.price)}`;
+        const have = w.has(o.id), on = w.isWorn(o.id);
+        const sub = `${this.slotName(o.slot)}・${on ? '着ている' : have ? '持っている・着る' : '買う ' + yen(o.price)}`;
         h += `<button class="mn-item${on ? ' on' : ''}${i === this.sel ? ' sel' : ''}${have || w.money >= o.price ? '' : ' locked'}" data-item="${o.id}">${o.name}<small>${sub}</small></button>`;
       });
       h += `</div><div class="mn-msg">${this.msg || (items.length ? '' : 'いまは売っている服がありません')}</div><button class="mn-item mn-close" data-do="place">もどる<small>Esc</small></button>`;
     } else {
-      h += '<div class="mn-list">';
+      // 着替え: 枠のタブ + その枠の服の一覧
+      h += '<div class="mn-tabs">' + SLOTS.map((k) => `<button class="mn-tab${k === this.slot ? ' on' : ''}" data-slot="${k}">${this.slotName(k)}</button>`).join('') + '</div><div class="mn-list">';
       this.list().forEach((o, i) => {
-        const on = w.equipped === o.id;
+        const cur = w.worn[this.slot];
+        const on = o.id.startsWith('none:') ? !cur : cur === o.id;
         h += `<button class="mn-item${on ? ' on' : ''}${i === this.sel ? ' sel' : ''}" data-wear="${o.id}">${o.name}<small>${on ? '着ている' : ''}</small></button>`;
       });
-      h += `</div><div class="mn-msg">${this.msg || (this.list().length > 1 ? '' : '買った服はここに並びます。洋服屋で買えます')}</div><button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>`;
+      const note = w.worn.onepiece && (this.slot === 'tops' || this.slot === 'bottoms') ? 'ワンピースを着ています。選ぶとワンピースを脱ぎます'
+        : this.slot === 'onepiece' ? 'ワンピースを着ると、トップス・ボトムスは外れます' : '';
+      h += `</div><div class="mn-msg">${this.msg || note || (this.list().length > 1 ? '' : '買った服はここに並びます。洋服屋で買えます')}</div><button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>`;
     }
     this.el.innerHTML = h;
   }
 
+  applyOutfit() { this.player.model.setOutfits(this.wardrobe.urls()); }
+
+  // 着る (id が 'none:<枠>' なら、その枠を「いつもの」に戻す)
   wear(id) {
     const w = this.wardrobe;
-    if (!w.has(id)) return; // 一覧には持っている服しか出ないが、念のため
-    w.equip(id);
-    this.player.model.setOutfit(w.urlOf(id));
+    if (id.startsWith('none:')) w.unequip(id.slice(5));
+    else if (!w.equip(id)) return; // 一覧には持っている服しか出ないが、念のため
+    this.applyOutfit();
     this.msg = '';
+    this.sel = this.screen === 'wardrobe' ? this.selIndex() : this.sel;
     this.render();
   }
 
@@ -152,9 +172,12 @@ export class Menu {
 
   enter() { this.go('place'); }
 
+  setSlot(k) { this.slot = k; this.sel = this.selIndex(); this.msg = ''; this.render(); }
+
   click(e) {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.slot) return this.setSlot(b.dataset.slot);
     if (b.dataset.wear) { this.sel = this.list().findIndex((o) => o.id === b.dataset.wear); return this.wear(b.dataset.wear); }
     if (b.dataset.shop) { this.shop = this.place.shops.find((s) => s.key === b.dataset.shop); this.go('shop'); return; }
     if (b.dataset.item) { this.sel = this.stock(this.shop).findIndex((o) => o.id === b.dataset.item); return this.buy(b.dataset.item); }
@@ -184,6 +207,11 @@ export class Menu {
       if (e.code === 'KeyY' || e.code === 'Enter') this.enter();
       else if (e.code === 'KeyN') this.decline();
       return;
+    }
+    // 着替えの枠は ← → で切り替える
+    if (this.screen === 'wardrobe' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
+      const i = SLOTS.indexOf(this.slot), n = SLOTS.length;
+      this.setSlot(SLOTS[(i + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return;
     }
     // 一覧 (着替え・店・服) の選び方: ↑↓ で動かし、Enter で決める
     const rows = this.screen === 'wardrobe' ? this.list() : this.screen === 'place' ? this.place.shops : this.screen === 'shop' ? this.stock(this.shop) : null;

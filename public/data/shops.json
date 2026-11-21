@@ -42,6 +42,11 @@
      "key": "しまむら",
      "name": "ファッションセンターしまむら",
      "floor": "5F"
+    },
+    {
+     "key": "ABC-MART",
+     "name": "ABC-MART",
+     "floor": "2F"
     }
    ]
   },

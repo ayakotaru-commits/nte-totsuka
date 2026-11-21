@@ -1,23 +1,34 @@
 // 持ち物 (お金・買った服・着ている服) と保存。端末のブラウザ (localStorage) にだけ保存する。
-// 服の一覧は data/outfits.json (id・名前・店・値段・ファイル)。お金は円。
-// 試すための URL: ?money=10000 (所持金をその額にする)、?own=all (全部持っている)、?outfit=<id> (その服を着る)、?resetsave (保存を消す)
+// 服は パーツごと (data/outfits.json: id・名前・枠・店・値段・ファイル)。枠は tops / bottoms / shoes / onepiece。
+//   着ている服 worn = { tops, bottoms, shoes, onepiece } (null = 「いつもの」。ワンピースの null = 着ていない)。
+//   ワンピース (ドレス・浴衣) は トップスとボトムスの両方の枠を使う: 着ると 2 つを外し、トップス・ボトムスを着ると外す。
+// 試すための URL: ?money=10000 (所持金をその額にする)、?own=all (全部持っている)、?outfit=<id>,<id> (その服を着る)、?resetsave (保存を消す)
 const KEY = 'totsuka.save.v1';
 export const START_MONEY = 3000; // はじめて遊ぶときの所持金
+export const SLOTS = ['tops', 'bottoms', 'shoes', 'onepiece'];
+
+// 以前の保存 (v1) は「セット」の id を持っていた → 今のパーツに置き換える
+const V1_SETS = {
+  lyla_hoodie: ['lyla_hoodie', 'lyla_shorts', 'lyla_boots'], lyla_tank: ['lyla_tank'],
+  nona_tshirt: ['nona_tshirt', 'nona_shorts', 'nona_sandals'], nishi_dress: ['nishi_dress', 'nishi_shoes'],
+  tanuki_yukata: ['tanuki_yukata', 'tanuki_geta'], celestia_dress: ['celestia_dress', 'celestia_boots'],
+};
 
 export class Wardrobe {
   constructor(catalog) {
     this.items = catalog.outfits;
+    this.slots = catalog.slots || SLOTS.map((k) => ({ key: k, name: k }));
     this.byId = new Map(this.items.map((o) => [o.id, o]));
     this.money = START_MONEY;
-    this.owned = new Set();   // 買った服の id (「いつもの服」は数えない。いつでも着られる)
-    this.equipped = 'default';
+    this.owned = new Set();   // 買った服の id (「いつもの」は数えない。いつでも着られる)
+    this.worn = { tops: null, bottoms: null, shoes: null, onepiece: null };
     this.listeners = [];
     const q = new URLSearchParams(location.search);
     if (q.has('resetsave')) { try { localStorage.removeItem(KEY); } catch (e) { /* 保存できない環境 */ } }
     this.load();
     if (q.has('money')) this.money = Math.max(0, +q.get('money') || 0);
     if (q.get('own') === 'all') for (const o of this.items) this.owned.add(o.id);
-    if (q.has('outfit') && this.byId.has(q.get('outfit'))) { this.owned.add(q.get('outfit')); this.equipped = q.get('outfit'); }
+    if (q.has('outfit')) for (const id of q.get('outfit').split(',')) if (this.byId.has(id)) { this.owned.add(id); this.equip(id, false); }
   }
 
   load() {
@@ -25,21 +36,31 @@ export class Wardrobe {
       const s = JSON.parse(localStorage.getItem(KEY) || 'null');
       if (!s) return;
       if (Number.isFinite(s.money)) this.money = Math.max(0, Math.floor(s.money));
-      for (const id of s.owned || []) if (this.byId.has(id)) this.owned.add(id);
-      if (s.equipped === 'default' || this.owned.has(s.equipped)) this.equipped = s.equipped;
+      const ids = (a) => (a || []).flatMap((id) => (V1_SETS[id] && s.v !== 2 ? V1_SETS[id] : [id])).filter((id) => this.byId.has(id));
+      for (const id of ids(s.owned)) this.owned.add(id);
+      const worn = s.v === 2 ? Object.values(s.worn || {}) : ids(s.equipped && s.equipped !== 'default' ? [s.equipped] : []);
+      for (const id of worn) if (this.owned.has(id)) this.equip(id, false);
     } catch (e) { /* 読めなければ最初から */ }
   }
 
   save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, money: this.money, owned: [...this.owned], equipped: this.equipped })); } catch (e) { /* 保存できない環境 (プライベートモードなど) */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 2, money: this.money, owned: [...this.owned], worn: this.worn })); } catch (e) { /* 保存できない環境 (プライベートモードなど) */ }
   }
 
   onChange(fn) { this.listeners.push(fn); }
   changed() { this.save(); for (const f of this.listeners) f(this); }
 
-  has(id) { return id === 'default' || this.owned.has(id); }
+  has(id) { return this.owned.has(id); }
+  isWorn(id) { return Object.values(this.worn).includes(id); }
+  slotOf(id) { return this.byId.get(id)?.slot; }
 
-  // 服のファイルの URL (いつもの服は null)
+  // 枠ごとの、服のファイルの URL (いつもの = null)
+  urls() {
+    const u = {};
+    for (const k of SLOTS) u[k] = this.worn[k] ? this.urlOf(this.worn[k]) : null;
+    return u;
+  }
+
   urlOf(id) {
     const o = this.byId.get(id);
     return o ? new URL('../models/outfits/' + o.file, import.meta.url).href : null;
@@ -57,10 +78,21 @@ export class Wardrobe {
     return { ok: true };
   }
 
-  equip(id) {
-    if (!this.has(id)) return false;
-    this.equipped = id; this.changed();
+  // 着る (持っている服だけ)。ワンピースを着ると トップス・ボトムスを外し、トップス・ボトムスを着るとワンピースを外す
+  equip(id, notify = true) {
+    const o = this.byId.get(id);
+    if (!o || !this.owned.has(id)) return false;
+    if (o.slot === 'onepiece') { this.worn.onepiece = id; this.worn.tops = null; this.worn.bottoms = null; }
+    else { this.worn[o.slot] = id; if (o.slot !== 'shoes') this.worn.onepiece = null; }
+    if (notify) this.changed();
     return true;
+  }
+
+  // 枠を「いつもの」に戻す (ワンピースの枠は、脱ぐ)
+  unequip(slot) {
+    if (!(slot in this.worn)) return;
+    this.worn[slot] = null;
+    this.changed();
   }
 }
 

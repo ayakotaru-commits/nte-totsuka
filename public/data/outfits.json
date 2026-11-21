@@ -1,73 +1,177 @@
 {
- "_note": "着せ替えの服の一覧。price (円)・shop (店の名前) は仮の値 (持ち主が決める)。source が null のものは配布ページの URL が未確認。服のファイルは tools/outfits.py で作る。",
- "default": {
-  "id": "default",
-  "name": "いつもの服"
- },
+ "_note": "着せ替えの服の一覧 (パーツごと)。slot = tops / bottoms / shoes / onepiece (ワンピースは トップスとボトムスの両方の枠を使う)。price (円)・shop (店の key。shops.json) は仮の値 (持ち主が決める)。source が null のものは配布ページの URL が未確認。服のファイルは tools/outfits.py で作る (材質名 Tops / Bottoms / Shoes / Onepiece ごとに 1 ファイル)。",
+ "slots": [
+  {
+   "key": "tops",
+   "name": "トップス"
+  },
+  {
+   "key": "bottoms",
+   "name": "ボトムス"
+  },
+  {
+   "key": "shoes",
+   "name": "くつ"
+  },
+  {
+   "key": "onepiece",
+   "name": "ワンピース"
+  }
+ ],
  "outfits": [
   {
    "id": "lyla_hoodie",
    "name": "にじいろパーカー",
+   "slot": "tops",
    "file": "lyla_hoodie.glb",
    "shop": "GU",
-   "price": 1900,
+   "price": 1200,
    "model": "Lyla",
    "author": "Lyrik",
    "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
    "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
   },
   {
-   "id": "lyla_tank",
-   "name": "レースのタンクトップ",
-   "file": "lyla_tank.glb",
-   "shop": "Honeys",
-   "price": 1500,
-   "model": "Lyla",
-   "author": "Lyrik",
-   "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
-   "license": "同上"
-  },
-  {
    "id": "nona_tshirt",
    "name": "ゆったり T シャツ",
+   "slot": "tops",
    "file": "nona_tshirt.glb",
    "shop": "GU",
-   "price": 1500,
+   "price": 900,
    "model": "のなつー",
    "author": "いさん",
    "source": null,
    "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
   },
   {
+   "id": "lyla_tank",
+   "name": "レースのタンクトップ",
+   "slot": "tops",
+   "file": "lyla_tank.glb",
+   "shop": "Honeys",
+   "price": 1100,
+   "model": "Lyla",
+   "author": "Lyrik",
+   "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+  },
+  {
+   "id": "nona_shorts",
+   "name": "デニムのショートパンツ",
+   "slot": "bottoms",
+   "file": "nona_shorts.glb",
+   "shop": "GU",
+   "price": 900,
+   "model": "のなつー",
+   "author": "いさん",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+  },
+  {
+   "id": "lyla_shorts",
+   "name": "にじいろのショートパンツ",
+   "slot": "bottoms",
+   "file": "lyla_shorts.glb",
+   "shop": "Honeys",
+   "price": 800,
+   "model": "Lyla",
+   "author": "Lyrik",
+   "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+  },
+  {
    "id": "nishi_dress",
    "name": "黒のロングワンピース",
+   "slot": "onepiece",
    "file": "nishi_dress.glb",
    "shop": "しまむら",
-   "price": 2900,
+   "price": 2200,
    "model": "Nishi",
    "author": "Nishimiya",
    "source": null,
    "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
   },
   {
+   "id": "celestia_dress",
+   "name": "白いドレス",
+   "slot": "onepiece",
+   "file": "celestia_dress.glb",
+   "shop": "Honeys",
+   "price": 2800,
+   "model": "celestia",
+   "author": "PEPE",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+  },
+  {
    "id": "tanuki_yukata",
    "name": "花柄の浴衣",
+   "slot": "onepiece",
    "file": "tanuki_yukata.glb",
    "shop": "しらやま",
-   "price": 3900,
+   "price": 3000,
    "model": "たぬき",
    "author": "wayy",
    "source": null,
    "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
   },
   {
-   "id": "celestia_dress",
-   "name": "白いドレス",
-   "file": "celestia_dress.glb",
-   "shop": "Honeys",
-   "price": 4800,
+   "id": "nona_sandals",
+   "name": "白いサンダル",
+   "slot": "shoes",
+   "file": "nona_sandals.glb",
+   "shop": "ABC-MART",
+   "price": 900,
+   "model": "のなつー",
+   "author": "いさん",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+  },
+  {
+   "id": "lyla_boots",
+   "name": "ピンクのブーツ",
+   "slot": "shoes",
+   "file": "lyla_boots.glb",
+   "shop": "ABC-MART",
+   "price": 1300,
+   "model": "Lyla",
+   "author": "Lyrik",
+   "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+  },
+  {
+   "id": "nishi_shoes",
+   "name": "黒いローファー",
+   "slot": "shoes",
+   "file": "nishi_shoes.glb",
+   "shop": "ABC-MART",
+   "price": 1200,
+   "model": "Nishi",
+   "author": "Nishimiya",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+  },
+  {
+   "id": "celestia_boots",
+   "name": "白いブーツ",
+   "slot": "shoes",
+   "file": "celestia_boots.glb",
+   "shop": "ABC-MART",
+   "price": 1600,
    "model": "celestia",
    "author": "PEPE",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+  },
+  {
+   "id": "tanuki_geta",
+   "name": "下駄",
+   "slot": "shoes",
+   "file": "tanuki_geta.glb",
+   "shop": "しらやま",
+   "price": 1000,
+   "model": "たぬき",
+   "author": "wayy",
    "source": null,
    "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
   }

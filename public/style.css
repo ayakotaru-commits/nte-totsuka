@@ -294,3 +294,8 @@ body.touch #menu-btn { display: none; }
 .mn-close { margin-top: auto; }
 .mn-msg { min-height: 20px; font-size: 13px; color: #ffd27a; }
 @media (max-width: 700px) and (orientation: portrait) { #menu { top: auto; width: 100vw; max-height: 55vh; border-left: 0; border-top: 1px solid rgba(255,255,255,.3); } }
+
+/* 着替えの枠のタブ (トップス・ボトムス・くつ・ワンピース) */
+.mn-tabs { display: flex; gap: 6px; }
+.mn-tab { flex: 1; font: inherit; font-size: 13px; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 8px 2px; min-height: 40px; cursor: pointer; }
+.mn-tab.on { background: rgba(95,211,255,.35); border-color: #5fd3ff; }
