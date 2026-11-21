@@ -1,0 +1,75 @@
+{
+ "_note": "着せ替えの服の一覧。price (円)・shop (店の名前) は仮の値 (持ち主が決める)。source が null のものは配布ページの URL が未確認。服のファイルは tools/outfits.py で作る。",
+ "default": {
+  "id": "default",
+  "name": "いつもの服"
+ },
+ "outfits": [
+  {
+   "id": "lyla_hoodie",
+   "name": "にじいろパーカー",
+   "file": "lyla_hoodie.glb",
+   "shop": "GU",
+   "price": 1900,
+   "model": "Lyla",
+   "author": "Lyrik",
+   "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+  },
+  {
+   "id": "lyla_tank",
+   "name": "レースのタンクトップ",
+   "file": "lyla_tank.glb",
+   "shop": "Honeys",
+   "price": 1500,
+   "model": "Lyla",
+   "author": "Lyrik",
+   "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
+   "license": "同上"
+  },
+  {
+   "id": "nona_tshirt",
+   "name": "ゆったり T シャツ",
+   "file": "nona_tshirt.glb",
+   "shop": "GU",
+   "price": 1500,
+   "model": "のなつー",
+   "author": "いさん",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+  },
+  {
+   "id": "nishi_dress",
+   "name": "黒のロングワンピース",
+   "file": "nishi_dress.glb",
+   "shop": "しまむら",
+   "price": 2900,
+   "model": "Nishi",
+   "author": "Nishimiya",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+  },
+  {
+   "id": "tanuki_yukata",
+   "name": "花柄の浴衣",
+   "file": "tanuki_yukata.glb",
+   "shop": "しらやま",
+   "price": 3900,
+   "model": "たぬき",
+   "author": "wayy",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+  },
+  {
+   "id": "celestia_dress",
+   "name": "白いドレス",
+   "file": "celestia_dress.glb",
+   "shop": "Honeys",
+   "price": 4800,
+   "model": "celestia",
+   "author": "PEPE",
+   "source": null,
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+  }
+ ]
+}
