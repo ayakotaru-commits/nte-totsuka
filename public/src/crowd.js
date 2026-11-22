@@ -51,13 +51,17 @@ function buildMaterial() {
       .replace('#include <common>', `#include <common>
         attribute vec2 aId; attribute vec3 aPivot;
         attribute vec3 iTop; attribute vec3 iBottom; attribute vec3 iHair; attribute vec3 iSkin;
-        attribute vec2 iAnim;`)
+        attribute vec3 iAnim;`)
       .replace('#include <color_vertex>', `#include <color_vertex>
         vColor = aId.x < 0.5 ? iSkin : aId.x < 1.5 ? iHair : aId.x < 2.5 ? iTop : aId.x < 3.5 ? iBottom : vec3(0.9);`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         if (aId.y > 0.5) {
           float sw = sin(iAnim.x) * iAnim.y;
           float a = aId.y < 1.5 ? sw : aId.y < 2.5 ? -sw : aId.y < 3.5 ? -sw * 0.8 : sw * 0.8;
+          if (aId.y > 2.5) {                       // 腕: 1 = スマホを見る (両手を胸の前へ)、2 = 立ち話 (手を動かす)
+            if (iAnim.z > 0.5 && iAnim.z < 1.5) a = -1.15;
+            else if (iAnim.z > 1.5 && iAnim.z < 2.5) a = (aId.y < 3.5 ? -1.0 : 1.0) * sw * 1.4 - 0.5;
+          }
           vec3 q = transformed - aPivot;
           float cs = cos(a), sn = sin(a);
           transformed = vec3(q.x, q.y * cs - q.z * sn, q.y * sn + q.z * cs) + aPivot;
@@ -75,11 +79,11 @@ export class Crowd {
     this.visibleNow = true;
     if (!this.enabled) return;
     const low = !!opt.low;
-    this.sim = new CrowdSim(props.crowd, { cap: opt.cap ?? (low ? 40 : 120), radius: low ? 90 : 130, seed: 1 });
+    this.sim = new CrowdSim(props.crowd, { cap: opt.cap ?? (low ? 40 : 120), radius: low ? 90 : 130, seed: 1, ground: (x, z) => H(x, z) + GROUND_LIFT, peds: props.pedSignals, busStops: props.busStops });
     const cap = this.sim.cap + 8;
     const geo = buildGeometry();
     const attr = (n, size) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(n, a); return a; };
-    this.A = { top: attr('iTop', 3), bottom: attr('iBottom', 3), hair: attr('iHair', 3), skin: attr('iSkin', 3), anim: attr('iAnim', 2) };
+    this.A = { top: attr('iTop', 3), bottom: attr('iBottom', 3), hair: attr('iHair', 3), skin: attr('iSkin', 3), anim: attr('iAnim', 3) };
     this.mesh = new THREE.InstancedMesh(geo, buildMaterial(), cap);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.frustumCulled = false;   // 範囲が広いので、まとめて描く
@@ -96,24 +100,24 @@ export class Crowd {
   setVisible(v) { if (this.enabled) this.group.visible = v; }
 
   // camera = three のカメラ、player = {x, z} (よけるため)、preset = '朝' | '昼' | '夕方' | '夜'
-  update(dt, camera, px, pz, preset) {
+  update(dt, camera, px, pz, preset, clock) {
     if (!this.enabled || dt <= 0) return;
     camera.getWorldDirection(this._f);
     const fl = Math.hypot(this._f.x, this._f.z) || 1, fx = this._f.x / fl, fz = this._f.z / fl;
     const cx = camera.position.x + fx * 20, cz = camera.position.z + fz * 20;   // 出し入れの中心 = カメラの少し先
-    this.sim.update(dt, cx, cz, fx, fz, px, pz, preset);
+    this.sim.update(dt, cx, cz, fx, fz, px, pz, preset, clock);
     const ppl = this.sim.people, n = Math.min(ppl.length, this.mesh.instanceMatrix.count);
     const A = this.A, c = this._c, m = this._m;
     for (let i = 0; i < n; i++) {
       const p = ppl[i];
       let cc = this.col.get(p.id);
       if (!cc) { cc = ['top', 'bottom', 'hair', 'skin'].map((k) => new THREE.Color(p.o[k])); this.col.set(p.id, cc); }
-      const co = Math.cos(p.yaw), si = Math.sin(p.yaw), s = p.scale, y = H(p.x, p.z) + GROUND_LIFT;
+      const co = Math.cos(p.yaw), si = Math.sin(p.yaw), s = p.scale, y = p.y;
       m.set(co * s, 0, si * s, p.x, 0, s, 0, y, -si * s, 0, co * s, p.z, 0, 0, 0, 1);
       this.mesh.setMatrixAt(i, m);
       A.top.setXYZ(i, cc[0].r, cc[0].g, cc[0].b); A.bottom.setXYZ(i, cc[1].r, cc[1].g, cc[1].b);
       A.hair.setXYZ(i, cc[2].r, cc[2].g, cc[2].b); A.skin.setXYZ(i, cc[3].r, cc[3].g, cc[3].b);
-      A.anim.setXY(i, p.phase, p.amp);
+      A.anim.setXYZ(i, p.phase, p.amp, p.mode);
     }
     if (this.col.size > 600) { const live = new Set(ppl.map((p) => p.id)); for (const id of this.col.keys()) if (!live.has(id)) this.col.delete(id); }
     this.mesh.count = n;

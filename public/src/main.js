@@ -321,7 +321,7 @@ async function main() {
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
     tod.update(dt);
-    if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name);
+    if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
 

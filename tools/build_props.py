@@ -2552,8 +2552,8 @@ CROWD_STREETS = {"residential", "unclassified", "living_street", "tertiary", "se
 
 def build_crowd(city, world, H):
     """歩行者が歩く線の一覧。地面の歩道・小道 (f) / 幹線の歩道 (s) / 歩道の無い道の端 (r)。
-    橋・デッキ・階段 (ys 付き・steps) は入れない (第 2 段階)。建物の中に入る所は切る。
-    lanes: [{k, w, p: [x, z, x, z, ...]}]。歩く人は進行方向の右側へ少しずれる (日本の歩行者は右側通行) のはブラウザ側で付ける。
+    橋・デッキ・階段・坂 (ys 付き。d = デッキ・坂・自由通路、t = 階段) は、点ごとの高さ y も書く (建物の中の切り取りはしない)。地面の通り道は建物の中に入る所を切る。
+    lanes: [{k, w, p: [x, z, x, z, ...], y?: [高さ, ...]}]。歩く人は進行方向の右側へ少しずれる (日本の歩行者は右側通行) のはブラウザ側で付ける。
     hubs: 人が集まる所。st = 駅、pub = 居酒屋・バー (夜に人が増える)"""
     def clear(x, z, r=0.4):
         for b in world.query(x - r, z - r, x + r, z + r):
@@ -2589,10 +2589,46 @@ def build_crowd(city, world, H):
                 lanes.append({"k": kind, "w": round(w, 2), "p": [r2(v) for q in run for v in q]})
             run = []
 
+    def add_deck(kind, w, pts, ys):
+        """橋・デッキ・階段・坂 (ys = 各点の高さ)。点ごとの高さ y も書く。高さが急に跳ぶ所 (OSM の線と実測のずれ) で切る"""
+        L = [0.0]
+        for i in range(1, len(pts)):
+            L.append(L[-1] + math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]))
+        if L[-1] < CROWD_MIN_RUN:
+            return
+        samples, d = [], 0.0
+        while d < L[-1]:
+            samples.append(d)
+            d += CROWD_STEP
+        samples.append(L[-1])
+        out, j = [], 0
+        for d in samples:
+            while j < len(pts) - 2 and L[j + 1] < d:
+                j += 1
+            t = (d - L[j]) / ((L[j + 1] - L[j]) or 1)
+            out.append((pts[j][0] + (pts[j + 1][0] - pts[j][0]) * t, pts[j][1] + (pts[j + 1][1] - pts[j][1]) * t, ys[j] + (ys[j + 1] - ys[j]) * t, d))
+        run = []
+        for q in out + [None]:
+            if q is not None and run and abs(q[2] - run[-1][2]) > 0.8 * max(0.5, q[3] - run[-1][3]):
+                q_next = q
+                q = None
+            else:
+                q_next = None
+            if q is not None:
+                run.append(q)
+                continue
+            if len(run) >= 3 and run[-1][3] - run[0][3] >= CROWD_MIN_RUN:
+                lanes.append({"k": kind, "w": round(w, 2), "p": [r2(v) for a in run for v in a[:2]], "y": [r2(a[2]) for a in run]})
+            run = [q_next] if q_next else []
+
     for r in city["roads"]:
-        if r.get("ys") or r.get("hide") or len(r["pts"]) < 2:
+        if r.get("hide") or len(r["pts"]) < 2:
             continue
         k = r["kind"]
+        if r.get("ys"):
+            if k in ("footway", "path", "pedestrian", "steps", "corridor") and len(r["ys"]) == len(r["pts"]):
+                add_deck("t" if k == "steps" else "d", r["w"], r["pts"], r["ys"])
+            continue
         if k in ("footway", "path", "pedestrian"):
             add("f", r["w"], r["pts"])
         elif k in CROWD_STREETS:
@@ -2605,7 +2641,7 @@ def build_crowd(city, world, H):
     st = [[p["x"], p["z"]] for p in city.get("pois", []) if p.get("cat") == "railway:station"]
     pub = [[p["x"], p["z"]] for p in city.get("pois", []) if p.get("cat") in ("amenity:pub", "amenity:bar")]
     n = sum(len(l["p"]) // 2 for l in lanes)
-    print(f"crowd lanes={len(lanes)} points={n} length={n * CROWD_STEP / 1000:.1f} km hubs st={len(st)} pub={len(pub)}")
+    print(f"crowd lanes={len(lanes)} (deck={sum(1 for l in lanes if l['k'] == 'd')} steps={sum(1 for l in lanes if l['k'] == 't')}) points={n} length={n * CROWD_STEP / 1000:.1f} km hubs st={len(st)} pub={len(pub)}")
     return {"lanes": lanes, "hubs": {"st": st, "pub": pub}}
 
 
