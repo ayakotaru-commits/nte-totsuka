@@ -351,7 +351,7 @@ export class CrowdSim {
     const L = this.lanes[p.lane], a = this.at(L, p.s);
     // 右側通行 (進む向きの右へ少しずれる)
     const t0x = a[2] * p.dir, t0z = a[3] * p.dir, lat = L.lat + p.jit;
-    let x = a[0] + t0z * lat, z = a[1] - t0x * lat;
+    let x = a[0] - t0z * lat, z = a[1] + t0x * lat;   // 進む向きの右 (x = 東・z = 南なので、東へ進むときの右 = 南 = (-dz, dx))
     // 乗り換えのずれを、歩く速さで消していく
     const od = Math.hypot(p.ox, p.oz);
     if (od > 1e-4) { const k = Math.max(0, 1 - Math.max(p.v, 0.6) * dt / od); p.ox *= k; p.oz *= k; }
