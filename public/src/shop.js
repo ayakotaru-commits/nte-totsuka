@@ -15,8 +15,15 @@ export class ShopTrigger {
     this.player = player; this.menu = menu;
     this.list = [];
     for (const p of places) for (const e of p.entrances) this.list.push({ place: p, e, dwell: 0, hold: false });
-    menu.onLeave = () => { if (this.cur) this.cur.hold = true; }; // 断った・店を出たあとは、入口を離れるまで聞かない
+    // 断った・店を出たあとは、いまいる入口 (すべて) で、入口を離れるまで聞かない (地図のワープなどで、開いた入口と今いる入口が違っても安全)
+    menu.onLeave = () => { for (const t of this.list) if (this.inside(t)) t.hold = true; };
     this.cur = null;
+  }
+
+  // プレイヤーが その入口の範囲 (水平の半径と、足元の高さ) にいるか
+  inside(t) {
+    const pl = this.player, e = t.e;
+    return Math.hypot(pl.pos.x - e.x, pl.pos.z - e.z) <= e.r && (e.y === undefined || e.y === null || Math.abs(pl.pos.y - e.y) <= DY);
   }
 
   // 毎コマ呼ぶ (動かせる状態のときだけ)
@@ -24,9 +31,8 @@ export class ShopTrigger {
     const pl = this.player;
     for (const t of this.list) {
       const { e } = t;
-      const d = Math.hypot(pl.pos.x - e.x, pl.pos.z - e.z);
-      const same = d <= e.r && (e.y === undefined || e.y === null || Math.abs(pl.pos.y - e.y) <= DY);
-      if (!same) { if (d > e.r + 2) t.hold = false; t.dwell = 0; continue; }
+      const same = this.inside(t);
+      if (!same) { if (Math.hypot(pl.pos.x - e.x, pl.pos.z - e.z) > e.r + 2) t.hold = false; t.dwell = 0; continue; }
       if (t.hold || this.menu.open) continue;
       if (pl.vel.length() > MAX_SPEED) { t.dwell = 0; continue; }
       t.dwell += dt;

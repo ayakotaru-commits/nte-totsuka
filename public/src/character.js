@@ -953,9 +953,9 @@ export function makeCharacter(opt = {}) {
     vrm.update(Math.min(dt, 1 / 30));
   }
 
-  // 着せ替え: setOutfit(服のファイルの URL)。null でいつもの服。VRM の読み込み前に呼ばれたら、読み込み後に着る
-  let outfitter = null, wantOutfit = null;
-  const setOutfit = (url) => { wantOutfit = url; return outfitter ? outfitter.set(url) : Promise.resolve(); };
+  // 着せ替え: setOutfits({ tops, bottoms, shoes, onepiece }) 各値は服のファイルの URL か null (= いつもの)。VRM の読み込み前に呼ばれたら、読み込み後に着る
+  let outfitter = null, wantOutfits = null;
+  const setOutfits = (slots) => { wantOutfits = slots; return outfitter ? outfitter.set(slots) : Promise.resolve(); };
 
   async function loadVRM(url) {
     try {
@@ -1007,7 +1007,7 @@ export function makeCharacter(opt = {}) {
       body.visible = false;
       root.add(vrm.scene);
       outfitter = new Outfitter(vrm); // 着せ替え (VRM のときだけ。ほかの人の組み立て式のキャラは対象外)
-      if (wantOutfit) outfitter.set(wantOutfit);
+      if (wantOutfits) outfitter.set(wantOutfits);
       console.info('VRM を読み込みました: ' + url);
     } catch (e) {
       console.warn('VRM を読み込めなかったので、組み立て式のキャラのままにします:', e);
@@ -1027,5 +1027,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfit };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits };
 }

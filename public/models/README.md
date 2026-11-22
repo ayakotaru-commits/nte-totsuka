@@ -18,3 +18,7 @@ CC0 ではなく、利用条件付きで自由に使えるモデル。条件は 
 どれも VRM に書かれた利用条件が「改変・再配布 OK、クレジット不要」。商用は、個人の利益までのものと商用 OK のものがある (一覧の `license`)。
 作者名: Lyrik (Lyla)、Nishimiya (Nishi)、いさん (のなつー)、wayy (たぬき)、PEPE (celestia)。
 配布ページの URL が分かっているのは Lyla だけ。あとの 4 つは、ダウンロードした VRM のページを確認して `outfits.json` の `source` に足す。
+
+## 服のパーツ (2026-11、枠ごとの組み合わせ)
+`public/models/outfits/` は、材質 (Tops / Bottoms / Shoes / Onepiece) ごとに 1 ファイル (13 点)。枠・店・値段は `public/data/outfits.json`。
+作り直すときは `python tools/outfits.py data/raw/outfits/<元の VRM> <id> --parts <材質名の正規表現>`。

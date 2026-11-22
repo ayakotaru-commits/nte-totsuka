@@ -124,7 +124,7 @@ async function main() {
   const input = new Input();
   const player = new Player(world, scene);
   const wardrobe = await loadWardrobe();                       // お金・買った服・着ている服 (端末に保存)
-  player.model.setOutfit(wardrobe.urlOf(wardrobe.equipped));    // 着ていた服を着る (キャラの読み込み後)
+  player.model.setOutfits(wardrobe.urls());                     // 着ていた服を着る (キャラの読み込み後)
   let menu = null;                                              // メニュー (下で作る)
   let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);

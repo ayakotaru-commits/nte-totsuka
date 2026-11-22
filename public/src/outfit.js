@@ -1,5 +1,5 @@
 // 着せ替え: 別の VRM (同じ VRoid の体型) の服のパーツを、今のキャラの骨に付け替える。
-//   const o = new Outfitter(vrm);  await o.set(url)  / o.set(null) でいつもの服
+//   const o = new Outfitter(vrm);  await o.set({ tops: url, bottoms: null, shoes: url, onepiece: null })  (null = いつもの)
 //   服のファイルは tools/outfits.py で作る (public/models/outfits/*.glb)。
 // 仕組み: 服の頂点は元の VRM の骨ごとの座標で持っている。骨を名前 (VRM の人型の骨) で対応づけ、
 //   骨の関節の位置と長さの違いは、骨ごとの座標変換 M = T(今のキャラの関節) · R(元の骨の向き) · S(骨の長さの比 × 膨らみ) で吸収する。
@@ -112,44 +112,52 @@ export async function fitOutfit(src, vrm, { parts = /./, scale = 1.04 } = {}) {
   }
 }
 
-// 服の切り替え。読み込んだ服は覚えておき、2 回目からは表示を切り替えるだけ
+// 服の切り替え (枠ごと)。読み込んだ服は覚えておき、2 回目からは表示を切り替えるだけ。
+//   set({ tops, bottoms, shoes, onepiece }) 各値は 服のファイルの URL か null (= いつもの)。
+//   今のキャラ自身の服は、枠ごとに「その枠に服がある」ときだけ隠す (ワンピースは トップスとボトムスの両方を隠す)。
+const OWN_SLOT = { tops: /Tops/, bottoms: /Bottoms/, shoes: /Shoes/ };
 export class Outfitter {
   constructor(vrm) {
     this.vrm = vrm;
     this.cache = new Map(); // url → group
-    this.cur = null;
-    this.own = []; // 今のキャラの服の材質
+    this.shown = [];
+    this.own = { tops: [], bottoms: [], shoes: [] }; // 今のキャラの服の材質 (枠ごと)
     vrm.scene.traverse((o) => {
       if (!o.isMesh) return;
-      for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (OWN_PARTS.test(m.name)) this.own.push(m);
+      for (const m of Array.isArray(o.material) ? o.material : [o.material])
+        for (const [k, re] of Object.entries(OWN_SLOT)) if (re.test(m.name)) this.own[k].push(m);
     });
     this.loader = null;
     this.busy = Promise.resolve();
   }
 
-  // url = null でいつもの服。同時に呼ばれても順番に処理する
-  set(url) {
-    this.busy = this.busy.then(() => this._set(url)).catch((e) => console.warn('着替えに失敗:', e));
+  // 同時に呼ばれても順番に処理する
+  set(slots) {
+    this.busy = this.busy.then(() => this._set(slots || {})).catch((e) => console.warn('着替えに失敗:', e));
     return this.busy;
   }
 
-  async _set(url) {
-    if (this.cur) this.cur.visible = false;
-    this.cur = null;
-    for (const m of this.own) m.visible = !url;
-    if (!url) return;
+  async _group(url) {
     let g = this.cache.get(url);
-    if (!g) {
-      if (!this.loader) {
-        const [{ GLTFLoader }, { VRMLoaderPlugin }] = await Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('@pixiv/three-vrm')]);
-        this.loader = new GLTFLoader(); this.loader.register((p) => new VRMLoaderPlugin(p));
-      }
-      const src = await this.loader.loadAsync(url);
-      g = (await fitOutfit(src, this.vrm)).group;
-      this.vrm.scene.add(g);
-      this.cache.set(url, g);
+    if (g) return g;
+    if (!this.loader) {
+      const [{ GLTFLoader }, { VRMLoaderPlugin }] = await Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('@pixiv/three-vrm')]);
+      this.loader = new GLTFLoader(); this.loader.register((p) => new VRMLoaderPlugin(p));
     }
-    g.visible = true;
-    this.cur = g;
+    const src = await this.loader.loadAsync(url);
+    g = (await fitOutfit(src, this.vrm)).group;
+    this.vrm.scene.add(g);
+    this.cache.set(url, g);
+    return g;
+  }
+
+  async _set(slots) {
+    const want = [];
+    for (const k of ['tops', 'bottoms', 'shoes', 'onepiece']) if (slots[k]) want.push(await this._group(slots[k]));
+    for (const g of this.shown) g.visible = false;
+    for (const g of want) g.visible = true;
+    this.shown = want;
+    const cover = { tops: !!(slots.tops || slots.onepiece), bottoms: !!(slots.bottoms || slots.onepiece), shoes: !!slots.shoes };
+    for (const k of Object.keys(this.own)) for (const m of this.own[k]) m.visible = !cover[k];
   }
 }
