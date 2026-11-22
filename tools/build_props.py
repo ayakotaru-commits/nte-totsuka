@@ -2541,6 +2541,74 @@ def build_shrines(H, hidden):
     return out
 
 
+
+# =====================================================================
+# 歩行者の通り道 (issue #64。public/src/crowd.js が読んで、人を歩かせる)
+# =====================================================================
+CROWD_STEP = 4.0           # 通り道の点の間隔 (m)
+CROWD_MIN_RUN = 12.0       # これより短い通り道は捨てる (m)
+CROWD_STREETS = {"residential", "unclassified", "living_street", "tertiary", "secondary", "primary", "trunk"}
+
+
+def build_crowd(city, world, H):
+    """歩行者が歩く線の一覧。地面の歩道・小道 (f) / 幹線の歩道 (s) / 歩道の無い道の端 (r)。
+    橋・デッキ・階段 (ys 付き・steps) は入れない (第 2 段階)。建物の中に入る所は切る。
+    lanes: [{k, w, p: [x, z, x, z, ...]}]。歩く人は進行方向の右側へ少しずれる (日本の歩行者は右側通行) のはブラウザ側で付ける。
+    hubs: 人が集まる所。st = 駅、pub = 居酒屋・バー (夜に人が増える)"""
+    def clear(x, z, r=0.4):
+        for b in world.query(x - r, z - r, x + r, z + r):
+            if world.contains(b, x, z) or world.closest_d(b, x, z) < r:
+                return False
+        return True
+
+    def offset(pts, off):
+        """折れ線を左へ off ずらす (左 = (-dz, dx))"""
+        out = []
+        for i, (x, z) in enumerate(pts):
+            a = pts[max(0, i - 1)]
+            b = pts[min(len(pts) - 1, i + 1)]
+            dx, dz = b[0] - a[0], b[1] - a[1]
+            L = math.hypot(dx, dz) or 1
+            out.append((x - dz / L * off, z + dx / L * off))
+        return out
+
+    lanes = []
+
+    def add(kind, w, pts):
+        pts = [tuple(p) for p in pts]
+        samples = []
+        walk(pts, 0.0, CROWD_STEP, lambda x, z, dx, dz: samples.append((x, z)))
+        if len(pts) >= 2:
+            samples.append(pts[-1])
+        run = []
+        for x, z in samples + [(None, None)]:
+            if x is not None and clear(x, z):
+                run.append((x, z))
+                continue
+            if len(run) * CROWD_STEP >= CROWD_MIN_RUN:
+                lanes.append({"k": kind, "w": round(w, 2), "p": [r2(v) for q in run for v in q]})
+            run = []
+
+    for r in city["roads"]:
+        if r.get("ys") or r.get("hide") or len(r["pts"]) < 2:
+            continue
+        k = r["kind"]
+        if k in ("footway", "path", "pedestrian"):
+            add("f", r["w"], r["pts"])
+        elif k in CROWD_STREETS:
+            if r.get("sw"):
+                for side in (1, -1):
+                    add("s", r["sw"], offset(r["pts"], side * (edge(r, side) - r["sw"] / 2)))
+            elif r["w"] < 14:
+                for side in (1, -1):
+                    add("r", 1.2, offset(r["pts"], side * (edge(r, side) - 0.6)))
+    st = [[p["x"], p["z"]] for p in city.get("pois", []) if p.get("cat") == "railway:station"]
+    pub = [[p["x"], p["z"]] for p in city.get("pois", []) if p.get("cat") in ("amenity:pub", "amenity:bar")]
+    n = sum(len(l["p"]) // 2 for l in lanes)
+    print(f"crowd lanes={len(lanes)} points={n} length={n * CROWD_STEP / 1000:.1f} km hubs st={len(st)} pub={len(pub)}")
+    return {"lanes": lanes, "hubs": {"st": st, "pub": pub}}
+
+
 def build(city):
     H = load_terrain()
     # 外観を別に描く建物 (hide。神社の社殿 = tools/shrine.py) は無いものとして扱う (ベランダ・看板を付けない、道の当たりにも使わない)
@@ -2566,6 +2634,7 @@ def build(city):
         extras["fences"].append(rf)
     small = json.loads(SMALL.read_text(encoding="utf-8")) if SMALL.exists() else None
     yard = build_yard(small, world, H, col) if small else {}
+    crowd = build_crowd(city, world, H)
     print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
     return {
         "version": 1,
@@ -2578,6 +2647,7 @@ def build(city):
         "rail": rail,
         "walk": walk,
         "cars": cars,
+        "crowd": crowd,
         "shrines": build_shrines(H, hidden),
         **yard,
         **extras,
