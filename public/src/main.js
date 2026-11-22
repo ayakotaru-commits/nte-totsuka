@@ -9,7 +9,8 @@ import { ThirdPersonCamera } from './camera.js';
 import { Input } from './input.js';
 import { Minimap } from './minimap.js';
 import { Labels } from './labels.js';
-import { TimeOfDay } from './time.js';
+import { TimeOfDay, PRESETS } from './time.js';
+import { Crowd } from './crowd.js';
 import { Waypoints } from './waypoint.js';
 import { BigMap } from './bigmap.js';
 import { loadDetail } from './detail/index.js'; // detail (お試し)
@@ -140,6 +141,10 @@ async function main() {
   const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z), touch: TOUCH });
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
+  // 街を歩く人 (crowd.js。動きは crowdsim.js、通り道は props.json の crowd)。?nocrowd で無し、?crowd=人数 で上限を変える (確認用)
+  const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined });
+  if (Q.has('nocrowd')) crowd.setVisible(false);
+  window.__crowd = crowd; // 確認用
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
   const editor = new Editor({ scene, camera, renderer, world, built, cam, player, streetView });
 
@@ -316,6 +321,7 @@ async function main() {
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
     tod.update(dt);
+    if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
 
