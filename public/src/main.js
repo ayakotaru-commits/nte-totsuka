@@ -11,6 +11,7 @@ import { Minimap } from './minimap.js';
 import { Labels } from './labels.js';
 import { TimeOfDay, PRESETS } from './time.js';
 import { Crowd } from './crowd.js';
+import { Traffic } from './traffic.js';
 import { Waypoints } from './waypoint.js';
 import { BigMap } from './bigmap.js';
 import { loadDetail } from './detail/index.js'; // detail (お試し)
@@ -145,6 +146,10 @@ async function main() {
   const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined });
   if (Q.has('nocrowd')) crowd.setVisible(false);
   window.__crowd = crowd; // 確認用
+  // 街を走る車 (traffic.js。動きは trafficsim.js、道は props.json の traffic)。?notraffic で無し、?traffic=台数 で上限を変える (確認用)
+  const traffic = new Traffic(scene, props, { low: TOUCH, cap: Q.has('traffic') ? +Q.get('traffic') : undefined });
+  if (Q.has('notraffic')) traffic.setVisible(false);
+  window.__traffic = traffic; // 確認用
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
   const editor = new Editor({ scene, camera, renderer, world, built, cam, player, streetView });
 
@@ -322,6 +327,7 @@ async function main() {
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
     tod.update(dt);
     if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime);
+    if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, tod.cur.win);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
 

@@ -2645,6 +2645,92 @@ def build_crowd(city, world, H):
     return {"lanes": lanes, "hubs": {"st": st, "pub": pub}}
 
 
+
+# =====================================================================
+# 走る車の道 (issue #64 第 3 段階。public/src/trafficsim.js が読んで、車を走らせる)
+# =====================================================================
+TRAFFIC_KINDS = {"trunk", "trunk_link", "primary", "secondary", "tertiary", "residential", "unclassified", "living_street"}
+TRAFFIC_STEP = 4.0
+
+
+def build_traffic(city):
+    """車の通る道を、交差点 (複数の道が共有する点・行き止まり) で区切って、1 区間ごとに 2 本の車線 (往き・復り) にする。
+    日本は左側通行: 進む向きの左へ、車の通る側の幅の半分だけずらした線。車線の向きは「始まりの交差点 a → 終わりの交差点 b」。
+    lanes: [{k, w, a, b, p: [x, z, ...], y?: [...]}]。往きの車線 (2e) の逆向きが 2e + 1。nodes: [[x, z], ...]。橋 (ys) は高さ y も書く"""
+    roads = [r for r in city["roads"] if r["kind"] in TRAFFIC_KINDS and not r.get("hide") and len(r["pts"]) >= 2]
+    use = {}
+    for i, r in enumerate(roads):
+        for p in r["pts"]:
+            use.setdefault((p[0], p[1]), set()).add(i)
+    node_id, nodes = {}, []
+
+    def node(p):
+        key = (p[0], p[1])
+        if key not in node_id:
+            node_id[key] = len(nodes)
+            nodes.append([r2(p[0]), r2(p[1])])
+        return node_id[key]
+
+    def offset(pts, off):
+        """折れ線を進む向きの左へ off ずらす。x = 東・z = 南なので、東へ進むときの左 (北) は (dz, -dx)。(build_props.py の中の「左 = (-dz, dx)」は、
+        地図で見ると進む向きの右なので注意。road["half"][0] もその側)。角は斜めに切って、ずれ過ぎないようにする"""
+        out = []
+        for i, (x, z) in enumerate(pts):
+            nx = nz = 0.0
+            for a, b in ((pts[i - 1], pts[i]) if i > 0 else (None, None), (pts[i], pts[i + 1]) if i < len(pts) - 1 else (None, None)):
+                if a is None:
+                    continue
+                dx, dz = b[0] - a[0], b[1] - a[1]
+                L = math.hypot(dx, dz) or 1
+                nx += dz / L
+                nz += -dx / L
+            m = math.hypot(nx, nz) or 1
+            k = min(1.6, 2.0 / m) if m < 2 else 1.0   # 2 つの法線の平均が短い (= 角が急) ほど長く
+            out.append((x + nx / m * off * k, z + nz / m * off * k))
+        return out
+
+    def resample(pts, ys):
+        """元の点を残して、TRAFFIC_STEP より長い区間は割る"""
+        out, oy = [pts[0]], ([ys[0]] if ys else None)
+        for i in range(1, len(pts)):
+            a, b = pts[i - 1], pts[i]
+            L = math.hypot(b[0] - a[0], b[1] - a[1])
+            n = max(1, int(math.ceil(L / TRAFFIC_STEP)))
+            for k in range(1, n + 1):
+                t = k / n
+                out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+                if ys:
+                    oy.append(ys[i - 1] + (ys[i] - ys[i - 1]) * t)
+        return out, oy
+
+    lanes = []
+    for i, r in enumerate(roads):
+        pts = [tuple(p) for p in r["pts"]]
+        ys = r["ys"] if r.get("ys") and len(r["ys"]) == len(pts) else None
+        cut = [0] + [k for k in range(1, len(pts) - 1) if len(use[pts[k]]) > 1] + [len(pts) - 1]
+        half = r.get("half") or [r["w"] / 2, r["w"] / 2]
+        sw = r.get("sw") or 0
+        off_f = min(5.0, max(1.0, (half[1] - sw) / 2))   # 往き (点の並びの向き) の左側 = half[1] の側
+        off_b = min(5.0, max(1.0, (half[0] - sw) / 2))   # 復り (逆向き) の左側 = half[0] の側
+        for a, b in zip(cut, cut[1:]):
+            seg = pts[a:b + 1]
+            sy = ys[a:b + 1] if ys else None
+            na, nb = node(seg[0]), node(seg[-1])
+            if na == nb or sum(math.hypot(q[0] - p[0], q[1] - p[1]) for p, q in zip(seg, seg[1:])) < 3.0:
+                continue
+            for rev in (False, True):
+                sp = seg[::-1] if rev else seg
+                syy = (sy[::-1] if rev else sy) if sy else None
+                q, qy = resample(offset(sp, off_b if rev else off_f), syy)
+                lane = {"k": r["kind"], "w": round(r["w"], 1), "a": nb if rev else na, "b": na if rev else nb, "p": [r2(v) for c in q for v in c]}
+                if qy:
+                    lane["y"] = [r2(v) for v in qy]
+                lanes.append(lane)
+    km = sum(sum(math.hypot(l["p"][2 * k + 2] - l["p"][2 * k], l["p"][2 * k + 3] - l["p"][2 * k + 1]) for k in range(len(l["p"]) // 2 - 1)) for l in lanes) / 1000
+    print(f"traffic lanes={len(lanes)} nodes={len(nodes)} length={km:.1f} km")
+    return {"lanes": lanes, "nodes": nodes}
+
+
 def build(city):
     H = load_terrain()
     # 外観を別に描く建物 (hide。神社の社殿 = tools/shrine.py) は無いものとして扱う (ベランダ・看板を付けない、道の当たりにも使わない)
@@ -2671,6 +2757,7 @@ def build(city):
     small = json.loads(SMALL.read_text(encoding="utf-8")) if SMALL.exists() else None
     yard = build_yard(small, world, H, col) if small else {}
     crowd = build_crowd(city, world, H)
+    traffic = build_traffic(city)
     print(f"colliders: circle={len(col.circle)} box={len(col.box)} line={len(col.line)}")
     return {
         "version": 1,
@@ -2684,6 +2771,7 @@ def build(city):
         "walk": walk,
         "cars": cars,
         "crowd": crowd,
+        "traffic": traffic,
         "shrines": build_shrines(H, hidden),
         **yard,
         **extras,
