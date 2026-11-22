@@ -63,7 +63,9 @@ export class Minimap {
   }
 
   // others: ほかのプレイヤー ({ x, z, pvp } の並び。マルチプレイのときだけ)
-  update(px, pz, yaw, facing, others = null) {
+  // 常に北が上 (カメラの向き yaw では回さない。issue #63)。引数 yaw は呼び出し側との互換のため残してあるだけ
+  update(px, pz, _yaw, facing, others = null) {
+    const yaw = 0;
     const c = this.ctx, W = this.canvas.width, H = this.canvas.height, R = W / 2, B = this.B;
     c.clearRect(0, 0, W, H);
     c.save();
