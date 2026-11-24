@@ -112,6 +112,25 @@ function terrain() {
   await frames(2);
   const s0 = await st();
   check('地図に乗り場の印・選んでワープすると改札の前 (デッキの上) に立つ', mark && mark.mini && !mark.open && mark.d < 0.5 && Math.abs(mark.dy) < 0.5 && /改札/.test(s0.hint), { mark, hint: s0.hint });
+  // 延ばした先の駅の印: ミニマップ・大きい地図に駅ごとに出る、選んでワープするとその駅のホームの上に立つ
+  const stMarks = await page.evaluate(() => {
+    const g = window.__g, R = window.__ride, out = [];
+    const names = [...new Set(R.plats.slice(R.nHome).map((p) => p.name))];
+    for (const n of names) {
+      const e = g.bigmap.events.find((q) => q.name === n + '駅（ホーム）');
+      if (!e) { out.push({ n, mark: false }); continue; }
+      g.bigmap.show(-306, 1426); g.bigmap.onWarp(e.x, e.z);
+      const pl = R.onPlatform(), p = g.player.pos;
+      out.push({ n, mark: true, mini: g.minimap.events.includes(e), open: g.bigmap.open, on: pl && pl.name, y: +(p.y - (pl ? R.platY(pl, p.x, p.z) : 0)).toFixed(2) });
+    }
+    g.bigmap.show(4000, -2900); g.bigmap.zoomAt(innerWidth / 2, innerHeight / 2, 0.001);
+    return { out, minScale: g.bigmap.scale };
+  });
+  check('延ばした先の駅ごとに地図の印・選んでワープするとその駅のホームの上に立つ・大きい地図を横浜まで縮小できる',
+    stMarks.out.length >= 3 && stMarks.out.every((q) => q.mark && q.mini && !q.open && q.on === q.n && Math.abs(q.y) < 0.1) && stMarks.minScale < 0.1, stMarks);
+  await frames(2); await page.waitForTimeout(2000);
+  await page.screenshot({ path: path.join(out, '0_map_all.png'), timeout: 240000 });
+  await page.evaluate(() => window.__g.bigmap.hide());
   // 地図の画面 (乗り場の印のまわりを拡大)
   await page.evaluate(() => { const g = window.__g, t = window.__ride.gates[0].top; g.bigmap.show(t.x, t.z); g.bigmap.scale = 1.6; g.bigmap.cx = t.x; g.bigmap.cz = t.z + 60; });
   await frames(2); await page.waitForTimeout(2000);

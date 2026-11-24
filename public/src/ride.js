@@ -41,6 +41,7 @@ export class Ride {
     // routes: [{ r (道筋), si (r.stops の何番目の駅か) }]
     const mkPlat = (pf, name) => ({ ring: [...pf.left, ...pf.right.slice().reverse()], pf, name, routes: [] });
     this.plats = rail.platforms.map((pf) => mkPlat(pf, '戸塚'));
+    this.nHome = this.plats.length;   // 戸塚のホームの数 (この後ろが延ばした先の駅)
     for (const st of (ext && ext.stations) || []) for (const pf of st.platforms || [st.platform]) this.plats.push(mkPlat(pf, st.name));   // 駅ごとに複数のホーム (横浜など)
     const P = new THREE.Vector3();
     for (const r of trains.R) {
@@ -184,6 +185,21 @@ export class Ride {
     g.visible = false;
     this.scene.add(g);
     return g;
+  }
+
+  // 延ばした先の駅の、地図のワープ先 (駅ごとに 1 つ): 最初のホーム (横浜は横須賀線の島式 = 上下とも止まる) の中央から 3 点 (12 m) ずらした、
+  // ホームの中心線の上 (屋根の柱・駅名標・「のりかえ」の案内板と重ならない所)。{ name, x, y, z, face }
+  stationSpots() {
+    if (this.disabled) return [];
+    const out = [], seen = new Set();
+    for (const pl of this.plats.slice(this.nHome)) {
+      if (seen.has(pl.name)) continue;
+      seen.add(pl.name);
+      const pf = pl.pf, k = Math.max(1, (pf.left.length >> 1) - 3);
+      out.push({ name: pl.name, x: (pf.left[k][0] + pf.right[k][0]) / 2, y: pf.y[k], z: (pf.left[k][1] + pf.right[k][1]) / 2,
+        face: Math.atan2(pf.left[k + 1][0] - pf.left[k][0], pf.left[k + 1][1] - pf.left[k][1]) });
+    }
+    return out;
   }
 
   // (x, z) があるホーム (無ければ null)

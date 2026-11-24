@@ -151,6 +151,9 @@ async function main() {
     // 電車の乗り場 (改札) の印を選んだとき: 下の地面ではなく、デッキの上の改札の前に立つ
     const gate = ride && !ride.disabled ? ride.gates.find((g) => Math.hypot(g.top.x - x, g.top.z - z) < 3) : null;
     if (gate) { ride.place(gate.top.x, gate.top.y, gate.top.z, -Math.PI / 2); toggleMap(); return; }
+    // 延ばした先の駅 (東戸塚・保土ケ谷・横浜) の印を選んだとき: その駅のホームの上に立つ (地図の外。改札は無いのでホームへ直接)
+    const sp = ride ? ride.stationSpots().find((q) => Math.hypot(q.x - x, q.z - z) < 3) : null;
+    if (sp) { ride.place(sp.x, sp.y, sp.z, sp.face); toggleMap(); return; }
     const p = findFree(world, x, z);
     player.teleport(p.x, p.z);
     cam.update(0, player.pos, true);
@@ -219,6 +222,8 @@ async function main() {
     { name: 'プロジェクトセマイ ワンルームステージ！', x: ARCADE_SITE.center[0], z: ARCADE_SITE.center[1], color: '#ff6fae', active: () => arcade.active, off: arcade.disabled },
     // 電車の乗り場 (戸塚駅の改札 = 東口のデッキが駅舎に入る所。ride.js)。印を選んでワープすると改札の前に立つ (warpTo)
     ...(!ride.disabled && ride.gates.length ? [{ name: '電車の乗り場（戸塚駅 改札）', x: ride.gates[0].top.x, z: ride.gates[0].top.z, color: '#1f5fae', glyph: '電', active: () => !!ride.riding }] : []),
+    // 延ばした先の駅 (rail_ext.json の stations)。印を選んでワープすると、その駅のホームの上に立つ (warpTo)
+    ...ride.stationSpots().map((q) => ({ name: `${q.name}駅（ホーム）`, x: q.x, z: q.z, color: '#1f5fae', glyph: '電', active: () => false })),
   ].filter((e) => !e.off);
   minimap.events = bigmap.events = EVENTS;
 

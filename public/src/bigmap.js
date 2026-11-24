@@ -73,7 +73,7 @@ export class BigMap {
     const r = this.canvas.getBoundingClientRect();
     const mx = clientX - r.left - r.width / 2, my = clientY - r.top - r.height / 2;
     const wx = this.cx + mx / this.scale, wz = this.cz + my / this.scale;
-    this.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, this.scale * k));
+    this.scale = Math.max(this.minScale || MIN_SCALE, Math.min(MAX_SCALE, this.scale * k));
     this.cx = wx - mx / this.scale; this.cz = wz - my / this.scale;
   }
 
@@ -85,6 +85,12 @@ export class BigMap {
     const B = this.B;
     const fit = Math.min(innerWidth / (B.maxX - B.minX), innerHeight / (B.maxZ - B.minZ)) * 0.9;
     if (!this.zoomed) { this.scale = Math.max(fit, 0.6); this.zoomed = true; }
+    // 線路の延長 (横浜など、地図の外の駅) まで 1 画面に収まるところまで縮小できる
+    const E = this.minimap.ext;
+    if (E) {
+      const x0 = Math.min(B.minX, E.x0), x1 = Math.max(B.maxX, E.x0 + E.canvas.width / E.s), z0 = Math.min(B.minZ, E.z0), z1 = Math.max(B.maxZ, E.z0 + E.canvas.height / E.s);
+      this.minScale = Math.min(MIN_SCALE, Math.min(innerWidth / (x1 - x0), innerHeight / (z1 - z0)) * 0.9);
+    }
     this.cx = px; this.cz = pz;
   }
 
