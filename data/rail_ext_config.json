@@ -1,12 +1,14 @@
 {
-  "_doc": "線路の延長の設定 (tools/rail_ext.py が読む)。edge = 地図のどちらの端から延ばすか (north / south)。stations = 途中・先の駅 (緯度経度はホームの中央の目安。lines = 止まる線、ward = 駅のある区 (画面の左上の表示)、platform = ホームの形 (今は island = その線の上下線の間の島式 1 面だけ))。beyond = 最後の駅の先に延ばす長さ (m)。駅を足すときは README の「線路の延長」と .claude/skills/rail-extension を見る",
+  "_doc": "線路の延長の設定 (tools/rail_ext.py が読む)。edge = 地図のどちらの端から延ばすか (north / south)。stations = 途中・先の駅 (緯度経度はホームの中央の目安。lines = 止まる線、ward = 駅のある区 (画面の左上の表示)、platform = ホームの形 (island = lines[0] の上下線の間の島式 1 面。昔の書き方)、platforms = ホームを複数書くとき [{line, type: island (その線の上下線の間) | outer (その線の上下線それぞれの外側の隣の線路との間。1 つで 2 面), length?, lat?/lon? (ホームの中央。無ければ駅の位置)}]。platforms があれば platform は使わない)。beyond = 最後の駅の先に延ばす長さ (m)。駅を足すときは README の「線路の延長」と .claude/skills/rail-extension を見る",
   "extensions": [
     {
       "edge": "north",
       "beyond": 700,
       "stations": [
         { "name": "東戸塚", "kana": "ひがしとつか", "roman": "Higashi-Totsuka", "lat": 35.430325, "lon": 139.556762, "lines": ["yokosuka"], "platform": "island", "length": 310, "ward": "戸塚区" },
-        { "name": "保土ケ谷", "kana": "ほどがや", "roman": "Hodogaya", "lat": 35.447102, "lon": 139.600295, "lines": ["yokosuka"], "platform": "island", "length": 310, "ward": "保土ケ谷区" }
+        { "name": "保土ケ谷", "kana": "ほどがや", "roman": "Hodogaya", "lat": 35.447102, "lon": 139.600295, "lines": ["yokosuka"], "platform": "island", "length": 310, "ward": "保土ケ谷区" },
+        { "name": "横浜", "kana": "よこはま", "roman": "Yokohama", "lat": 35.465623, "lon": 139.622092, "lines": ["yokosuka", "tokaido"], "length": 310, "ward": "西区",
+          "platforms": [ { "line": "yokosuka", "type": "island", "_doc": "9・10 番線" }, { "line": "tokaido", "type": "outer", "_doc": "5・6 番線 (下り) と 7・8 番線 (上り)。本線は 6・7、5・8 は待避線" } ] }
       ]
     }
   ]
