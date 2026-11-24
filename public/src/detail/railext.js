@@ -239,9 +239,72 @@ export function buildRailExt(ext, world, mainBounds, low = false) {
     group.add(post, arm);
   }
 
-  // ---------- 東戸塚駅: ホーム・屋根・柱・ベンチ・駅名標 (station.js)。ホームの床の当たり判定と、縁の見えない柵 ----------
-  const st = ext.station;
-  if (st) {
+  // ---------- 道路: 地形に沿わせた帯 (アスファルトの色)。線路の上は省く ----------
+  if (ext.roads && ext.roads.length) {
+    const pos = [], col = [], c = new THREE.Color();
+    const near = new Set();   // 線路の 3 m 以内 (4 m 四方の升目)
+    for (const r of ext.routes) for (const q of r.p) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) near.add((Math.floor(q[0] / 4) + i) * 100000 + Math.floor(q[2] / 4) + j);
+    for (const rd of ext.roads) {
+      const w = rd[0], hw = w / 2;
+      c.set(w >= 8 ? '#5e6064' : '#6c6d70');
+      for (let k = 1; k + 3 < rd.length; k += 2) {
+        const ax = rd[k], az = rd[k + 1], bx = rd[k + 2], bz = rd[k + 3], L = Math.hypot(bx - ax, bz - az);
+        if (L < 0.1) continue;
+        const nx = -(bz - az) / L * hw, nz = (bx - ax) / L * hw, n = Math.ceil(L / 4);
+        for (let t = 0; t < n; t++) {
+          const x0 = ax + (bx - ax) * t / n, z0 = az + (bz - az) * t / n, x1 = ax + (bx - ax) * (t + 1) / n, z1 = az + (bz - az) * (t + 1) / n;
+          if (near.has(Math.floor((x0 + x1) / 8) * 100000 + Math.floor((z0 + z1) / 8)) || inMain((x0 + x1) / 2, (z0 + z1) / 2)) continue;
+          const P = [[x0 + nx, z0 + nz], [x0 - nx, z0 - nz], [x1 - nx, z1 - nz], [x1 + nx, z1 + nz]].map(([x, z]) => [x, S.H(x, z) + 0.12, z]);
+          for (const i of [0, 1, 2, 0, 2, 3]) { pos.push(...P[i]); col.push(c.r, c.g, c.b); }
+        }
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    m.receiveShadow = true; m.name = 'ext_roads';
+    group.add(m);
+  }
+
+  // ---------- 木 (幹と、丸い葉のかたまり。位置は決まりで散らしたもの) ----------
+  if (ext.trees && ext.trees.length) {
+    const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.25, 2.6, 6).translate(0, 1.3, 0), new THREE.MeshStandardMaterial({ color: '#6b5540', roughness: 1 }), ext.trees.length);
+    const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(2.6, 0).translate(0, 4.2, 0), new THREE.MeshStandardMaterial({ color: '#56743d', roughness: 1, flatShading: true }), ext.trees.length);
+    const M = new THREE.Matrix4(), Pp = new THREE.Vector3(), Qq = new THREE.Quaternion(), Ss = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
+    ext.trees.forEach(([x, y, z, s], i) => {
+      M.compose(Pp.set(x, y, z), Qq.setFromAxisAngle(Y, x * 0.37 + z), Ss.set(s, s * (0.9 + (i % 7) * 0.05), s));
+      trunk.setMatrixAt(i, M); crown.setMatrixAt(i, M);
+      crown.setColorAt(i, col.set('#56743d').offsetHSL(((i * 37) % 11 - 5) * 0.006, 0, ((i * 13) % 9 - 4) * 0.02));
+    });
+    trunk.castShadow = crown.castShadow = true; crown.receiveShadow = true;
+    trunk.name = 'ext_tree_trunks'; crown.name = 'ext_tree_crowns';
+    group.add(trunk, crown);
+  }
+
+  // ---------- トンネルの坑口: コンクリートの面と、暗い穴 (線路は地形の下に入る) ----------
+  for (const [x, y, z, yaw, w] of ext.portals || []) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z); g.rotation.y = yaw;
+    const conc = new THREE.MeshStandardMaterial({ color: '#a8a59c', roughness: 0.9 });
+    const H = 7.5, W = w + 6, hole = Math.max(4.6, w - 0.4);
+    // 面 (穴の左右と上)
+    const side = (W - hole) / 2;
+    for (const sx of [-1, 1]) { const m = new THREE.Mesh(new THREE.BoxGeometry(side, H + 3, 1.2), conc); m.position.set(sx * (hole / 2 + side / 2), (H + 3) / 2 - 1, 0); g.add(m); }
+    const top = new THREE.Mesh(new THREE.BoxGeometry(hole, 3.4, 1.2), conc); top.position.set(0, H + 0.3, 0); g.add(top);
+    // 穴の奥 (黒い板) と、穴の中の天井・壁 (外からのぞいたとき地形の裏が見えないように)
+    const dark = new THREE.MeshBasicMaterial({ color: '#0c0c0c', side: THREE.DoubleSide });
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(hole, H), dark); back.position.set(0, H / 2 - 1, -14); g.add(back);
+    for (const sx of [-1, 1]) { const m = new THREE.Mesh(new THREE.PlaneGeometry(14, H), dark); m.rotation.y = Math.PI / 2; m.position.set(sx * hole / 2, H / 2 - 1, -7); g.add(m); }
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(hole, 14), dark); ceil.rotation.x = Math.PI / 2; ceil.position.set(0, H - 1.2, -7); g.add(ceil);
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = o.receiveShadow = true; } });
+    g.name = 'ext_portal';
+    group.add(g);
+  }
+
+  // ---------- 延ばした先の駅: ホーム・屋根・柱・ベンチ・駅名標 (station.js)。ホームの床の当たり判定と、縁の見えない柵 ----------
+  for (const st of ext.stations || []) {
     const pf = st.platform, cn = st.canopy, n = pf.left.length;
     const mid = (k) => [(pf.left[k][0] + pf.right[k][0]) / 2, (pf.left[k][1] + pf.right[k][1]) / 2];
     const dirYaw = (k) => { const a = mid(Math.max(0, k - 1)), b = mid(Math.min(n - 1, k + 1)); return Math.atan2(b[0] - a[0], b[1] - a[1]); };
@@ -261,7 +324,7 @@ export function buildRailExt(ext, world, mainBounds, low = false) {
       nameSigns.push({ x: x - Math.cos(yaw) * 2.6, y: pf.y[k], z: z + Math.sin(yaw) * 2.6, yaw: yaw - Math.PI / 2 });
     }
     const sb = buildStation({ rail: { platforms: [pf], canopies: [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns } },
-      { kanji: '東 戸 塚', kana: 'ひがしとつか', roman: 'Higashi-Totsuka' });
+      { kanji: [...st.name].join(' '), kana: st.kana, roman: st.roman });
     group.add(sb.group);
     // 当たり判定: ホームの床 (detail/index.js の戸塚駅と同じ) と、縁の柵 (高さ 1.2 m。ホームから落ちない)
     const poly = [];
@@ -278,7 +341,7 @@ export function buildRailExt(ext, world, mainBounds, low = false) {
 
   // 当たり判定の範囲 (world.resolve が位置をここに収める) を、延ばした所まで広げる
   const T = ext.terrain;
-  world.bounds = { minX: Math.min(mainBounds.minX, T.x0), maxX: Math.max(mainBounds.maxX, T.x0 + T.nx * T.step), minZ: Math.min(mainBounds.minZ, T.z0), maxZ: mainBounds.maxZ };
-  console.info(`[detail] rail ext: routes=${ext.routes.length} buildings=${ext.buildings.length} terrain=${T.rows.length} rows station=${st ? st.name : '-'}`);
+  world.bounds = { minX: Math.min(mainBounds.minX, T.x0), maxX: Math.max(mainBounds.maxX, T.x0 + T.nx * T.step), minZ: Math.min(mainBounds.minZ, T.z0), maxZ: Math.max(mainBounds.maxZ, T.z0 + T.nz * T.step) };
+  console.info(`[detail] rail ext: routes=${ext.routes.length} buildings=${ext.buildings.length} terrain=${T.rows.length} rows stations=${(ext.stations || []).map((q) => q.name).join(',')} roads=${(ext.roads || []).length} trees=${(ext.trees || []).length} portals=${(ext.portals || []).length}`);
   return { group };
 }

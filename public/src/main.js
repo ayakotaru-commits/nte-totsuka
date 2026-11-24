@@ -142,6 +142,7 @@ async function main() {
   let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
   const minimap = new Minimap(city, $('minimap'));
+  if (ext) minimap.setExt(ext, TOUCH);   // 線路の延長 (東戸塚など) も地図に描く
   const labels = new Labels(city.pois, scene);
   // マップで選んだ場所へワープ (建物の中なら一番近い屋外)。向きはそのまま
   let ride = null;                                              // 電車の乗り降り (下で作る)
@@ -362,8 +363,8 @@ async function main() {
       placeTimer = 0.5;
       const B = city.bounds, px = player.pos.x, pz = player.pos.z;
       if (px < B.minX || px > B.maxX || pz < B.minZ || pz > B.maxZ) { // 地図の外 (線路の延長。rail_ext.json)
-        const c = ext && ext.station ? ext.station.center : null;
-        $('place').textContent = c && Math.hypot(px - c[0], pz - c[1]) < 400 ? '東戸塚駅 付近' : '線路沿い';
+        const st = ((ext && ext.stations) || []).find((q) => Math.hypot(px - q.center[0], pz - q.center[1]) < 400);
+        $('place').textContent = st ? st.name + '駅 付近' : '線路沿い';
       } else {
         const p = labels.nearest(px, pz);
         $('place').textContent = p ? p.label + ' 付近' : '戸塚';

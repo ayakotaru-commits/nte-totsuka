@@ -2,7 +2,7 @@
 // - 駅の自由通路の、ホームへの階段の上 (改札) で F →「ホームへ降りる」。ホームの階段の下で F →「改札へ上がる」(階段は見た目だけなので、暗転して移す)
 // - ホームで、止まっている旅客線 (東海道線・横須賀線) の横で F →「乗る」。乗っている間はキャラを隠し、カメラは電車を外から追う (Q で車内の視点)
 // - 止まっている間は F で降りる (戸塚・東戸塚)。道筋の終わり (範囲の端) に着いたら、暗転して最後に通った駅 (無ければ乗った駅) のホームへ戻る
-// - 東戸塚駅はホームの上だけ (改札・駅舎は無い)。横須賀線だけが止まる
+// - 延ばした先の駅 (東戸塚など。rail_ext.json の stations) はホームの上だけ (改札・駅舎は無い)
 // 電車の時刻と位置は detail/trains.js の api (実際の時計で決まる。だれが見ても同じ所を走る) から取る。
 // 確認用: window.__ride (状態)、window.__trains.skew (時計をずらす秒)
 import * as THREE from 'three';
@@ -39,7 +39,7 @@ export class Ride {
     // routes: [{ r (道筋), si (r.stops の何番目の駅か) }]
     const mkPlat = (pf, name) => ({ ring: [...pf.left, ...pf.right.slice().reverse()], pf, name, routes: [] });
     this.plats = rail.platforms.map((pf) => mkPlat(pf, '戸塚'));
-    if (ext && ext.station) this.plats.push(mkPlat(ext.station.platform, ext.station.name));
+    for (const st of (ext && ext.stations) || []) this.plats.push(mkPlat(st.platform, st.name));
     const P = new THREE.Vector3();
     for (const r of trains.R) {
       r.stops.forEach((st, si) => {

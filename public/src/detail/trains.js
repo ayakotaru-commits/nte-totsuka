@@ -1,6 +1,6 @@
 // 6. 走る電車: 東海道線・横須賀線 (15 両) と貨物列車 (機関車 + コンテナ車)。
 // 道筋 (props.json の rail.routes) は tools/build_props.py が線路をつないで作ったもの。旅客線は戸塚駅のホームで 30 秒止まる。
-// rail_ext.json (tools/rail_ext.py) があれば、道筋を地図の北の端から東戸塚駅の先まで延ばす。横須賀線は東戸塚にも止まる (東海道線・貨物は通過)。
+// rail_ext.json (tools/rail_ext.py) があれば、道筋を地図の端から先の駅 (今は北の東戸塚駅) まで延ばし、その駅にも止まる (止まる線は data/rail_ext_config.json)。
 // 道筋が長くなって 1 本の電車が走りきる時間が周期を超えるので、同じ道筋に何本か (前の周期の電車) を同時に走らせる。
 // 時刻は実際の時計 (Date.now) から決めるので、だれが見ても同じ所を走る (マルチプレイでもそろう)。
 // 色は一般的な近郊電車の配色 (銀色の車体に、線ごとの帯の色)。特定の形式の再現ではない。
@@ -54,21 +54,24 @@ function runTime(len, stops) {
   while (frontAt(t, stops) < len) t += 5;
   return t;
 }
-// 道筋 r に、延ばした線路 e (rail_ext.json の routes の 1 つ) をつなぐ。止まる位置を { s, name } の列にして返す
-function joinExt(r, e) {
-  const stops = r.stop != null ? [{ s: r.stop, name: '戸塚' }] : [];
-  if (!e) return { p: r.p, stops };
+// 道筋 r に、延ばした線路 exts (rail_ext.json の routes のうち、この道筋のもの。始め・終わりに 1 つずつまで) をつなぐ。
+// 止まる位置を { s, name } の列 (s の昇順) にして返す
+function joinExt(r, exts) {
   const len = (pts) => { let L = 0; for (let k = 1; k < pts.length; k++) L += Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][2] - pts[k - 1][2]); return L; };
   const seam = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
-  if (e.at === 'end') {
-    const base = len(r.p) + seam(r.p[r.p.length - 1], e.p[0]);
-    if (e.stop != null) stops.push({ s: base + e.stop, name: '東戸塚' });
-    return { p: [...r.p, ...e.p], stops };
+  let p = r.p, stops = r.stop != null ? [{ s: r.stop, name: '戸塚' }] : [];
+  const st = exts.find((e) => e.at === 'start'), en = exts.find((e) => e.at === 'end');
+  if (st && st.p.length) {
+    const shift = len(st.p) + seam(st.p[st.p.length - 1], p[0]);
+    stops = [...(st.stops || []), ...stops.map((q) => ({ ...q, s: q.s + shift }))];
+    p = [...st.p, ...p];
   }
-  const shift = len(e.p) + seam(e.p[e.p.length - 1], r.p[0]);
-  const out = stops.map((st) => ({ ...st, s: st.s + shift }));
-  if (e.stop != null) out.unshift({ s: e.stop, name: '東戸塚' });
-  return { p: [...e.p, ...r.p], stops: out };
+  if (en && en.p.length) {
+    const base = len(p) + seam(p[p.length - 1], en.p[0]);
+    stops = [...stops, ...(en.stops || []).map((q) => ({ ...q, s: base + q.s }))];
+    p = [...p, ...en.p];
+  }
+  return { p, stops: stops.sort((a, b) => a.s - b.s) };
 }
 
 function sideTexture(band) {
@@ -118,8 +121,7 @@ export function buildTrains(props, ext = null) {
 
   // 道筋ごとの累積距離 (点は約 5 m おき)
   const R = routes.map((r0, i) => {
-    const e = ext && ext.routes ? ext.routes.find((x) => x.route === i) : null;
-    const { p, stops } = joinExt(r0, e);
+    const { p, stops } = joinExt(r0, ext && ext.routes ? ext.routes.filter((x) => x.route === i) : []);
     const r = { ...r0, p };
     const acc = [0];
     for (let k = 1; k < p.length; k++) acc.push(acc[k - 1] + Math.hypot(p[k][0] - p[k - 1][0], p[k][2] - p[k - 1][2]));

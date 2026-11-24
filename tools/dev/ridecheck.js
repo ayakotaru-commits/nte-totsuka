@@ -1,5 +1,5 @@
 // 電車の乗り降り (ride.js) の確認: 改札 → ホーム、案内、乗る、走る、車内の視点、地図の端で戻る、止まっている間に降りる、ホーム → 改札。画面も撮る。
-// 使い方: node tools/dev/ridecheck.js <出力フォルダ>   (準備は shot.js と同じ。数分)
+// 使い方: node tools/dev/ridecheck.js <出力フォルダ> [--station 東戸塚]   (準備は shot.js と同じ。20 分ほど)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -30,6 +30,7 @@ function terrain() {
   const city = flag('--city');
   const props = flag('--props');
   const extraQ = flag('--q') || '';
+  const stationName = flag('--station');   // 確かめる延長の駅 (無ければ最初の駅)
   const [out] = args; const viewsFile = 'x';
   if (!out) { console.error('usage: node tools/dev/shot.js <出力フォルダ> <視点.json> [--city <city.json>] [--dump]'); process.exit(1); }
   if (!fs.existsSync(path.join(THREE_DIR, 'build', 'three.module.js'))) {
@@ -83,7 +84,7 @@ function terrain() {
     return { disabled: R.disabled, gates: R.gates.length, tops: R.gates.map((g) => [g.top, g.downs.map((d) => R.plats.indexOf(d.plat))]), plats: R.plats.map((p) => p.name + ' ' + p.routes.map((x) => x.r.line + ':' + x.r.dir).join(',')) };
   });
   console.log('setup', JSON.stringify(setup));
-  check('改札から戸塚の 2 面のホームへ行ける・東戸塚のホームに横須賀線が 2 本', new Set(setup.tops.flatMap((t) => t[1])).size === 2 && setup.plats.length === 3 && /東戸塚 yokosuka:\w+,yokosuka:\w+$/.test(setup.plats[2]), setup);
+  check('改札から戸塚の 2 面のホームへ行ける・延ばした先の駅のホームに上下 2 本', new Set(setup.tops.flatMap((t) => t[1])).size === 2 && setup.plats.length >= 3 && setup.plats.slice(2).every((p) => /:north/.test(p) && /:south/.test(p)), setup);
   // 時計を止める (この環境は画面を撮るのに 1〜2 分かかり、その間に電車が動いてしまうため)
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });
   // 時計を、道筋 r の電車が止まって 10 秒の時刻にする
@@ -105,7 +106,7 @@ function terrain() {
 
   // 2. 止まっている電車の横に立つ (時計をずらして、発車の 20 秒前にする)
   const pos = await page.evaluate(() => {
-    const R = window.__ride, T = window.__trains, pl = R.onPlatform(), { r, si } = pl.routes.find((x) => x.r.line === 'yokosuka'), P = r.L.period;
+    const R = window.__ride, T = window.__trains, pl = R.onPlatform(), { r, si } = pl.routes.find((x) => x.r.stops.length > 1) || pl.routes[0], P = r.L.period;
     T.hold += ((((r.tArrs[si] + 10 - T.phase(r, T.hold)) % P) + P) % P);
     // 3 両目の横、ホームの側へ 2.4 m
     const THREE_ = window.__g.player.pos.constructor;
@@ -156,7 +157,7 @@ function terrain() {
   });
   await frames(2); await page.waitForFunction(() => !window.__ride.busy); await frames(2);
   s = await st();
-  check('範囲の端で、最後に止まった駅 (東戸塚) のホームへ戻る', !s.riding && s.visible && s.onPlat && /東戸塚駅のホームに戻りました/.test(s.toast), s);
+  check('範囲の端で、最後に止まった駅のホームへ戻る', !s.riding && s.visible && s.onPlat && /駅のホームに戻りました/.test(s.toast), s);
   // 戸塚のホームへ戻しておく
   await page.evaluate((p) => { const R = window.__ride, q = R.platAt(p.x, p.z); R.place(p.x, R.platY(q, p.x, p.z), p.z, 0); }, pos);
   await frames(2);
@@ -171,17 +172,37 @@ function terrain() {
   s = await st();
   check('止まっている間に F で降りる (ホームの上・キャラが見える)', !s.riding && s.onPlat && s.visible, s);
 
-  // 5b. 戸塚 → 東戸塚 (横須賀線 上り)。走っている途中の画面、東戸塚で降りる、東戸塚のホームの案内、戻りの電車で戸塚へ
-  await dwellAt('yokosuka'); await frames(2);
+  // 5b. 戸塚 → 延ばした先の駅 (ST。--station で選ぶ。無ければ最初の駅)。途中の画面、その駅で降りる、ホームの案内、戻りの電車で戸塚へ
+  // 道筋 r の電車を si 番目の駅に止め (発車の 20 秒前)、k 両目の横 2.3 m のホームの上に立たせる
+  const beside = (sel) => page.evaluate((sel) => {
+    const R = window.__ride, T = window.__trains;
+    const r = T.R.find((q) => q.line === sel.line && q.stops.some((x) => x.name === sel.from) && q.stops.some((x) => x.name === sel.to)
+      && q.stops.findIndex((x) => x.name === sel.from) < q.stops.findIndex((x) => x.name === sel.to));
+    if (!r) return null;
+    const si = r.stops.findIndex((x) => x.name === sel.from), P = r.L.period;
+    T.hold += ((((r.tArrs[si] + 10 - T.phase(r, T.hold)) % P) + P) % P);
+    const V3 = window.__g.player.pos.constructor, a = new V3(), b = new V3(); T.pointAt(r, r.S[si] - 3.5 * T.CAR, a); T.pointAt(r, r.S[si] - 3.5 * T.CAR + 1, b);
+    const ux = b.x - a.x, uz = b.z - a.z, l = Math.hypot(ux, uz);
+    for (const sgn of [1, -1]) {
+      const tx = a.x - uz / l * 2.3 * sgn, tz = a.z + ux / l * 2.3 * sgn, q = R.platAt(tx, tz);
+      if (q) { R.place(tx, R.platY(q, tx, tz), tz, 0); return { dir: r.dir, line: r.line }; }
+    }
+    return null;
+  }, sel);
+  const ST = await page.evaluate((want) => { const R = window.__ride, pl = R.plats.slice(2).find((p) => !want || p.name === want);
+    return pl ? { name: pl.name, line: pl.routes[0].r.line, idx: R.plats.indexOf(pl) } : null; }, stationName);
+  check('延ばした先の駅がある', !!ST, ST);
+  const go = await beside({ line: ST.line, from: '戸塚', to: ST.name });
+  await frames(2);
   await press('KeyF'); await frames(2);
   s = await st();
-  check('戸塚で横須賀線 上りに乗る', s.riding && /横須賀線 上り/.test(s.info), s.info);
-  // 戸塚と東戸塚の間 (東戸塚に着く 90 秒前)
-  const mid = await page.evaluate(() => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === '東戸塚');
-    const t = T.hold - rd.dep; T.hold += r.tArrs[si] - 90 - t; return { si, n: r.stops.length }; });
+  check(`戸塚で ${ST.name} 行きに乗る`, go && s.riding, { go, info: s.info });
+  // 途中 (着く 90 秒前)
+  await page.evaluate((name) => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === name);
+    T.hold += r.tArrs[si] - 90 - (T.hold - rd.dep); }, ST.name);
   await frames(3);
   s = await st();
-  check('途中: 「次は 東戸塚」・電車と一緒に動く (地図の外)', s.riding && /東戸塚/.test(s.info) && s.z < -700, { info: s.info, x: s.x, z: s.z, mid });
+  check(`途中: 「${ST.name}」の案内・電車と一緒に動く (地図の外)`, s.riding && s.info.includes(ST.name) && (s.z < -650 || s.z > 1650 || Math.abs(s.x) > 650), { info: s.info, x: s.x, z: s.z });
   await page.evaluate(() => { const c = window.__g.cam; c.pitch = 0.35; });
   await page.waitForTimeout(3000);
   await page.screenshot({ path: path.join(out, '5_between.png'), timeout: 240000 });
@@ -190,43 +211,34 @@ function terrain() {
   await page.waitForTimeout(3000);
   await page.screenshot({ path: path.join(out, '6_between_in.png'), timeout: 240000 });
   await press('KeyQ'); await frames(1);
-  await page.evaluate(() => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === '東戸塚'); T.hold += r.tArrs[si] + 8 - (T.hold - rd.dep); });
+  await page.evaluate((name) => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === name); T.hold += r.tArrs[si] + 8 - (T.hold - rd.dep); }, ST.name);
   await frames(3);
   s = await st();
-  check('東戸塚に止まる', s.riding && /東戸塚 停車中/.test(s.info), s.info);
+  check(`${ST.name}に止まる`, s.riding && s.info.includes(ST.name + ' 停車中'), s.info);
   await press('KeyF'); await frames(3);
   s = await st();
-  check('東戸塚で降りる (ホームの上・案内)', !s.riding && s.onPlat && /東戸塚駅 ホーム/.test(s.info), s);
+  check(`${ST.name}で降りる (ホームの上・案内)`, !s.riding && s.onPlat && s.info.includes(ST.name + '駅 ホーム'), s);
   const htY = await page.evaluate(() => { const p = window.__g.player.pos, W = window.__g.world; return { y: p.y, g: W.groundAt(p.x, p.z, p.y + 0.3) }; });
-  check('東戸塚のホームの上に立つ (地面の下に落ちない)', Math.abs(htY.y - htY.g) < 0.05, htY);
+  check(`${ST.name}のホームの上に立つ (地面の下に落ちない)`, Math.abs(htY.y - htY.g) < 0.05, htY);
   // ホームの縁の柵: 線路の側へ歩いても落ちない
-  const edge = await page.evaluate(() => { const R = window.__ride, g = window.__g, p = g.player.pos, pf = R.plats[2].pf, m = pf.left.length >> 1;
+  const edge = await page.evaluate((idx) => { const R = window.__ride, g = window.__g, p = g.player.pos, pf = R.plats[idx].pf, m = pf.left.length >> 1;
     const ux = pf.left[m][0] - pf.right[m][0], uz = pf.left[m][1] - pf.right[m][1], l = Math.hypot(ux, uz);
     const q = { x: p.x, y: p.y, z: p.z }; for (let k = 0; k < 40; k++) { q.x += ux / l * 0.25; q.z += uz / l * 0.25; g.world.resolve(q, 0.35); }
-    return { onPlat: !!R.platAt(q.x, q.z), q }; });
-  check('東戸塚のホームの縁から落ちない', edge.onPlat, edge);
+    return { onPlat: !!R.platAt(q.x, q.z), q }; }, ST.idx);
+  check(`${ST.name}のホームの縁から落ちない`, edge.onPlat, edge);
   await page.evaluate(() => { const c = window.__g.cam; c.yaw = 0.4; c.pitch = 0.25; c.dist = 8; });
   await page.waitForTimeout(3000);
-  await page.screenshot({ path: path.join(out, '7_higashitotsuka.png'), timeout: 240000 });
-  // 戻り: 横須賀線 下り
-  const back = await page.evaluate(() => { const R = window.__ride, T = window.__trains, pl = R.onPlatform(), x = pl.routes.find((q) => q.r.dir === 'south');
-    const { r, si } = x, P = r.L.period; T.hold += ((((r.tArrs[si] + 10 - T.phase(r, T.hold)) % P) + P) % P);
-    const V3 = window.__g.player.pos.constructor, a = new V3(), b = new V3(); T.pointAt(r, r.S[si] - 3.5 * T.CAR, a); T.pointAt(r, r.S[si] - 3.5 * T.CAR + 1, b);
-    // 線路の中心から 2.3 m、ホームの側 (線路と直角の向き)
-    const ux = b.x - a.x, uz = b.z - a.z, l = Math.hypot(ux, uz);
-    for (const sgn of [1, -1]) {
-      const tx = a.x - uz / l * 2.3 * sgn, tz = a.z + ux / l * 2.3 * sgn, q = R.platAt(tx, tz);
-      if (q) { R.place(tx, R.platY(q, tx, tz), tz, 0); return true; }
-    }
-    return false; });
+  await page.screenshot({ path: path.join(out, '7_station.png'), timeout: 240000 });
+  // 戻り
+  const back = await beside({ line: ST.line, from: ST.name, to: '戸塚' });
   await frames(2);
   await press('KeyF'); await frames(2);
   s = await st();
-  check('東戸塚で横須賀線 下りに乗る', back && s.riding && /下り/.test(s.info), s.info);
+  check(`${ST.name}で戸塚行きに乗る`, back && s.riding, { back, info: s.info });
   await page.evaluate(() => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === '戸塚'); T.hold += r.tArrs[si] + 8 - (T.hold - rd.dep); });
   await frames(3);
   s = await st();
-  check('戸塚に止まる', s.riding && /戸塚 停車中/.test(s.info) && !/東戸塚 停車中/.test(s.info), s.info);
+  check('戸塚に止まる', s.riding && /(^|\s|号車)戸塚 停車中/.test(s.info), s.info);
   await press('KeyF'); await frames(3);
   s = await st();
   check('戸塚で降りる', !s.riding && s.onPlat && /^戸塚駅 ホーム/.test(s.info), s.info);
