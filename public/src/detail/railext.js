@@ -304,8 +304,9 @@ export function buildRailExt(ext, world, mainBounds, low = false) {
   }
 
   // ---------- 延ばした先の駅: ホーム・屋根・柱・ベンチ・駅名標 (station.js)。ホームの床の当たり判定と、縁の見えない柵 ----------
-  for (const st of ext.stations || []) {
-    const pf = st.platform, cn = st.canopy, n = pf.left.length;
+  // 1 つの駅に複数のホーム (platforms・canopies。横浜など)。古い形 (platform・canopy 1 つ) も読む
+  for (const st of ext.stations || []) (st.platforms || [st.platform]).forEach((pf, pi) => {
+    const cn = (st.canopies || [st.canopy])[pi], n = pf.left.length;
     const mid = (k) => [(pf.left[k][0] + pf.right[k][0]) / 2, (pf.left[k][1] + pf.right[k][1]) / 2];
     const dirYaw = (k) => { const a = mid(Math.max(0, k - 1)), b = mid(Math.min(n - 1, k + 1)); return Math.atan2(b[0] - a[0], b[1] - a[1]); };
     const columns = [], benches = [], nameSigns = [];
@@ -337,7 +338,7 @@ export function buildRailExt(ext, world, mainBounds, low = false) {
     edge(pf.left); edge(pf.right);
     edge([pf.left[0], pf.right[0]]); edge([pf.left[n - 1], pf.right[n - 1]]);
     world.addColliders({ poly, line }, true);
-  }
+  });
 
   // 当たり判定の範囲 (world.resolve が位置をここに収める) を、延ばした所まで広げる
   const T = ext.terrain;

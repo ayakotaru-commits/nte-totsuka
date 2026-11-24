@@ -7,7 +7,7 @@
   routes:   [{route: props.json の rail.routes の番号, line, at: "end" (道筋の終わりに足す) | "start" (始めに足す),
               p: [[x, y, z], ...] (約 5 m おき。y = レールの上面。"start" は延長の先から地図の端へ向かう順 = そのまま前につなげる順),
               stops: [{s: 止まる位置 (先頭の、p の始点からの距離 m), name: 駅名}]}]
-  stations: [{name, kana, roman, platform: {left, right, y} (戸塚の rail.platforms と同じ形), canopy: 同じ形, center: [x, z]}]
+  stations: [{name, kana, roman, ward, platforms: [{left, right, y} (戸塚の rail.platforms と同じ形), ...], canopies: [同じ形, ...] (ホームごと), center: [x, z]}]
   terrain:  線路の近く (BAND m 以内) の細かい地形 {step, x0, z0, nx, nz, rows: [[j, i0, h(cm), ...], ...]}
   coarse:   その外の粗い地形 {step, x0, z0, nx, nz, h: [cm, ...]} (地図の範囲の中も含めて全部)
   buildings: 線路の近くの建物 [[[[x, z], ...] 輪郭, 足元の y, 高さ, 下端 (線路をまたぐ駅舎など。0 = 地面から)], ...]
@@ -315,42 +315,137 @@ def match_track(tracks, grid, p, at_end):
     return (best[1], best[2], heading, E) if best else None
 
 
-def build_station(st, ext_routes, lines):
-    """駅 st (設定) のホーム。島式 = 止まる線 (lines[0]) の上下線の間"""
+def station_platforms(st):
+    """設定の駅のホームの一覧。platforms が無ければ、昔の書き方 (lines[0] の上下線の間の島式 1 面)"""
+    if st.get("platforms"):
+        return st["platforms"]
+    return [{"line": st["lines"][0], "type": st.get("platform", "island")}]
+
+
+def build_station(st, ext_routes, tracks, grid):
+    """駅 st (設定) のホーム (複数)。platforms の 1 つずつ:
+    island = 線 line の上下線の間の島式 1 面 (東戸塚・保土ケ谷・横浜の横須賀線)
+    outer  = 線 line の上下線それぞれの外側 (反対の向きの線と逆の側) の、隣の線路 (待避線など。電車は走らない) との間の島式 1 面ずつ
+             (横浜の東海道線: 本線の 6・7 番線は隣り合い、ホームは 5・6 番線の間と 7・8 番線の間)"""
     cx, cz = to_local(st["lat"], st["lon"])
-    yk = [er for er in ext_routes if er["line"] == st["lines"][0] and nearest_on(er["P"], cx, cz)[0] < 40]
-    if len(yk) != 2:
-        print(f"  {st['name']}: {st['lines'][0]} の上下線が 2 本見つからない ({len(yk)} 本)。駅を作らない")
+    plats = []
+    for spec in station_platforms(st):
+        px, pz = (to_local(spec["lat"], spec["lon"]) if "lat" in spec else (cx, cz))
+        line = spec["line"]
+        yk = [er for er in ext_routes if er["line"] == line and nearest_on(er["P"], px, pz)[0] < 80]
+        if len(yk) != 2:
+            print(f"  {st['name']}: {line} の上下線が 2 本見つからない ({len(yk)} 本)。このホームを作らない")
+            continue
+        typ = spec.get("type", "island")
+        if typ == "island":
+            pf = island_between(st, spec, yk[0], yk[1], px, pz)
+            if pf:
+                plats.append(pf)
+        elif typ == "outer":
+            for A, O in ((yk[0], yk[1]), (yk[1], yk[0])):
+                pf = outer_platform(st, spec, A, O, px, pz, tracks, grid)
+                if pf:
+                    plats.append(pf)
+        else:
+            print(f"  {st['name']}: ホームの種類 {typ} は作れない (island / outer)")
+    if not plats:
+        print(f"  {st['name']}: ホームが 1 つもできない。駅を作らない")
         return None
-    A, B = yk
-    _, ka = nearest_on(A["P"], cx, cz)
-    _, kb = nearest_on(B["P"], *A["P"][ka])
-    gap = math.hypot(A["P"][ka][0] - B["P"][kb][0], A["P"][ka][1] - B["P"][kb][1])
-    print(f"  {st['name']}駅: 中心の目安 ({cx:.0f}, {cz:.0f})、{st['lines'][0]} の 2 本の間 {gap:.1f} m")
-    if not 7 < gap < 20:
-        print("    島式ホームにしては間が狭すぎる・広すぎる。駅を作らない")
-        return None
+    pc = plats[0]["center"]
+    return {"name": st["name"], "kana": st.get("kana", ""), "roman": st.get("roman", ""), "ward": st.get("ward", ""),
+            "center": [round(sum(q["center"][0] for q in plats) / len(plats), 2), round(sum(q["center"][1] for q in plats) / len(plats), 2)],
+            "platforms": [q["platform"] for q in plats], "canopies": [q["canopy"] for q in plats]}
+
+
+def make_platform(st, spec, A, ka, pairs, stop_routes):
+    """A の点 ka のまわりの、縁の点の組 pairs = [(k (A の点の番号), a, b, y)] からホーム。a → b の向きに 1.62 m ずつ内側が縁"""
     left, right, ys = [], [], []
-    half = int(st.get("length", PLAT_LEN) / 2 / 4)
-    for n in range(-half, half + 1):
-        k = max(0, min(len(A["P"]) - 1, ka + round(n * 4 / STEP)))
-        a = A["P"][k]
-        _, kb2 = nearest_on(B["P"], *a)
-        b = B["P"][kb2]
+    for k, a, b, y in pairs:
         d = math.hypot(b[0] - a[0], b[1] - a[1]) or 1
         ux, uz = (b[0] - a[0]) / d, (b[1] - a[1]) / d
         left.append([round(a[0] + ux * 1.62, 2), round(a[1] + uz * 1.62, 2)])
         right.append([round(b[0] - ux * 1.62, 2), round(b[1] - uz * 1.62, 2)])
-        ys.append(round((A["y"][k] + B["y"][kb2]) / 2 + PLAT_Y, 2))
+        ys.append(round(y + PLAT_Y, 2))
     m = len(left) // 2
     c0, c1 = max(0, m - 20), min(len(left), m + 20)
     pc = [round((left[m][0] + right[m][0]) / 2, 2), round((left[m][1] + right[m][1]) / 2, 2)]
-    for er in yk:   # 止まる位置: 編成の中央がホームの中央に来る所 (先頭の位置。P の並び = 地図の端から外へ)
+    for er in stop_routes:   # 止まる位置: 編成の中央がホームの中央に来る所 (先頭の位置。P の並び = 地図の端から外へ)
         _, k = nearest_on(er["P"], *pc)
         er.setdefault("stops_k", []).append((k, st["name"]))
-    return {"name": st["name"], "kana": st.get("kana", ""), "roman": st.get("roman", ""), "ward": st.get("ward", ""), "center": pc,
-            "platform": {"left": left, "right": right, "y": ys},
+    return {"center": pc, "platform": {"left": left, "right": right, "y": ys},
             "canopy": {"left": left[c0:c1], "right": right[c0:c1], "y": [v + 3.4 for v in ys[c0:c1]]}}
+
+
+def island_between(st, spec, A, B, cx, cz):
+    _, ka = nearest_on(A["P"], cx, cz)
+    _, kb = nearest_on(B["P"], *A["P"][ka])
+    gap = math.hypot(A["P"][ka][0] - B["P"][kb][0], A["P"][ka][1] - B["P"][kb][1])
+    print(f"  {st['name']}駅: 中心の目安 ({cx:.0f}, {cz:.0f})、{spec['line']} の 2 本の間 {gap:.1f} m")
+    if not 7 < gap < 20:
+        print("    島式ホームにしては間が狭すぎる・広すぎる。このホームを作らない")
+        return None
+    pairs = []
+    half = int(spec.get("length", st.get("length", PLAT_LEN)) / 2 / 4)
+    for n in range(-half, half + 1):
+        k = max(0, min(len(A["P"]) - 1, ka + round(n * 4 / STEP)))
+        a = A["P"][k]
+        _, kb2 = nearest_on(B["P"], *a)
+        pairs.append((k, a, B["P"][kb2], (A["y"][k] + B["y"][kb2]) / 2))
+    return make_platform(st, spec, A, ka, pairs, [A, B])
+
+
+def side_track(tracks, grid, a, t, w, lo=5.0, hi=20.0):
+    """点 a (線路の上) から、線路の向き t に直角な向き w の側の、lo〜hi m 先にある平行な軌道の点 (いちばん近いもの)。無ければ None"""
+    best = None
+    R = int(hi // 5) + 1
+    for gx in range(int(a[0] // 5) - R, int(a[0] // 5) + R + 1):
+        for gz in range(int(a[1] // 5) - R, int(a[1] // 5) + R + 1):
+            for i, k in grid.get((gx, gz), ()):
+                (ax, az), (bx, bz) = tracks[i]["pts"][k], tracks[i]["pts"][k + 1]
+                ex, ez = bx - ax, bz - az
+                l2 = ex * ex + ez * ez
+                if l2 < 1e-6 or abs(ex * t[0] + ez * t[1]) / math.sqrt(l2) < 0.985:
+                    continue
+                u = max(0.0, min(1.0, ((a[0] - ax) * ex + (a[1] - az) * ez) / l2))
+                qx, qz = ax + ex * u, az + ez * u
+                along = (qx - a[0]) * t[0] + (qz - a[1]) * t[1]
+                lat = (qx - a[0]) * w[0] + (qz - a[1]) * w[1]
+                if abs(along) < 1.5 and lo <= lat <= hi and (best is None or lat < best[0]):
+                    best = (lat, (qx, qz))
+    return best
+
+
+def outer_platform(st, spec, A, O, cx, cz, tracks, grid):
+    """A (止まる線) と、A の外側 (O と逆の側) の隣の線路との間のホーム。隣の線路は国土地理院の軌道 (道筋ではない)"""
+    _, ka = nearest_on(A["P"], cx, cz)
+    half = int(spec.get("length", st.get("length", PLAT_LEN)) / 2 / 4)
+    raw = []
+    for n in range(-half, half + 1):
+        k = max(1, min(len(A["P"]) - 2, ka + round(n * 4 / STEP)))
+        a = A["P"][k]
+        tx, tz = A["P"][k + 1][0] - A["P"][k - 1][0], A["P"][k + 1][1] - A["P"][k - 1][1]
+        tl = math.hypot(tx, tz) or 1
+        t = (tx / tl, tz / tl)
+        _, ko = nearest_on(O["P"], *a)
+        o = O["P"][ko]
+        w = (-t[1], t[0])
+        if (o[0] - a[0]) * w[0] + (o[1] - a[1]) * w[1] > 0:   # O のある側の反対が外側
+            w = (t[1], -t[0])
+        raw.append((k, a, w, side_track(tracks, grid, a, t, w)))
+    gaps = sorted(r[3][0] for r in raw if r[3])
+    if len(gaps) < len(raw) * 0.6:
+        print(f"  {st['name']}駅: {spec['line']} route {A['route']} の外側に隣の線路が見つからない ({len(gaps)}/{len(raw)})。このホームを作らない")
+        return None
+    g = gaps[len(gaps) // 2]
+    print(f"  {st['name']}駅: {spec['line']} route {A['route']} の外側の隣の線路まで {g:.1f} m (見つかった点 {len(gaps)}/{len(raw)})")
+    if not 7 < g < 20:
+        print("    島式ホームにしては間が狭すぎる・広すぎる。このホームを作らない")
+        return None
+    pairs = []
+    for k, a, w, hit in raw:
+        lat = hit[0] if hit and abs(hit[0] - g) < 2.0 else g   # 見つからない・飛んだ所 (分かれ目) は間の中央値
+        pairs.append((k, a, (a[0] + w[0] * lat, a[1] + w[1] * lat), A["y"][k]))
+    return make_platform(st, spec, A, ka, pairs, [A])
 
 
 def main():
@@ -415,7 +510,7 @@ def main():
             y0 = er["E"][1]
             er["y"] = [y0 + (h - y0) * min(1, (n + 1) * STEP / (BLEND + 50)) for n, h in enumerate(hs)]
         for st in ext["stations"]:
-            s_ = build_station(st, mine, lines)
+            s_ = build_station(st, mine, tracks, grid)
             if s_:
                 stations.append(s_)
         ext_routes += mine
@@ -784,8 +879,8 @@ def plot(path):
     for r in E["routes"]:
         d.line([T(q[0], q[2]) for q in r["p"]], fill=col.get(r["line"], (0, 0, 0)), width=2)
     for st in E.get("stations", []):
-        pf = st["platform"]
-        d.polygon([T(*q) for q in pf["left"] + pf["right"][::-1]], fill=(230, 30, 30))
+        for pf in st.get("platforms") or [st["platform"]]:
+            d.polygon([T(*q) for q in pf["left"] + pf["right"][::-1]], fill=(230, 30, 30))
         d.text(T(*st["center"]), st["name"], fill=(0, 0, 0))
     for q in E.get("portals", []):
         x, z = T(q[0], q[2])

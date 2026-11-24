@@ -39,7 +39,7 @@ export class Ride {
     // routes: [{ r (道筋), si (r.stops の何番目の駅か) }]
     const mkPlat = (pf, name) => ({ ring: [...pf.left, ...pf.right.slice().reverse()], pf, name, routes: [] });
     this.plats = rail.platforms.map((pf) => mkPlat(pf, '戸塚'));
-    for (const st of (ext && ext.stations) || []) this.plats.push(mkPlat(st.platform, st.name));
+    for (const st of (ext && ext.stations) || []) for (const pf of st.platforms || [st.platform]) this.plats.push(mkPlat(pf, st.name));   // 駅ごとに複数のホーム (横浜など)
     const P = new THREE.Vector3();
     for (const r of trains.R) {
       r.stops.forEach((st, si) => {

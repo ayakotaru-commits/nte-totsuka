@@ -80,7 +80,7 @@ export class Minimap {
     g.strokeStyle = '#777'; g.lineWidth = Math.max(1.5, 3 * s2);
     for (const r of ext.routes) { g.beginPath(); r.p.forEach((q, i) => i ? g.lineTo(X(q[0]), Z(q[2])) : g.moveTo(X(q[0]), Z(q[2]))); g.stroke(); }
     g.fillStyle = '#b9b4aa';
-    for (const st of ext.stations || []) { const pf = st.platform; g.beginPath(); [...pf.left, ...pf.right.slice().reverse()].forEach(([x, z], i) => i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z))); g.closePath(); g.fill(); }
+    for (const st of ext.stations || []) for (const pf of st.platforms || [st.platform]) { g.beginPath(); [...pf.left, ...pf.right.slice().reverse()].forEach(([x, z], i) => i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z))); g.closePath(); g.fill(); }
     this.ext = { canvas: m, x0, z0, s: s2 };
   }
 

@@ -31,6 +31,7 @@ function terrain() {
   const props = flag('--props');
   const extraQ = flag('--q') || '';
   const stationName = flag('--station');   // 確かめる延長の駅 (無ければ最初の駅)
+  const lineName = flag('--line');         // 確かめる線 (tokaido など。無ければその駅のホームに止まる最初の線)
   const [out] = args; const viewsFile = 'x';
   if (!out) { console.error('usage: node tools/dev/shot.js <出力フォルダ> <視点.json> [--city <city.json>] [--dump]'); process.exit(1); }
   if (!fs.existsSync(path.join(THREE_DIR, 'build', 'three.module.js'))) {
@@ -84,7 +85,13 @@ function terrain() {
     return { disabled: R.disabled, gates: R.gates.length, tops: R.gates.map((g) => [g.top, g.downs.map((d) => R.plats.indexOf(d.plat))]), plats: R.plats.map((p) => p.name + ' ' + p.routes.map((x) => x.r.line + ':' + x.r.dir).join(',')) };
   });
   console.log('setup', JSON.stringify(setup));
-  check('改札から戸塚の 2 面のホームへ行ける・延ばした先の駅のホームに上下 2 本', new Set(setup.tops.flatMap((t) => t[1])).size === 2 && setup.plats.length >= 3 && setup.plats.slice(2).every((p) => /:north/.test(p) && /:south/.test(p)), setup);
+  // 延ばした先の駅は、ホームが複数のことがある (横浜: 横須賀線の島式 1 面 + 東海道線の上り・下りの 1 面ずつ)。駅ごとに上下の両方が止まればよい
+  const byName = {};
+  for (const p of setup.plats.slice(2)) { const [n, ...rest] = p.split(' '); byName[n] = (byName[n] || '') + ' ' + rest.join(' '); }
+  check('改札から戸塚の 2 面のホームへ行ける・延ばした先の駅ごとに上下 2 方向が止まる・どのホームにも電車が止まる', new Set(setup.tops.flatMap((t) => t[1])).size === 2 && setup.plats.length >= 3
+    && Object.values(byName).every((v) => /:north/.test(v) && /:south/.test(v)) && setup.plats.slice(2).every((p) => /:/.test(p)), { setup, byName });
+  // 東戸塚・保土ケ谷は横須賀線だけが止まる (東海道線・貨物線は通過)
+  check('東戸塚・保土ケ谷には横須賀線だけが止まる', ['東戸塚', '保土ケ谷'].every((n) => !byName[n] || !/(tokaido|freight):/.test(byName[n])), byName);
   // 時計を止める (この環境は画面を撮るのに 1〜2 分かかり、その間に電車が動いてしまうため)
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });
   // 時計を、道筋 r の電車が止まって 10 秒の時刻にする
@@ -207,8 +214,8 @@ function terrain() {
     }
     return null;
   }, sel);
-  const ST = await page.evaluate((want) => { const R = window.__ride, pl = R.plats.slice(2).find((p) => !want || p.name === want);
-    return pl ? { name: pl.name, line: pl.routes[0].r.line, idx: R.plats.indexOf(pl) } : null; }, stationName);
+  const ST = await page.evaluate(([want, line]) => { const R = window.__ride, pl = R.plats.slice(2).find((p) => (!want || p.name === want) && (!line || p.routes.some((x) => x.r.line === line)));
+    return pl ? { name: pl.name, line: line || pl.routes[0].r.line, idx: R.plats.indexOf(pl) } : null; }, [stationName, lineName]);
   check('延ばした先の駅がある', !!ST, ST);
   const go = await beside({ line: ST.line, from: '戸塚', to: ST.name });
   await frames(2);
