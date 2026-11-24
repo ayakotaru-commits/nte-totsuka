@@ -68,6 +68,22 @@ body.touch #overlay h1 { font-size: 36px; }
 #door-hint { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); z-index: 6; padding: 6px 14px; border-radius: 8px; background: rgba(10,20,35,.6); color: #fff; font-size: 15px; text-shadow: 0 1px 3px #000; pointer-events: none; }
 #door-hint b { display: inline-block; min-width: 1.4em; margin-right: 4px; padding: 0 4px; border: 1px solid rgba(255,255,255,.7); border-radius: 4px; text-align: center; }
 body.touch #door-hint { display: none; }
+/* 電車の乗り降り (ride.js) */
+#tb-train { width: 70px; height: 70px; right: calc(112px + env(safe-area-inset-right)); bottom: calc(110px + env(safe-area-inset-bottom)); z-index: 5; background: rgba(30,90,160,.6); }
+#tb-view { width: 62px; height: 62px; right: calc(192px + env(safe-area-inset-right)); bottom: calc(114px + env(safe-area-inset-bottom)); z-index: 5; background: rgba(40,40,60,.55); }
+#tb-train2 { width: 70px; height: 70px; right: calc(192px + env(safe-area-inset-right)); bottom: calc(110px + env(safe-area-inset-bottom)); z-index: 5; background: rgba(30,90,160,.6); }
+#tb-train[hidden], #tb-train2[hidden], #tb-view[hidden] { display: none; }
+#train-hint { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); z-index: 6; padding: 6px 14px; border-radius: 8px; background: rgba(10,20,35,.6); color: #fff; font-size: 15px; text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap; }
+#train-hint b { display: inline-block; min-width: 1.4em; margin: 0 4px 0 6px; padding: 0 4px; border: 1px solid rgba(255,255,255,.7); border-radius: 4px; text-align: center; }
+body.touch #train-hint b { display: none; }
+#train-info { position: fixed; left: 50%; top: calc(56px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 6; padding: 8px 14px; border-radius: 10px; background: rgba(12,22,38,.72); color: #fff; font-size: 14px; line-height: 1.6; pointer-events: none; white-space: nowrap; }
+#train-info .tt { font-weight: bold; margin-bottom: 2px; }
+#train-info b { color: #ffe08a; }
+.tl { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: bold; color: #fff; }
+.tl.tokaido { background: #f08a1c; } .tl.yokosuka { background: #1f5fae; }
+#train-toast { position: fixed; left: 50%; top: 38%; transform: translateX(-50%); z-index: 7; padding: 10px 18px; border-radius: 10px; background: rgba(12,22,38,.8); color: #fff; font-size: 15px; pointer-events: none; text-align: center; max-width: 90vw; }
+#fade { position: fixed; inset: 0; z-index: 8; background: #000; opacity: 0; transition: opacity .45s; pointer-events: none; }
+#fade.on { opacity: 1; }
 #tb-dash { width: 62px; height: 62px; right: calc(112px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); z-index: 5; }
 #stick { position: fixed; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid rgba(255,255,255,.45); background: rgba(10,20,35,.25); pointer-events: none; display: none; z-index: 5; }
 #stick.on { display: block; }

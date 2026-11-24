@@ -2,6 +2,8 @@
 // 道筋 (props.json の rail.routes) は tools/build_props.py が線路をつないで作ったもの。旅客線は戸塚駅のホームで 30 秒止まる。
 // 時刻は実際の時計 (Date.now) から決めるので、だれが見ても同じ所を走る (マルチプレイでもそろう)。
 // 色は一般的な近郊電車の配色 (銀色の車体に、線ごとの帯の色)。特定の形式の再現ではない。
+// 旅客線の発車の間隔は、同じ向きの東海道線と横須賀線がホームに着く時刻が半周期 (150 秒) ずれるようにそろえる (乗るときの待ち時間が最大約 2 分)。
+// 乗り降り (ride.js) のために、時刻・位置の計算を返す (api)。
 // URL: ?trainAt=秒 で時刻を固定 (静止画の撮影用)、?notrain で走らせない
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
@@ -70,12 +72,20 @@ function endTexture(band) {
   });
 }
 
+// 先頭が止まる位置に着く時刻 (出発からの秒)
+function arriveTime(stop) {
+  const db = V * V / (2 * ACC);
+  return Math.max(0, stop - db) / V + V / ACC;
+}
+// ホームに着く時刻の、周期の中での位置 (秒)。向き (north = 東京方面) と線ごと
+const ARRIVE_PHASE = { north: { tokaido: 0, yokosuka: 150 }, south: { tokaido: 75, yokosuka: 225 } };
+
 export function buildTrains(props) {
   const group = new THREE.Group();
   group.name = 'detail_trains';
   const routes = (props.rail && props.rail.routes) || [];
   const Q = new URLSearchParams(location.search);
-  if (!routes.length || Q.has('notrain')) return { group, emissive: [], update() {} };
+  if (!routes.length || Q.has('notrain')) return { group, emissive: [], update() {}, api: null };
   const fixed = Q.has('trainAt') ? +Q.get('trainAt') : null;
 
   // 道筋ごとの累積距離 (点は約 5 m おき)
@@ -83,9 +93,29 @@ export function buildTrains(props) {
     const p = r.p, acc = [0];
     for (let k = 1; k < p.length; k++) acc.push(acc[k - 1] + Math.hypot(p[k][0] - p[k - 1][0], p[k][2] - p[k - 1][2]));
     const L = LINES[r.line];
-    return { ...r, acc, len: acc[acc.length - 1], L, offset: L.offset + i * 37, run: 0 };
+    const dir = p[p.length - 1][2] < p[0][2] ? 'north' : 'south';   // z が減る = 北 = 横浜・東京方面
+    let offset = L.offset + i * 37;
+    if (r.stop != null && ARRIVE_PHASE[dir][r.line] != null) offset = ARRIVE_PHASE[dir][r.line] - arriveTime(r.stop);
+    return { ...r, i, acc, len: acc[acc.length - 1], L, dir, offset, run: 0, tArr: r.stop != null ? arriveTime(r.stop) : null };
   });
   for (const r of R) r.run = runTime(r.len + r.L.cars * CAR, r.stop);
+  const api = {
+    R, CAR, DWELL, skew: 0, hold: null,    // skew: 時計をずらす秒、hold: 時刻を止める (どちらも確認用)
+    now: () => api.hold != null ? api.hold : (fixed != null ? fixed : Date.now() / 1000) + api.skew,
+    phase: (r, now) => { const T = r.L.period; return ((now - r.offset) % T + T) % T; },   // 出発からの秒
+    front: (r, t) => t < r.run ? frontAt(t, r.stop) : -1e9,
+    speed: (r, t) => t < r.run ? (frontAt(t + 0.1, r.stop) - frontAt(t, r.stop)) / 0.1 : 0,
+    // k 両目 (0 = 先頭) の中心と向き。道筋の外なら false
+    carPose(r, k, now, outC, outQ) {
+      const center = api.front(r, api.phase(r, now)) - (k + 0.5) * CAR;
+      if (!(center - CAR / 2 > 0 && center + CAR / 2 < r.len)) return false;
+      at(r, center + CAR * 0.35, A); at(r, center - CAR * 0.35, B);
+      outC.addVectors(A, B).multiplyScalar(0.5);
+      look.lookAt(A, B, UP); outQ.setFromRotationMatrix(look);
+      return true;
+    },
+    pointAt: (r, s, out) => at(r, s, out),
+  };
 
   const at = (r, s, out) => { // 道筋の上の距離 s の点
     const a = r.acc;
@@ -149,10 +179,10 @@ export function buildTrains(props) {
   const touched = new Set();
 
   function update() {
-    const now = fixed != null ? fixed : Date.now() / 1000;
+    const now = api.now();
     for (const sl of slots) {
-      const r = sl.r, T = r.L.period, t = ((now - r.offset) % T + T) % T;
-      const center = t < r.run ? frontAt(t, r.stop) - (sl.k + 0.5) * CAR : -1e9;
+      const r = sl.r, t = api.phase(r, now);
+      const center = api.front(r, t) - (sl.k + 0.5) * CAR;
       const vis = center - CAR / 2 > 0 && center + CAR / 2 < r.len;   // 道筋の外 (地図の外) では消す
       if (vis) {
         at(r, center + CAR * 0.35, A); at(r, center - CAR * 0.35, B);     // 前後の台車の位置
@@ -173,5 +203,5 @@ export function buildTrains(props) {
   }
   update();
   console.info(`[detail] trains: routes=${R.length} cars=${slots.length}`);
-  return { group, emissive, update };
+  return { group, emissive, update, api };
 }

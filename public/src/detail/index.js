@@ -18,6 +18,7 @@ export async function loadDetail({ scene, city, world, built, props }) {
   const parts = [];
   const emissive = [];
   const updaters = []; // 毎フレーム呼ぶもの (信号の切り替え)
+  let trains = null;
   if (!props) console.warn('[detail] data/props.json がありません。python tools/build_props.py で作ってください (小物・外構・ベランダ・看板なし)');
 
   if (DETAIL.props && props) {
@@ -74,6 +75,7 @@ export async function loadDetail({ scene, city, world, built, props }) {
     scene.add(tb.group);
     parts.push({ set: (v) => { tb.group.visible = v; } });
     const tr = buildTrains(props); // 走る電車 (道筋は props.json の rail.routes)
+    trains = tr.api;               // 乗り降り (ride.js) が時刻と位置を使う
     scene.add(tr.group);
     emissive.push(...tr.emissive);
     updaters.push(tr.update);
@@ -97,6 +99,7 @@ export async function loadDetail({ scene, city, world, built, props }) {
 
   let on = true;
   return {
+    trains,  // 電車の時刻・位置の計算 (detail/trains.js の api。電車が無いときは null)
     emissive, // 夜に光らせるマテリアル (TimeOfDay に渡す)
     get on() { return on; },
     set on(v) { on = v; parts.forEach(p => p.set(v)); world.propsOn = v; },

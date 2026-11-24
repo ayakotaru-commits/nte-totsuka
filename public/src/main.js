@@ -16,6 +16,8 @@ import { Waypoints } from './waypoint.js';
 import { BigMap } from './bigmap.js';
 import { loadDetail } from './detail/index.js'; // detail (お試し)
 import { DoorControl } from './doors.js';
+import { Ride } from './ride.js';
+import { getBridges } from './bridges.js';
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
 import { setTerrain, setCover, setLowMemory } from './terrain.js';
@@ -106,7 +108,15 @@ async function main() {
   await new Promise(r => setTimeout(r, 0));
   // 外観を別に描く建物・道 (hide。神社の社殿と参道 = tools/shrine.py → shrine.js) は、街の形・当たり判定・階段から外す (ミニマップには残す)
   const shown = city.buildings.some((b) => b.hide) || city.roads.some((r) => r.hide) ? { ...city, buildings: city.buildings.filter((b) => !b.hide), roads: city.roads.filter((r) => !r.hide) } : city;
-  const world = new World(shown.buildings, city.bounds);
+  // ホームの上の屋根データ (車庫・駐輪場と同じ「屋根だけ」の建物) は、ホームの屋根を detail/station.js が作るときは描かない (city.js)。
+  // 当たり判定からも外す (残すと、見えない高さ 2 m ほどの板がホームの上のキャラを押し出す)
+  const platRings = props && props.rail ? (city.areas || []).filter((a) => a.kind === 'platform').map((a) => a.outer) : [];
+  const overPlatform = (b) => {
+    if (b.style !== 'carport' || !platRings.length) return false;
+    const cx = b.outer.reduce((t, q) => t + q[0], 0) / b.outer.length, cz = b.outer.reduce((t, q) => t + q[1], 0) / b.outer.length;
+    return platRings.some((r) => { let ins = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { if ((r[i][1] > cz) !== (r[j][1] > cz) && cx < (r[j][0] - r[i][0]) * (cz - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) ins = !ins; } return ins; });
+  };
+  const world = new World(platRings.length ? shown.buildings.filter((b) => !overPlatform(b)) : shown.buildings, city.bounds);
   const t0 = performance.now();
   const built = buildCity(shown, world, props);
   scene.add(built.group);
@@ -133,7 +143,9 @@ async function main() {
   const minimap = new Minimap(city, $('minimap'));
   const labels = new Labels(city.pois, scene);
   // マップで選んだ場所へワープ (建物の中なら一番近い屋外)。向きはそのまま
+  let ride = null;                                              // 電車の乗り降り (下で作る)
   const warpTo = (x, z) => {
+    ride?.cancel();
     const p = findFree(world, x, z);
     player.teleport(p.x, p.z);
     cam.update(0, player.pos, true);
@@ -150,6 +162,8 @@ async function main() {
   const traffic = new Traffic(scene, props, { low: TOUCH, cap: Q.has('traffic') ? +Q.get('traffic') : undefined });
   if (Q.has('notraffic')) traffic.setVisible(false);
   window.__traffic = traffic; // 確認用
+  // 電車に乗る (ride.js。改札・ホーム・乗り降り)。?noride で無効
+  ride = new Ride({ trains: Q.has('noride') ? null : detail.trains, props, world, player, cam, camera, bridges: getBridges(), scene });
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
   const editor = new Editor({ scene, camera, renderer, world, built, cam, player, streetView });
 
@@ -159,7 +173,7 @@ async function main() {
   // city.start.face があればその地点を向く。なければ建物から離れる向き
   const spawnFacing = st.face ? Math.atan2(st.face[0] - spawn.x, st.face[1] - spawn.z)
     : Math.hypot(spawn.x - st.x, spawn.z - st.z) > 0.5 ? Math.atan2(spawn.x - st.x, spawn.z - st.z) : Math.PI / 2;
-  const respawn = () => { player.teleport(spawn.x, spawn.z); player.facing = spawnFacing; cam.yaw = spawnFacing + Math.PI; cam.update(0, player.pos, true); };
+  const respawn = () => { ride?.cancel(); player.teleport(spawn.x, spawn.z); player.facing = spawnFacing; cam.yaw = spawnFacing + Math.PI; cam.update(0, player.pos, true); };
   respawn();
   // 修正ツールで保存した後の再読み込み: 位置と視点、修正モードを復元
   const restore = Editor.takeRestore();
@@ -319,8 +333,12 @@ async function main() {
       swarm.update(dt, inp);             // イベント (受けるか聞く表示の Y / N も、押した瞬間を player より先に見る)
       rhythm.update(dt, inp);            // イベント「お札まき」(同上。曲の間のカメラもここで決めるので、cam.update の後でもう一度)
       arcade.update(dt, input);          // イベント「ゲームセンター リズムステージ」(同上)
-      for (let i = 0; i < n; i++) { player.update(dt / n, inp, cam); if (n > 1) input.endFrame(); }
-      cam.update(dt, player.pos, false, player);
+      ride.update(dt, inp);              // 電車の乗り降り (F。乗っている間はキャラを動かさない)
+      if (ride.riding) ride.view(dt);
+      else {
+        for (let i = 0; i < n; i++) { player.update(dt / n, inp, cam); if (n > 1) input.endFrame(); }
+        cam.update(dt, player.pos, false, player);
+      }
       if (!menu.open && !arcade.active && !rhythm.playing) shops.update(dt); // 洋服屋の入口
       if (rhythm.playing) rhythm.view();
     }
