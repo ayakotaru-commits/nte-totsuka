@@ -365,7 +365,9 @@ async function main() {
       if (px < B.minX || px > B.maxX || pz < B.minZ || pz > B.maxZ) { // 地図の外 (線路の延長。rail_ext.json)
         const st = ((ext && ext.stations) || []).find((q) => Math.hypot(px - q.center[0], pz - q.center[1]) < 400);
         $('place').textContent = st ? st.name + '駅 付近' : '線路沿い';
+        $('area').textContent = st && st.ward ? '横浜市' + st.ward : '横浜市';   // 区は駅ごと (rail_ext_config.json の ward)
       } else {
+        $('area').textContent = '横浜市戸塚区';
         const p = labels.nearest(px, pz);
         $('place').textContent = p ? p.label + ' 付近' : '戸塚';
       }

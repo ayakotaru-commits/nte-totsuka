@@ -348,7 +348,7 @@ def build_station(st, ext_routes, lines):
     for er in yk:   # 止まる位置: 編成の中央がホームの中央に来る所 (先頭の位置。P の並び = 地図の端から外へ)
         _, k = nearest_on(er["P"], *pc)
         er.setdefault("stops_k", []).append((k, st["name"]))
-    return {"name": st["name"], "kana": st.get("kana", ""), "roman": st.get("roman", ""), "center": pc,
+    return {"name": st["name"], "kana": st.get("kana", ""), "roman": st.get("roman", ""), "ward": st.get("ward", ""), "center": pc,
             "platform": {"left": left, "right": right, "y": ys},
             "canopy": {"left": left[c0:c1], "right": right[c0:c1], "y": [v + 3.4 for v in ys[c0:c1]]}}
 
@@ -397,6 +397,15 @@ def main():
             er["cut"] = k + int(ext.get("beyond", 700) / STEP) if d < 80 else None
             if er["cut"] is not None:
                 cuts.append(er["cut"])
+        reach = [er for er in mine if er["cut"] is not None]
+        for er in mine:
+            if er["cut"] is None and reach:
+                # 駅の近くを通らない線 (例: 東戸塚の先で横浜羽沢へ分かれる貨物線): 分かれた所から beyond m で切る
+                # (分かれた先まで建物・地形を作ると重くなるだけなので)
+                for k in range(0, len(er["P"]), 4):
+                    if min(nearest_on(o["P"][:o["cut"]], *er["P"][k])[0] for o in reach) > 40:
+                        er["cut"] = min(len(er["P"]), k + int(ext.get("beyond", 700) / STEP))
+                        break
         for er in mine:
             c = er["cut"] if er["cut"] is not None else (max(cuts) if cuts else len(er["P"]))
             er["P"] = er["P"][:c]
