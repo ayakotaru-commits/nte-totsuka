@@ -255,6 +255,26 @@ function terrain() {
   await page.evaluate(() => { const c = window.__g.cam; c.yaw = 0.4; c.pitch = 0.25; c.dist = 8; });
   await page.waitForTimeout(3000);
   await page.screenshot({ path: path.join(out, '7_station.png'), timeout: 240000 });
+  // のりかえ (ホームが 2 面以上の駅): 降りたホームの案内板の前で、帰りの向き (下り) の同じ線のホームへ移る
+  const xf = await page.evaluate((line) => { const R = window.__ride, pl = R.onPlatform(), x = R.xfers.find((q) => q.pl === pl);
+    if (!x) return null;
+    const ki = x.targets.findIndex((t) => t.pl.routes.some((q) => q.r.line === line && q.r.dir === 'south'));
+    R.place(x.spot.x - Math.sin(x.face) * 1.2, x.spot.y, x.spot.z - Math.cos(x.face) * 1.2, x.face);
+    return { from: x.label, n: R.xfers.length, ki, to: ki >= 0 ? x.targets[ki].label : null }; }, ST.line);
+  if (xf) {
+    await frames(2);
+    s = await st();
+    check(`${ST.name}: 案内板の前で「のりかえ」の表示`, /のりかえ/.test(s.hint), { xf, hint: s.hint });
+    await page.evaluate(() => { const c = window.__g.cam; c.yaw += 0.6; c.pitch = 0.2; c.dist = 7; });
+    await page.waitForTimeout(3000);
+    await page.screenshot({ path: path.join(out, '7b_xfer.png'), timeout: 240000 });
+    if (xf.ki >= 0) {
+      await press(xf.ki === 0 ? 'KeyF' : 'KeyQ');
+      await page.waitForTimeout(1500); await frames(2);
+      const after = await page.evaluate((line) => { const R = window.__ride, pl = R.onPlatform(); return { pl: pl && pl.name, routes: pl ? pl.routes.map((x) => x.r.line + ':' + x.r.dir) : [], toast: R.lastSay }; }, ST.line);
+      check(`${ST.name}: のりかえで帰りの向きの ${ST.line} のホームへ移る (ホームの上に立つ)`, after.pl === ST.name && after.routes.includes(ST.line + ':south'), { xf, after });
+    }
+  } else console.log('のりかえ: この駅はホームが 1 面 (無し)');
   // 戻り
   const back = await beside({ line: ST.line, from: ST.name, to: '戸塚' });
   await frames(2);
