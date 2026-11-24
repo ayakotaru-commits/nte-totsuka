@@ -10,9 +10,10 @@ import { buildStation } from './station.js';
 import { buildWalkways } from './walkways.js';
 import { buildYard } from './yard.js';
 import { buildTrains } from './trains.js';
+import { buildRailExt } from './railext.js';
 import { buildTrackbed } from './trackbed.js';
 
-export async function loadDetail({ scene, city, world, built, props }) {
+export async function loadDetail({ scene, city, world, built, props, ext = null }) {
   const c = city.start || { x: 0, z: 0 };
   const ctx = { city, world, built, cx: c.x, cz: c.z, R: DETAIL.radius };
   const parts = [];
@@ -74,7 +75,11 @@ export async function loadDetail({ scene, city, world, built, props }) {
     const tb = buildTrackbed(city); // 線路のバラスト・枕木・レール
     scene.add(tb.group);
     parts.push({ set: (v) => { tb.group.visible = v; } });
-    const tr = buildTrains(props); // 走る電車 (道筋は props.json の rail.routes)
+    if (ext) { // 線路の延長 (地図の北の端 → 東戸塚駅。rail_ext.json)。V キーに関係なく出す (ホームの当たり判定があるので)
+      const re = buildRailExt(ext, world, city.bounds);
+      scene.add(re.group);
+    }
+    const tr = buildTrains(props, ext); // 走る電車 (道筋は props.json の rail.routes + rail_ext.json の延長)
     trains = tr.api;               // 乗り降り (ride.js) が時刻と位置を使う
     scene.add(tr.group);
     emissive.push(...tr.emissive);

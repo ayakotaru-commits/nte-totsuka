@@ -55,7 +55,8 @@ async function main() {
   const coverP = getJSON('data/cover.json', !QS.has('nocover'));      // 地面の種類 (tools/lidar_cover.py。見比べ用に ?nocover で使わない)
   const wallsP = getJSON('data/walls.json', QS.has('walls'));         // 擁壁 (tools/lidar_walls.py --osm。見た目が不十分なので ?walls のときだけ)
   const propsP = getJSON('data/props.json');                          // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py)
-  const [city, terrain, cover, walls, props] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP]);
+  const extP = getJSON('data/rail_ext.json', !QS.has('noext'));      // 線路の延長 (東戸塚駅まで。tools/rail_ext.py。?noext で使わない)
+  const [city, terrain, cover, walls, props, ext] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP, extP]);
   if (terrain) setTerrain(terrain);
   if (cover) setCover(cover);
   if (walls) city.walls = walls.walls;
@@ -127,7 +128,7 @@ async function main() {
   }
   if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
   const shrineG = props ? buildShrines(props.shrines, scene, world) : null; // 神社の社殿 (shrine.js。V キーに関係なく描く)
-  const detail = await loadDetail({ scene, city: shown, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
+  const detail = await loadDetail({ scene, city: shown, world, built, props, ext }); built.windowMats.push(...detail.emissive); // detail (お試し)
   if (shrineG) built.windowMats.push(...(shrineG.userData.emissive || [])); // 灯籠・提灯の明かり (夜に光る。time.js)
   const doors = new DoorControl(world); // 開け閉めできる扉 (時計の棟。形は detail が作って登録する)
 
@@ -163,7 +164,7 @@ async function main() {
   if (Q.has('notraffic')) traffic.setVisible(false);
   window.__traffic = traffic; // 確認用
   // 電車に乗る (ride.js。改札・ホーム・乗り降り)。?noride で無効
-  ride = new Ride({ trains: Q.has('noride') ? null : detail.trains, props, world, player, cam, camera, bridges: getBridges(), scene });
+  ride = new Ride({ trains: Q.has('noride') ? null : detail.trains, props, world, player, cam, camera, bridges: getBridges(), scene, ext });
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
   const editor = new Editor({ scene, camera, renderer, world, built, cam, player, streetView });
 
@@ -359,8 +360,14 @@ async function main() {
     bigmap.draw(player.pos.x, player.pos.z, player.facing);
     if ((placeTimer -= dt) <= 0) {
       placeTimer = 0.5;
-      const p = labels.nearest(player.pos.x, player.pos.z);
-      $('place').textContent = p ? p.label + ' 付近' : '戸塚';
+      const B = city.bounds, px = player.pos.x, pz = player.pos.z;
+      if (px < B.minX || px > B.maxX || pz < B.minZ || pz > B.maxZ) { // 地図の外 (線路の延長。rail_ext.json)
+        const c = ext && ext.station ? ext.station.center : null;
+        $('place').textContent = c && Math.hypot(px - c[0], pz - c[1]) < 400 ? '東戸塚駅 付近' : '線路沿い';
+      } else {
+        const p = labels.nearest(px, pz);
+        $('place').textContent = p ? p.label + ' 付近' : '戸塚';
+      }
     }
 
     if (!arcade.active) { look.render(); labelRenderer.render(scene, camera); } // ゲーム画面の間は街を描かない (画面が全部おおわれるので、軽くなる)

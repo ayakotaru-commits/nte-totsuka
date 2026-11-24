@@ -7,7 +7,8 @@ const SKIRT = 1.4;      // ホームの側面の高さ (上面から下へ)
 const ROOF_T = 0.25;    // 屋根の厚さ
 const ROOF_RISE = 0.45; // 屋根の縁が中央より高い分 (中央が低い V 字)
 
-export function buildStation(props) {
+// sign: 駅名標の文字 (東戸塚駅は railext.js から呼ぶ)
+export function buildStation(props, sign = { kanji: '戸 塚', kana: 'と つ か', roman: 'Totsuka' }) {
   const group = new THREE.Group();
   group.name = 'detail_station';
   const R = props.rail;
@@ -182,9 +183,9 @@ export function buildStation(props) {
       g.fillStyle = '#fbfbf8'; g.fillRect(0, 0, 512, 256);
       g.fillStyle = '#2f8f4e'; g.fillRect(0, 170, 512, 22);
       g.fillStyle = '#1b1d20'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.font = 'bold 92px "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", sans-serif'; g.fillText('戸 塚', 256, 78);
-      g.font = 'bold 30px "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", sans-serif'; g.fillText('と つ か', 256, 140);
-      g.font = 'bold 30px sans-serif'; g.fillText('Totsuka', 256, 222);
+      g.font = 'bold 92px "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", sans-serif'; g.fillText(sign.kanji, 256, 78);
+      g.font = 'bold 30px "Yu Gothic UI", "Meiryo", "Noto Sans CJK JP", sans-serif'; g.fillText(sign.kana, 256, 140);
+      g.font = 'bold 30px sans-serif'; g.fillText(sign.roman, 256, 222);
     });
     const face = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.5, side: THREE.DoubleSide });
     const pole = new THREE.MeshStandardMaterial({ color: '#6d7276', roughness: 0.5, metalness: 0.5 });
