@@ -2,12 +2,14 @@
 // - 駅の自由通路の、ホームへの階段の上 (改札) で F →「ホームへ降りる」。ホームの階段の下で F →「改札へ上がる」(階段は見た目だけなので、暗転して移す)
 // - ホームで、止まっている旅客線 (東海道線・横須賀線) の横で F →「乗る」。乗っている間はキャラを隠し、カメラは電車を外から追う (Q で車内の視点)
 // - 止まっている間は F で降りる (戸塚・東戸塚)。道筋の終わり (範囲の端) に着いたら、暗転して最後に通った駅 (無ければ乗った駅) のホームへ戻る
-// - 延ばした先の駅 (東戸塚など。rail_ext.json の stations) はホームの上だけ (改札・駅舎は無い)
+// - 延ばした先の駅 (東戸塚など。rail_ext.json の stations) はホームの上だけ (改札・駅舎は無い)。ホームが 2 面以上の駅 (横浜) は、
+//   ホームの中央の「のりかえ」の案内板の前で F / Q → 同じ駅のほかのホームへ (暗転して移す)
 // 電車の時刻と位置は detail/trains.js の api (実際の時計で決まる。だれが見ても同じ所を走る) から取る。
 // 確認用: window.__ride (状態)、window.__trains.skew (時計をずらす秒)
 import * as THREE from 'three';
 
 const REACH_GATE = 2.2;   // 改札・階段の下で操作できる距離 (m)
+const REACH_XFER = 2.5;   // 延ばした先の駅の「のりかえ」の案内板の前で操作できる距離 (m)
 const REACH_CAR = 3.9;    // 電車の中心線からこの距離以内で乗れる (ホームの縁から約 2 m)
 const RIDE_DIST = 16;     // 乗っている間のカメラの距離 (m)
 const EYE = 2.65;         // 車内の視点の高さ (レールの上面から)
@@ -39,6 +41,7 @@ export class Ride {
     // routes: [{ r (道筋), si (r.stops の何番目の駅か) }]
     const mkPlat = (pf, name) => ({ ring: [...pf.left, ...pf.right.slice().reverse()], pf, name, routes: [] });
     this.plats = rail.platforms.map((pf) => mkPlat(pf, '戸塚'));
+    this.nHome = this.plats.length;   // 戸塚のホームの数 (この後ろが延ばした先の駅)
     for (const st of (ext && ext.stations) || []) for (const pf of st.platforms || [st.platform]) this.plats.push(mkPlat(pf, st.name));   // 駅ごとに複数のホーム (横浜など)
     const P = new THREE.Vector3();
     for (const r of trains.R) {
@@ -89,6 +92,24 @@ export class Ride {
     // 1 つの改札から 2 つのホームへ行くときは、上り (横浜・東京方面) を F、下り (大船方面) を Q にする
     const north = (d) => d.plat && d.plat.routes.some((x) => x.r.dir === 'north') ? 0 : 1;
     for (const g of this.gates) g.downs.sort((a, b) => north(a) - north(b));
+
+    // 延ばした先の駅で、ホームが 2 面以上ある所 (横浜): ホームの中央の「のりかえ」の場所 (railext.js の案内板と同じ所 = 縁の点の真ん中 + 1) から、
+    // 同じ駅のほかのホームへ (暗転して移す。階段・コンコースは無い)。F = 1 つ目、Q = 2 つ目
+    this.xfers = [];   // { pl, spot: {x, y, z}, face, label, targets: [xfer] }
+    const byName = {};
+    for (const pl of this.plats.slice(rail.platforms.length)) (byName[pl.name] = byName[pl.name] || []).push(pl);
+    for (const group of Object.values(byName)) {
+      if (group.length < 2) continue;
+      const xs = group.map((pl) => {
+        const pf = pl.pf, k = Math.min(pf.left.length - 2, (pf.left.length >> 1) + 1);
+        const x = (pf.left[k][0] + pf.right[k][0]) / 2, z = (pf.left[k][1] + pf.right[k][1]) / 2;
+        const lines = [...new Set(pl.routes.map((q) => LINE_NAME[q.r.line]))], dirs = new Set(pl.routes.map((q) => q.r.dir));
+        const label = lines.join('・') + (dirs.size === 1 ? (dirs.has('north') ? ' 上り' : ' 下り') : '') + 'ホーム';
+        return { pl, spot: { x, y: pf.y[k], z }, face: Math.atan2(pf.left[k + 1][0] - pf.left[k][0], pf.left[k + 1][1] - pf.left[k][1]), label, targets: [] };
+      });
+      for (const a of xs) a.targets = xs.filter((b) => b !== a).slice(0, 2);
+      this.xfers.push(...xs);
+    }
 
     this.hint = document.getElementById('train-hint');
     this.btn = document.getElementById('tb-train');
@@ -164,6 +185,21 @@ export class Ride {
     g.visible = false;
     this.scene.add(g);
     return g;
+  }
+
+  // 延ばした先の駅の、地図のワープ先 (駅ごとに 1 つ): 最初のホーム (横浜は横須賀線の島式 = 上下とも止まる) の中央から 3 点 (12 m) ずらした、
+  // ホームの中心線の上 (屋根の柱・駅名標・「のりかえ」の案内板と重ならない所)。{ name, x, y, z, face }
+  stationSpots() {
+    if (this.disabled) return [];
+    const out = [], seen = new Set();
+    for (const pl of this.plats.slice(this.nHome)) {
+      if (seen.has(pl.name)) continue;
+      seen.add(pl.name);
+      const pf = pl.pf, k = Math.max(1, (pf.left.length >> 1) - 3);
+      out.push({ name: pl.name, x: (pf.left[k][0] + pf.right[k][0]) / 2, y: pf.y[k], z: (pf.left[k][1] + pf.right[k][1]) / 2,
+        face: Math.atan2(pf.left[k + 1][0] - pf.left[k][0], pf.left[k + 1][1] - pf.left[k][1]) });
+    }
+    return out;
   }
 
   // (x, z) があるホーム (無ければ null)
@@ -299,10 +335,18 @@ export class Ride {
       if (Math.hypot(p.x - sd.bottom.x, p.z - sd.bottom.z) < REACH_GATE && Math.abs(p.y - sd.bottom.y) < 1.5) { act = { type: 'up', sd }; break; }
     }
 
+    // 延ばした先の駅の「のりかえ」(ほかのホームへ)
+    if (!act && pl) for (const xf of this.xfers) {
+      if (xf.pl === pl && Math.hypot(p.x - xf.spot.x, p.z - xf.spot.z) < REACH_XFER) { act = { type: 'xfer', xf }; break; }
+    }
+
     const platName = (d) => d.plat && d.plat.routes.length ? (d.plat.routes.some((x) => x.r.dir === 'north') ? '上り' : '下り') + 'ホーム' : 'ホーム';
     if (!act) this.setHint(null);
     else if (act.type === 'board') this.setHint(`<b>F</b> 乗る　<span class="tl ${act.r.line}">${LINE_NAME[act.r.line]}</span> ${DIR_NAME[act.r.dir]}`, '乗る', null);
-    else if (act.type === 'down') {
+    else if (act.type === 'xfer') {
+      const [t0, t1] = act.xf.targets;
+      this.setHint(`のりかえ　<b>F</b> ${t0.label}へ` + (t1 ? `　<b>Q</b> ${t1.label}へ` : ''), t0.label + 'へ', t1 ? t1.label + 'へ' : null);
+    } else if (act.type === 'down') {
       const [d0, d1] = act.g.downs;
       this.setHint(`改札　<b>F</b> ${platName(d0)}へ` + (d1 ? `　<b>Q</b> ${platName(d1)}へ` : ''), platName(d0) + 'へ', d1 ? platName(d1) + 'へ' : null);
     } else this.setHint('<b>F</b> 改札へ上がる', '改札へ', null);
@@ -310,6 +354,12 @@ export class Ride {
     if (!act) return;
     const F = input.pressed('KeyF'), G = input.pressed('KeyQ');
     if (act.type === 'board') { if (F) this.board(act.r, act.j, act.k, act.pl); return; }
+    if (act.type === 'xfer') {
+      const t = F ? act.xf.targets[0] : G ? act.xf.targets[1] : null;
+      // 案内板の少し先 (板にめり込まない所) に、ホームの向きで立たせる
+      if (t) this.blackout(() => this.place(t.spot.x + Math.sin(t.face) * 1.5, t.spot.y, t.spot.z + Math.cos(t.face) * 1.5, t.face), `${t.pl.name}駅 ${t.label}に移りました`);
+      return;
+    }
     if (act.type === 'down') {
       const d = F ? act.g.downs[0] : G ? act.g.downs[1] : null;
       if (d) this.blackout(() => this.place(d.bottom.x, d.bottom.y, d.bottom.z, Math.atan2(-d.ux, -d.uz)));

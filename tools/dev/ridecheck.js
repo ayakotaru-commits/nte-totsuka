@@ -112,6 +112,25 @@ function terrain() {
   await frames(2);
   const s0 = await st();
   check('地図に乗り場の印・選んでワープすると改札の前 (デッキの上) に立つ', mark && mark.mini && !mark.open && mark.d < 0.5 && Math.abs(mark.dy) < 0.5 && /改札/.test(s0.hint), { mark, hint: s0.hint });
+  // 延ばした先の駅の印: ミニマップ・大きい地図に駅ごとに出る、選んでワープするとその駅のホームの上に立つ
+  const stMarks = await page.evaluate(() => {
+    const g = window.__g, R = window.__ride, out = [];
+    const names = [...new Set(R.plats.slice(R.nHome).map((p) => p.name))];
+    for (const n of names) {
+      const e = g.bigmap.events.find((q) => q.name === n + '駅（ホーム）');
+      if (!e) { out.push({ n, mark: false }); continue; }
+      g.bigmap.show(-306, 1426); g.bigmap.onWarp(e.x, e.z);
+      const pl = R.onPlatform(), p = g.player.pos;
+      out.push({ n, mark: true, mini: g.minimap.events.includes(e), open: g.bigmap.open, on: pl && pl.name, y: +(p.y - (pl ? R.platY(pl, p.x, p.z) : 0)).toFixed(2) });
+    }
+    g.bigmap.show(4000, -2900); g.bigmap.zoomAt(innerWidth / 2, innerHeight / 2, 0.001);
+    return { out, minScale: g.bigmap.scale };
+  });
+  check('延ばした先の駅ごとに地図の印・選んでワープするとその駅のホームの上に立つ・大きい地図を横浜まで縮小できる',
+    stMarks.out.length >= 3 && stMarks.out.every((q) => q.mark && q.mini && !q.open && q.on === q.n && Math.abs(q.y) < 0.1) && stMarks.minScale < 0.1, stMarks);
+  await frames(2); await page.waitForTimeout(2000);
+  await page.screenshot({ path: path.join(out, '0_map_all.png'), timeout: 240000 });
+  await page.evaluate(() => window.__g.bigmap.hide());
   // 地図の画面 (乗り場の印のまわりを拡大)
   await page.evaluate(() => { const g = window.__g, t = window.__ride.gates[0].top; g.bigmap.show(t.x, t.z); g.bigmap.scale = 1.6; g.bigmap.cx = t.x; g.bigmap.cz = t.z + 60; });
   await frames(2); await page.waitForTimeout(2000);
@@ -255,6 +274,26 @@ function terrain() {
   await page.evaluate(() => { const c = window.__g.cam; c.yaw = 0.4; c.pitch = 0.25; c.dist = 8; });
   await page.waitForTimeout(3000);
   await page.screenshot({ path: path.join(out, '7_station.png'), timeout: 240000 });
+  // のりかえ (ホームが 2 面以上の駅): 降りたホームの案内板の前で、帰りの向き (下り) の同じ線のホームへ移る
+  const xf = await page.evaluate((line) => { const R = window.__ride, pl = R.onPlatform(), x = R.xfers.find((q) => q.pl === pl);
+    if (!x) return null;
+    const ki = x.targets.findIndex((t) => t.pl.routes.some((q) => q.r.line === line && q.r.dir === 'south'));
+    R.place(x.spot.x - Math.sin(x.face) * 1.2, x.spot.y, x.spot.z - Math.cos(x.face) * 1.2, x.face);
+    return { from: x.label, n: R.xfers.length, ki, to: ki >= 0 ? x.targets[ki].label : null }; }, ST.line);
+  if (xf) {
+    await frames(2);
+    s = await st();
+    check(`${ST.name}: 案内板の前で「のりかえ」の表示`, /のりかえ/.test(s.hint), { xf, hint: s.hint });
+    await page.evaluate(() => { const c = window.__g.cam; c.yaw += 0.6; c.pitch = 0.2; c.dist = 7; });
+    await page.waitForTimeout(3000);
+    await page.screenshot({ path: path.join(out, '7b_xfer.png'), timeout: 240000 });
+    if (xf.ki >= 0) {
+      await press(xf.ki === 0 ? 'KeyF' : 'KeyQ');
+      await page.waitForTimeout(1500); await frames(2);
+      const after = await page.evaluate((line) => { const R = window.__ride, pl = R.onPlatform(); return { pl: pl && pl.name, routes: pl ? pl.routes.map((x) => x.r.line + ':' + x.r.dir) : [], toast: R.lastSay }; }, ST.line);
+      check(`${ST.name}: のりかえで帰りの向きの ${ST.line} のホームへ移る (ホームの上に立つ)`, after.pl === ST.name && after.routes.includes(ST.line + ':south'), { xf, after });
+    }
+  } else console.log('のりかえ: この駅はホームが 1 面 (無し)');
   // 戻り
   const back = await beside({ line: ST.line, from: ST.name, to: '戸塚' });
   await frames(2);

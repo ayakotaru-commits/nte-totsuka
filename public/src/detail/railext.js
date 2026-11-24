@@ -303,6 +303,28 @@ export function buildRailExt(ext, world, mainBounds, low = false) {
     group.add(g);
   }
 
+  // 「のりかえ」の案内板: 柱 2 本と、両面に文字の板 (高さ 2.1〜2.7 m。ホームの向きに直角 = 歩いてくる人に正面)
+  function xferSign(x, y, z, yaw) {
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#1f5fae'; c.fillRect(0, 0, 512, 128);
+    c.fillStyle = '#ffd23f'; c.fillRect(0, 108, 512, 20);
+    c.fillStyle = '#fff'; c.font = 'bold 64px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('⇄ のりかえ', 256, 56);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+    const g = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 });
+    for (const r of [0, Math.PI]) {   // 表向きの板を背中合わせに 2 枚 (両面表示の 1 枚だと裏から文字が左右反転する)
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.5), mat);
+      board.rotation.y = r; board.position.set(0, 2.45, r ? -0.01 : 0.01); g.add(board);
+    }
+    const pole = new THREE.MeshStandardMaterial({ color: '#5a5d62', roughness: 0.5, metalness: 0.4 });
+    for (const sx of [-0.9, 0.9]) { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.7, 8), pole); m.position.set(sx, 1.35, 0); g.add(m); }
+    g.position.set(x, y, z); g.rotation.y = yaw;
+    g.name = 'ext_xfer_sign';
+    return g;
+  }
+
   // ---------- 延ばした先の駅: ホーム・屋根・柱・ベンチ・駅名標 (station.js)。ホームの床の当たり判定と、縁の見えない柵 ----------
   // 1 つの駅に複数のホーム (platforms・canopies。横浜など)。古い形 (platform・canopy 1 つ) も読む
   for (const st of ext.stations || []) (st.platforms || [st.platform]).forEach((pf, pi) => {
@@ -327,6 +349,11 @@ export function buildRailExt(ext, world, mainBounds, low = false) {
     const sb = buildStation({ rail: { platforms: [pf], canopies: [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns } },
       { kanji: [...st.name].join(' '), kana: st.kana, roman: st.roman });
     group.add(sb.group);
+    // ホームが 2 面以上の駅 (横浜): ホームの中央の「のりかえ」の案内板 (ride.js がこの前で F / Q → ほかのホームへ移す。場所は ride.js と同じ式)
+    if ((st.platforms || []).length > 1) {
+      const k = Math.min(n - 2, (n >> 1) + 1), [x, z] = mid(k), yaw = dirYaw(k);
+      group.add(xferSign(x, pf.y[k], z, yaw));
+    }
     // 当たり判定: ホームの床 (detail/index.js の戸塚駅と同じ) と、縁の柵 (高さ 1.2 m。ホームから落ちない)
     const poly = [];
     for (let k = 0; k + 1 < n; k++) {
