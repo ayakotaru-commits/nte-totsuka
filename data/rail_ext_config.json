@@ -1,0 +1,12 @@
+{
+  "_doc": "線路の延長の設定 (tools/rail_ext.py が読む)。edge = 地図のどちらの端から延ばすか (north / south)。stations = 途中・先の駅 (緯度経度はホームの中央の目安。lines = 止まる線、platform = ホームの形 (今は island = その線の上下線の間の島式 1 面だけ))。beyond = 最後の駅の先に延ばす長さ (m)。駅を足すときは README の「線路の延長」と .claude/skills/rail-extension を見る",
+  "extensions": [
+    {
+      "edge": "north",
+      "beyond": 700,
+      "stations": [
+        { "name": "東戸塚", "kana": "ひがしとつか", "roman": "Higashi-Totsuka", "lat": 35.430325, "lon": 139.556762, "lines": ["yokosuka"], "platform": "island", "length": 310 }
+      ]
+    }
+  ]
+}

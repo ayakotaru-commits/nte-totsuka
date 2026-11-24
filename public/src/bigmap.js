@@ -10,6 +10,7 @@ export class BigMap {
     this.touch = touch; // タッチ操作のとき: ワープは画面のボタンから
     this.target = null; // クリックで選んだワープ先 {x, z}
     this.map = minimap.map;
+    this.minimap = minimap;
     this.B = city.bounds;
     this.start = city.start;
     this.waypoints = city.waypoints || [];
@@ -133,6 +134,8 @@ export class BigMap {
     c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     c.fillStyle = '#1a2130'; c.fillRect(0, 0, W, H);
     c.imageSmoothingEnabled = this.scale < S;
+    const E = this.minimap.ext;   // 線路の延長 (地図の範囲の外。minimap.js の setExt)
+    if (E) c.drawImage(E.canvas, this.sx(E.x0), this.sy(E.z0), E.canvas.width / E.s * this.scale, E.canvas.height / E.s * this.scale);
     c.drawImage(this.map, 0, 0, this.map.width, this.map.height,
       this.sx(B.minX), this.sy(B.minZ), this.map.width / S * this.scale, this.map.height / S * this.scale);
 
