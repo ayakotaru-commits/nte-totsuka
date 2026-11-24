@@ -175,7 +175,7 @@ export class BigMap {
     // イベントの場所 (名前つき)
     for (const e of this.events) {
       const x = this.sx(e.x), y = this.sy(e.z);
-      drawEventMark(c, x, y, 11, e.color, e.active());
+      drawEventMark(c, x, y, 11, e.color, e.active(), e.glyph);
       c.font = 'bold 13px "Yu Gothic UI", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
       halo(c, e.name, x, y + 24, e.color);
     }

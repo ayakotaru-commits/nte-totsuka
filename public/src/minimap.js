@@ -124,7 +124,7 @@ export class Minimap {
     for (const e of this.events) {
       const [sx, sy] = this.toScreen(e.x - px, e.z - pz, yaw);
       if (Math.hypot(sx, sy) > R - 9) continue;
-      drawEventMark(c, R + sx, R + sy, 7, e.color, e.active());
+      drawEventMark(c, R + sx, R + sy, 7, e.color, e.active(), e.glyph);
     }
 
     // ほかのプレイヤー (戦闘オンの人は赤)

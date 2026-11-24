@@ -56,7 +56,7 @@ function terrain() {
     r.fulfill({ path: path.join(THREE_DIR, r.request().url().replace('https://cdn.jsdelivr.net/npm/three@0.170.0/', '')), contentType: 'application/javascript' }));
   // プレイヤー・カメラ・シーンを外から動かせるように、main.js に 1 行足して読ませる (リポジトリのファイルは変えない)
   await page.route('**/src/main.js', async r => {
-    const t = (await (await r.fetch()).text()).replace('const qs = new URLSearchParams', 'window.__g = { player, cam, scene, world, camera };\n  const qs = new URLSearchParams');
+    const t = (await (await r.fetch()).text()).replace('const qs = new URLSearchParams', 'window.__g = { player, cam, scene, world, camera, bigmap, minimap };\n  const qs = new URLSearchParams');
     r.fulfill({ body: t, contentType: 'application/javascript' });
   });
   if (city) await page.route('**/data/city.json', r => r.fulfill({ path: path.resolve(city), contentType: 'application/json' }));
@@ -91,6 +91,24 @@ function terrain() {
   const dwellAt = (line) => page.evaluate((line) => { const R = window.__ride, T = window.__trains, pl = R.onPlatform();
     const { r, si } = pl.routes.find((x) => !line || x.r.line === line), P = r.L.period;
     const t = T.phase(r, T.hold); T.hold += ((((r.tArrs[si] + 10 - t) % P) + P) % P); return { line: r.line, dir: r.dir, st: r.stops[si].name }; }, line);
+
+  // 0. 地図の乗り場の印: ミニマップ・大きい地図に出る、選んでワープすると改札の前 (デッキの上) に立つ
+  const mark = await page.evaluate(() => {
+    const g = window.__g, e = g.bigmap.events.find((q) => q.glyph === '電');
+    if (!e) return null;
+    g.bigmap.show(-306, 1426);
+    g.bigmap.onWarp(e.x, e.z);
+    const p = g.player.pos, t = window.__ride.gates[0].top;
+    return { name: e.name, mini: g.minimap.events.includes(e), open: g.bigmap.open, d: Math.hypot(p.x - t.x, p.z - t.z), dy: p.y - t.y };
+  });
+  await frames(2);
+  const s0 = await st();
+  check('地図に乗り場の印・選んでワープすると改札の前 (デッキの上) に立つ', mark && mark.mini && !mark.open && mark.d < 0.5 && Math.abs(mark.dy) < 0.5 && /改札/.test(s0.hint), { mark, hint: s0.hint });
+  // 地図の画面 (乗り場の印のまわりを拡大)
+  await page.evaluate(() => { const g = window.__g, t = window.__ride.gates[0].top; g.bigmap.show(t.x, t.z); g.bigmap.scale = 1.6; g.bigmap.cx = t.x; g.bigmap.cz = t.z + 60; });
+  await frames(2); await page.waitForTimeout(2000);
+  await page.screenshot({ path: path.join(out, '0_map.png'), timeout: 240000 });
+  await page.evaluate(() => window.__g.bigmap.hide());
 
   // 1. 改札 → ホーム
   await page.evaluate(() => { const g = window.__ride.gates[0]; window.__ride.place(g.top.x, g.top.y, g.top.z, 0); });
