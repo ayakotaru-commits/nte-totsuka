@@ -313,8 +313,11 @@ export function buildRailExt(ext, world, mainBounds, low = false) {
     c.fillText('⇄ のりかえ', 256, 56);
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
     const g = new THREE.Group();
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.5), new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.6 }));
-    board.position.y = 2.45; g.add(board);
+    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 });
+    for (const r of [0, Math.PI]) {   // 表向きの板を背中合わせに 2 枚 (両面表示の 1 枚だと裏から文字が左右反転する)
+      const board = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.5), mat);
+      board.rotation.y = r; board.position.set(0, 2.45, r ? -0.01 : 0.01); g.add(board);
+    }
     const pole = new THREE.MeshStandardMaterial({ color: '#5a5d62', roughness: 0.5, metalness: 0.4 });
     for (const sx of [-0.9, 0.9]) { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 2.7, 8), pole); m.position.set(sx, 1.35, 0); g.add(m); }
     g.position.set(x, y, z); g.rotation.y = yaw;
