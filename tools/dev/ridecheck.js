@@ -1,5 +1,6 @@
 // 電車の乗り降り (ride.js) の確認: 改札 → ホーム、案内、乗る、走る、車内の視点、地図の端で戻る、止まっている間に降りる、ホーム → 改札。画面も撮る。
-// 使い方: node tools/dev/ridecheck.js <出力フォルダ> [--station 東戸塚]   (準備は shot.js と同じ。20 分ほど)
+// 使い方: node tools/dev/ridecheck.js <出力フォルダ> [--station 東戸塚] [--line tokaido]   (準備は shot.js と同じ。20 分ほど)
+//   --line その駅で確かめる線 (横浜は横須賀線と東海道線が止まる。無ければその駅のホームに止まる最初の線)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
