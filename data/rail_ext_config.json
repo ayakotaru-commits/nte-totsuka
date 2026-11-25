@@ -14,6 +14,10 @@
     }
   ],
   "_doc": "線路の延長の設定 (tools/rail_ext.py が読む)。edge = 地図のどちらの端から延ばすか (north / south)。stations = 途中・先の駅 (緯度経度はホームの中央の目安。lines = 止まる線、ward = 駅のある区 (画面の左上の表示)、platform = ホームの形 (island = lines[0] の上下線の間の島式 1 面。昔の書き方)、platforms = ホームを複数書くとき [{line, type: island (その線の上下線の間) | outer (その線の上下線それぞれの外側の隣の線路との間。1 つで 2 面), length?, lat?/lon? (ホームの中央。無ければ駅の位置)}]。platforms があれば platform は使わない)。beyond = 最後の駅の先に延ばす長さ (m)。line_end = {線名: 駅名} (その線だけ、その駅の先 beyond m で切る)。platforms の type には inner (outer の反対 = 反対の向きの線の側の隣の線路との間) もあり、only (west / east / north / south) でその側の 1 本だけにできる。city = 市・都 (無ければ横浜市)。via = 通る点 [{line, side (その線の上下線のうちどちらの側の道筋か: west / east / north / south), lat, lon}] (分かれ道の多い大きい駅で、正しい番線を通すため。点の 1.5 km 手前から、線路のつながりの最短の道でその点の 3 m 以内を通る線へ)。駅を足すときは README の「線路の延長」と .claude/skills/rail-extension を見る",
+  "gsi_buildings": [
+    {"name": "浦安市 (舞浜)", "lon_min": 139.8755, "keep": {"line": "keiyo", "side": "left"},
+     "_doc": "PLATEAU の無い浦安市 (2026-11 に geospatial.jp で確かめた。千葉県は千葉・木更津・茂原・柏・八千代・多古だけ) は、国土地理院ベクトルタイルの建物の輪郭に、種類からの推定の高さ (rail_ext.py の GSI_BLD_H)。lon_min = 旧江戸川の東 (浦安市の側)。keep = 京葉線の下りの進む向きの左 (北の住宅地) だけ。海側 (南) のテーマパーク・ホテルの区域は作らない"}
+  ],
   "extensions": [
     {
       "edge": "north",

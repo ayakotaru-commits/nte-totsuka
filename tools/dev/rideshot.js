@@ -1,5 +1,5 @@
 // 線路の延長・駅の画面を撮る (data/rail_ext/。駅を足したときの見た目の確認用)。ridecheck.js と同じ準備で、ミニマップも写す。
-// 撮るもの: 1_platform (駅のホーム。止まっている電車)、2_aerial (駅を上から)、3_ride (途中を走る電車を外から)、4_window (車窓)
+// 撮るもの: 1_platform (駅のホーム。止まっている電車)、2_aerial (駅を上から)、2b_north (駅から北を見下ろす)、3_ride (途中を走る電車を外から)、4_window (車窓)
 // 使い方: node tools/dev/rideshot.js <出力フォルダ> [--station 東戸塚] [--from 東京 --before 150]   (5〜10 分。京葉線の駅は --from 東京)
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -89,6 +89,8 @@ function terrain() {
   await shot('1_platform');
   await page.evaluate(() => { const c = window.__g.cam; c.yaw += 1.3; c.pitch = 0.75; c.dist = 30; });
   await shot('2_aerial');
+  await page.evaluate(() => { const c = window.__g.cam; c.yaw = 0; c.pitch = 0.3; c.dist = 70; });   // 北を見る (駅のまわりの街)
+  await shot('2b_north');
   // 途中: 戸塚からこの駅へ向かう電車に乗り、着く 150 秒前 (外から) と 90 秒前 (車窓)
   await page.evaluate(([name, from, before]) => {
     const R = window.__ride, T = window.__trains;
