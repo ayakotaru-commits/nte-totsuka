@@ -375,7 +375,7 @@ export function buildPark(cfg, world, opts = {}) {
       const t0 = performance.now();
       const ar = buildAreas({ cfg, ground, std, glowMat, group, col, emissive, low: !!opts.low, flat, stripPos });
       api.areas = ar;
-      console.info(`[park] 各エリア: 建物 ${ar.stats.buildings}・木 ${ar.stats.trees}・看板 ${ar.stats.signs}、${(performance.now() - t0).toFixed(0)} ms`);
+      console.info(`[park] 各エリア: 建物 ${ar.stats.buildings}・木 ${ar.stats.trees}・看板 ${ar.stats.signs}・乗り物の三角形 ${ar.rides.stats.tris}、${(performance.now() - t0).toFixed(0)} ms`);
     }
     world.addColliders(col, true);   // V キーに関係なく有効
     console.info(`[park] ${cfg.name}: 土台を作った (柵 ${col.line.length} 本の線・当たり判定 円 ${col.circle.length}・線 ${col.line.length}・箱 ${col.box.length}、ゲートの地面 ${ground(gx, gz).toFixed(2)} m)`);
@@ -386,6 +386,7 @@ export function buildPark(cfg, world, opts = {}) {
     update(x, z) {
       if (!built && Math.hypot(x - gate.at[0], z - gate.at[1]) < 1500 && ready()) build();
       if (api.beams) api.beams.rotation.y = performance.now() / 1000 * 0.25;
+      api.areas?.rides?.update(Date.now() / 1000, x, z);   // 観覧車・メリーゴーラウンド・コースターの動き (近くのときだけ)
     },
     get built() { return built; },
     ground: pg,

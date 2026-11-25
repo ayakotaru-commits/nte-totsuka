@@ -33,7 +33,7 @@ const VIEWS = [
 
 // 段階 2: 各エリアの視点を、設定 (public/data/park.json の gen) から作る。<n>_arch = 門の前から入る向き、<n>_aerial = 建物の中心を上から、<n>_street = 主な通りを歩く目の高さ
 try {
-  const park = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'data', 'park.json')));
+  const park = JSON.parse(fs.readFileSync(process.env.PARK_JSON || path.join(PUBLIC, 'data', 'park.json')));   // PARK_JSON = 視点だけ別の設定から取る (修正前の作業コピーで撮るとき)
   if (park.gen) {
     const ROM = ['midnight', 'town', 'avenue', 'valley', 'sweet', 'forest', 'harbor'];
     park.gen.areas.forEach((a, i) => {
@@ -48,6 +48,32 @@ try {
       const mp = park.gen.paths.find((p2) => p2.a === i);
       if (mp) { const q = mp.pts[Math.floor(mp.pts.length / 2)], r = mp.pts[Math.floor(mp.pts.length / 2) + 1] || mp.pts[0]; const d = Math.hypot(r[0] - q[0], r[1] - q[1]) || 1; VIEWS.push({ name: nm + '_street', at: [q[0], q[1]], look: [(r[0] - q[0]) / d, (r[1] - q[1]) / d], pitch: 0.1, dist: 10 }); }
     });
+    // 段階 3: 乗り物 (観覧車 = のりばの側から・近くから、メリーゴーラウンド = 近く・上から、コースター = 上から・のりばの近く)
+    const rd = park.gen.rides || {}, W = (o, lx, lz) => [o.x + lx * Math.cos(o.yaw) + lz * Math.sin(o.yaw), o.z - lx * Math.sin(o.yaw) + lz * Math.cos(o.yaw)];
+    if (rd.ferris) {
+      const f = rd.ferris, fl = [-Math.sin(f.yaw), -Math.cos(f.yaw)];
+      VIEWS.push({ name: 'r1_ferris', at: W(f, 0, 14), look: fl, pitch: 0.2, dist: 55 });
+      VIEWS.push({ name: 'r2_ferris_close', at: W(f, 0, 5), look: fl, pitch: 0.1, dist: 14 });
+      VIEWS.push({ name: 'r3_ferris_side', at: W(f, 22, 0), look: [-Math.cos(f.yaw), Math.sin(f.yaw)], pitch: 0.12, dist: 50 });
+    }
+    if (rd.ferris) {   // 観覧車に乗った視点 (外から・ゴンドラの中から。時計を差し替えて、ゴンドラ 0 が底に来た時刻から 50 秒)
+      const f = rd.ferris;
+      VIEWS.push({ name: 'r9_ride_out', at: W(f, 0, 4.2), look: [-Math.sin(f.yaw), -Math.cos(f.yaw)], pitch: 0.18, dist: 13, board: { sec: 50, view: 'out', yawAdd: 0.7 } });
+      VIEWS.push({ name: 'r10_ride_in', at: W(f, 0, 4.2), look: [-Math.sin(f.yaw), -Math.cos(f.yaw)], pitch: 0.18, dist: 13, board: { sec: 50, view: 'in', yawAdd: 0.5 } });
+    }
+    if (rd.carousel) {
+      const c = rd.carousel;
+      for (const [k, a] of [['e', 1.57], ['w', -1.57], ['n', 3.14]]) VIEWS.push({ name: 'r4_carousel_' + k, at: [c.x + Math.sin(c.yaw + a) * 11, c.z + Math.cos(c.yaw + a) * 11], look: [-Math.sin(c.yaw + a), -Math.cos(c.yaw + a)], pitch: 0.3, dist: 16 });
+      VIEWS.push({ name: 'r4_carousel', at: W(c, 0, 11), look: [-Math.sin(c.yaw), -Math.cos(c.yaw)], pitch: 0.15, dist: 16 });
+      VIEWS.push({ name: 'r5_carousel_aerial', at: [c.x, c.z], look: [0, 1], pitch: 1.0, dist: 40 });
+    }
+    if (rd.coaster) {
+      const k = rd.coaster;
+      VIEWS.push({ name: 'r6_coaster_aerial', at: [k.x, k.z], look: [0, 1], pitch: 1.0, dist: 150 });
+      VIEWS.push({ name: 'r7_coaster_side', at: [k.x, k.z], look: [Math.sin(k.yaw), Math.cos(k.yaw)], pitch: 0.2, dist: 100 });
+      const s = k.pts[k.stationIdx[1]];
+      VIEWS.push({ name: 'r8_coaster_station', at: [s[0], s[1]], look: [Math.sin(k.yaw + 1.6), Math.cos(k.yaw + 1.6)], pitch: 0.12, dist: 22 });
+    }
     for (const pr of park.gen.props) VIEWS.push({ name: 'p_' + pr.k + '_' + pr.a, at: [pr.x - Math.sin(pr.yaw || 0) * 0, pr.z], look: [0.3, 1], pitch: 0.2, dist: Math.max(30, pr.r * 3.5) });
   }
 } catch (e) { /* 設定が無ければ段階 1 の視点だけ */ }
@@ -119,8 +145,22 @@ try {
         const sc = window.__g.scene; sc.add(grp);
       });
     }
+    if (v.board) {   // 観覧車に乗る (時計を差し替える。撮ったあとで戻す)
+      await page.evaluate((b) => {
+        const pr = window.__pride, fw = pr.ferris, rev = fw.cfg.rev; window.__realNow = Date.now.bind(Date);
+        let now = Math.ceil(window.__realNow() / 1000 / rev) * rev; Date.now = () => now * 1000;
+        const K = (d) => ({ pressed: (k) => d.includes(k) });
+        window.__ride.place(fw.spot.x, fw.spot.y, fw.spot.z, 0); window.__g.player.pos.y = fw.spot.y + 0.05;
+        pr.update(1 / 30, K(['KeyF']));
+        for (let t = 0; t < b.sec * 30; t++) { now += 1 / 30; pr.update(1 / 30, K([])); if (pr.riding) pr.view(1 / 30); }
+        if (b.view === 'in') pr.update(1 / 30, K(['KeyQ']));
+        const c = window.__g.cam; c.yaw = fw.cfg.yaw + (b.view === 'in' ? Math.PI : 0) + b.yawAdd; c.pitch = b.view === 'in' ? 0.05 : 0.2;
+        pr.view(1 / 30);
+      }, v.board);
+    }
     await frames(3); await page.waitForTimeout(2000);
     await page.screenshot({ path: path.join(out, v.name + '.png'), timeout: 300000 });
+    if (v.board) await page.evaluate(() => { window.__pride.cancel(); Date.now = window.__realNow; });
     console.log('shot', v.name, 'ground', gy.toFixed(2));
   }
   await browser.close();

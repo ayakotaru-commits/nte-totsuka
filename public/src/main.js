@@ -17,6 +17,7 @@ import { BigMap } from './bigmap.js';
 import { loadDetail } from './detail/index.js'; // detail (お試し)
 import { DoorControl } from './doors.js';
 import { Ride } from './ride.js';
+import { ParkRide } from './parkride.js';
 import { getBridges } from './bridges.js';
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
@@ -148,8 +149,9 @@ async function main() {
   const labels = new Labels(city.pois, scene);
   // マップで選んだ場所へワープ (建物の中なら一番近い屋外)。向きはそのまま
   let ride = null;                                              // 電車の乗り降り (下で作る)
+  let parkRide = null;                                          // パークの観覧車 (下で作る)
   const warpTo = (x, z) => {
-    ride?.cancel();
+    ride?.cancel(); parkRide?.cancel();
     // 電車の乗り場 (改札) の印を選んだとき: 下の地面ではなく、デッキの上の改札の前に立つ
     const gate = ride && !ride.disabled ? ride.gates.find((g) => Math.hypot(g.top.x - x, g.top.z - z) < 3) : null;
     if (gate) { ride.place(gate.top.x, gate.top.y, gate.top.z, -Math.PI / 2); toggleMap(); return; }
@@ -173,6 +175,7 @@ async function main() {
   if (Q.has('notraffic')) traffic.setVisible(false);
   window.__traffic = traffic; // 確認用
   // 電車に乗る (ride.js。改札・ホーム・乗り降り)。?noride で無効
+  parkRide = new ParkRide({ park: detail.park, player, cam, camera, world });   // フェアリー・リールパークの観覧車 (F。乗っている間はキャラを動かさない)
   ride = new Ride({ trains: Q.has('noride') ? null : detail.trains, props, world, player, cam, camera, bridges: getBridges(), scene, ext });
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
   const editor = new Editor({ scene, camera, renderer, world, built, cam, player, streetView });
@@ -183,7 +186,7 @@ async function main() {
   // city.start.face があればその地点を向く。なければ建物から離れる向き
   const spawnFacing = st.face ? Math.atan2(st.face[0] - spawn.x, st.face[1] - spawn.z)
     : Math.hypot(spawn.x - st.x, spawn.z - st.z) > 0.5 ? Math.atan2(spawn.x - st.x, spawn.z - st.z) : Math.PI / 2;
-  const respawn = () => { ride?.cancel(); player.teleport(spawn.x, spawn.z); player.facing = spawnFacing; cam.yaw = spawnFacing + Math.PI; cam.update(0, player.pos, true); };
+  const respawn = () => { ride?.cancel(); parkRide?.cancel(); player.teleport(spawn.x, spawn.z); player.facing = spawnFacing; cam.yaw = spawnFacing + Math.PI; cam.update(0, player.pos, true); };
   respawn();
   // 修正ツールで保存した後の再読み込み: 位置と視点、修正モードを復元
   const restore = Editor.takeRestore();
@@ -348,7 +351,9 @@ async function main() {
       rhythm.update(dt, inp);            // イベント「お札まき」(同上。曲の間のカメラもここで決めるので、cam.update の後でもう一度)
       arcade.update(dt, input);          // イベント「ゲームセンター リズムステージ」(同上)
       ride.update(dt, inp);              // 電車の乗り降り (F。乗っている間はキャラを動かさない)
+      if (!ride.riding) parkRide.update(dt, inp);   // パークの観覧車 (同上)
       if (ride.riding) ride.view(dt);
+      else if (parkRide.riding) parkRide.view(dt);
       else {
         for (let i = 0; i < n; i++) { player.update(dt / n, inp, cam); if (n > 1) input.endFrame(); }
         cam.update(dt, player.pos, false, player);
