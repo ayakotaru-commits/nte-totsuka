@@ -31,6 +31,27 @@ const VIEWS = [
   { name: 'a8_station_side', at: [31730, -25950], look: [-1, 0.2], pitch: 0.4, dist: 60 },      // 駅の南口のロータリー (敷地の縁。省いた所と残した所の境目)
 ];
 
+// 段階 2: 各エリアの視点を、設定 (public/data/park.json の gen) から作る。<n>_arch = 門の前から入る向き、<n>_aerial = 建物の中心を上から、<n>_street = 主な通りを歩く目の高さ
+try {
+  const park = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'data', 'park.json')));
+  if (park.gen) {
+    const ROM = ['midnight', 'town', 'avenue', 'valley', 'sweet', 'forest', 'harbor'];
+    park.gen.areas.forEach((a, i) => {
+      const nm = 'c' + i + '_' + (a.kind || ROM[i]);
+      const bs = park.gen.buildings.filter((b) => b.a === i);
+      const arch = park.gen.arches.find((q) => q.a === i);
+      if (arch) VIEWS.push({ name: nm + '_arch', at: [arch.x - Math.sin(arch.yaw) * 14, arch.z - Math.cos(arch.yaw) * 14], look: [Math.sin(arch.yaw), Math.cos(arch.yaw)], pitch: 0.12, dist: 14 });
+      if (bs.length) {
+        const cx = bs.reduce((s, b) => s + b.x, 0) / bs.length, cz = bs.reduce((s, b) => s + b.z, 0) / bs.length;
+        VIEWS.push({ name: nm + '_aerial', at: [cx, cz], look: [0, 1], pitch: 0.95, dist: 170 });
+      }
+      const mp = park.gen.paths.find((p2) => p2.a === i);
+      if (mp) { const q = mp.pts[Math.floor(mp.pts.length / 2)], r = mp.pts[Math.floor(mp.pts.length / 2) + 1] || mp.pts[0]; const d = Math.hypot(r[0] - q[0], r[1] - q[1]) || 1; VIEWS.push({ name: nm + '_street', at: [q[0], q[1]], look: [(r[0] - q[0]) / d, (r[1] - q[1]) / d], pitch: 0.1, dist: 10 }); }
+    });
+    for (const pr of park.gen.props) VIEWS.push({ name: 'p_' + pr.k + '_' + pr.a, at: [pr.x - Math.sin(pr.yaw || 0) * 0, pr.z], look: [0.3, 1], pitch: 0.2, dist: Math.max(30, pr.r * 3.5) });
+  }
+} catch (e) { /* 設定が無ければ段階 1 の視点だけ */ }
+
 (async () => {
   const args = process.argv.slice(2);
   const flag = (name) => { const i = args.indexOf(name); return i < 0 ? null : (args.splice(i, 2)[1] || true); };

@@ -1,0 +1,99 @@
+{
+  "_doc": "フェアリー・リールパークの各エリアの建物・道・木のテーマ (段階 2)。tools/park_areas.py がこれと data/park.json (敷地・エリア・道) から、決まった乱数で建物・内側の道・広場・木・看板を作り、public/data/park.json の gen に入れる。色は #rrggbb。壁の材質 wall = city.js の WALL_MAT (0 吹き付け・1 サイディング・2 タイル・3 打ち放し・4 角波・5 ALC)。実在のパークの建物の形・配置は使わない。",
+  "short": "リール",
+  "shortRoman": "REEL",
+  "_short_doc": "看板の文字に使う、パークの名前の短い形 (名前の設定 = park.json の name・roman と合わせる)。",
+  "themes": {
+    "ネオン・アベニュー": {
+      "kind": "avenue", "seed": 11, "fh": 4.0, "bay": 3.2, "setback": 5.0, "rows": 2, "rowGap": 6,
+      "w": [9, 15], "d": [12, 16], "h": [9, 16], "gap": [0.0, 1.0],
+      "wall": [0, 2, 5], "colors": ["#f7d6e6", "#d6ecf7", "#fdf0c4", "#e3d9f7", "#d5f3e3", "#ffdcc8"],
+      "roofs": {"flat": 6, "gable": 1}, "roofColors": ["#9a8fc7", "#e58fb3", "#6fb7d9"], "trim": "#fff6e6",
+      "shop": true, "door": "#7f6ad9", "awning": ["#ff7fb5", "#3fc8ff", "#ffd36b", "#8f7bff"], "roofSign": 0.5,
+      "signs": [["#ff4f9a", "#ffffff"], ["#2fb8ff", "#ffffff"], ["#ffc933", "#5a2d82"], ["#8f5bff", "#fff6c9"], ["#35d6a4", "#ffffff"]],
+      "names": ["{short}キネマ", "ポップコーン", "NEON DINER", "シネマ・グッズ", "ミルクバー", "LUCKY STAR", "フィルム堂", "レトロ写真館", "SWEETS {shortRoman}", "カフェ・{short}", "スター雑貨店", "PREMIERE", "ミュージック・ボックス", "ソーダ・ファウンテン"],
+      "trees": {"perHa": 0, "kinds": {"round": 1}},
+      "lamp": "pink"
+    },
+    "ターボ・ダウンタウン": {
+      "kind": "town", "seed": 12, "fh": 4.0, "bay": 3.4, "setback": 3.5, "rows": 2, "rowGap": 5, "mainW": 12, "branchW": 8, "branchEvery": 62,
+      "w": [10, 18], "d": [12, 18], "h": [14, 26], "gap": [0.0, 1.5],
+      "wall": [2, 3, 1], "colors": ["#b9694f", "#a3573f", "#c9a27e", "#8d97a3", "#d8d2c4", "#6f7d8c"],
+      "roofs": {"flat": 1}, "roofColors": ["#6b6e74", "#555a61"], "trim": "#e9e4d8",
+      "shop": true, "door": "#2b3a4a", "awning": ["#c0392b", "#2c6fbb", "#f2b632", "#2e8b57"], "roofSign": 0.7,
+      "signs": [["#d62f2f", "#fff6c9"], ["#1e4f9a", "#ffffff"], ["#f2b632", "#2b2b2b"], ["#2b2b2b", "#ffd36b"]],
+      "names": ["ターボ・ガレージ", "DINER 66", "TURBO TIRES", "スタジオ 7", "CITY BANK", "ニュース・スタンド", "HOTEL TURBO", "ピザ・ガレージ", "ドーナツ・ストップ", "DOWNTOWN CINEMA", "オート商会", "RADIO CITY", "{short}・フィルムラボ"],
+      "scatter": 10, "scatterW": [10, 16], "scatterD": [10, 14], "scatterH": [10, 18],
+      "trees": {"perHa": 3, "kinds": {"round": 1}},
+      "plaza": {"r": 20}, "lamp": "warm",
+      "landmark": {"w": 12, "d": 12, "h": 40, "roof": "hip", "roofH": 8, "clock": true, "wall": 2, "color": "#b9694f", "roofColor": "#2f4f6f", "name": "TURBO TOWER"}
+    },
+    "ロスト・バレー": {
+      "kind": "valley", "seed": 13, "fh": 3.6, "bay": 3.0, "setback": 4.0, "rows": 1, "rowGap": 6, "mainW": 10, "branchW": 7, "branchEvery": 70, "wiggle": [9, 100],
+      "w": [8, 14], "d": [8, 12], "h": [5, 9], "gap": [2.0, 7.0],
+      "wall": [3, 1], "colors": ["#b59a74", "#a8825a", "#8f7a5e", "#c3a97f"],
+      "roofs": {"gable": 3, "hip": 2}, "roofColors": ["#a98d4e", "#8e7440", "#6b8f3a"], "trim": "#6b4a2b",
+      "shop": false, "door": "#4a3320", "awning": [], "roofSign": 0,
+      "signs": [["#6b4a2b", "#f7e3b0"], ["#3f6b3a", "#fff2c2"], ["#a2512b", "#fff2c2"]],
+      "names": ["ジャングル・ロッジ", "化石の店", "BONE CAFE", "ロスト・マーケット", "探検隊本部", "ハンター小屋", "たまご屋", "RAPTOR GRILL"],
+      "scatter": 26, "scatterW": [8, 12], "scatterD": [8, 11], "scatterH": [5, 8],
+      "trees": {"perHa": 22, "kinds": {"palm": 3, "round": 2}},
+      "plaza": {"r": 18}, "lamp": "torch",
+      "features": [{"at": "far", "kind": "volcano"}, {"at": "side", "kind": "rocks"}]
+    },
+    "メルヘン・フォレスト": {
+      "kind": "forest", "seed": 14, "fh": 3.4, "bay": 2.8, "setback": 4.0, "rows": 1, "rowGap": 6, "mainW": 7, "branchW": 5, "branchEvery": 52, "wiggle": [10, 80],
+      "w": [7, 11], "d": [7, 10], "h": [5, 9], "gap": [3.0, 9.0], "towerChance": 0.35,
+      "wall": [0], "colors": ["#f6e3ea", "#e8f2dc", "#fdf0cf", "#e3e7fa", "#f4d9d0"],
+      "roofs": {"gablefront": 3, "hip": 2, "cone": 1}, "roofColors": ["#c25a6b", "#6f9a5a", "#7a6bb5", "#d8a24c"], "trim": "#fff6e6",
+      "shop": false, "door": "#8a5a3b", "awning": [], "roofSign": 0,
+      "signs": [["#8a5a3b", "#fff3d6"], ["#6f9a5a", "#ffffff"], ["#c25a6b", "#fff6e6"]],
+      "names": ["きのこ亭", "パン屋さん", "ほうきの店", "ふしぎ文庫", "はちみつ屋", "小人の仕立て屋", "星の宿", "魔法の薬屋"],
+      "scatter": 22, "scatterW": [7, 10], "scatterD": [7, 9], "scatterH": [5, 8],
+      "trees": {"perHa": 30, "kinds": {"round": 4, "blossom": 2, "pine": 2}},
+      "plaza": {"r": 15}, "lamp": "lantern",
+      "landmark": {"w": 14, "d": 12, "h": 16, "roof": "hip", "roofH": 9, "wall": 0, "color": "#f6e3ea", "roofColor": "#7a6bb5", "towers": 3, "name": "{short}の城"},
+      "features": [{"at": "side", "kind": "mushrooms"}]
+    },
+    "ブルー・ハーバー": {
+      "kind": "harbor", "seed": 15, "fh": 4.0, "bay": 3.6, "setback": 4.5, "rows": 1, "rowGap": 6, "mainW": 12, "branchW": 7, "branchEvery": 70,
+      "w": [12, 20], "d": [10, 14], "h": [7, 12], "gap": [1.0, 5.0],
+      "wall": [4, 1], "colors": ["#f2f5f8", "#cfe3ee", "#2f6f9f", "#e8d9b8"],
+      "roofs": {"gable": 3, "flat": 1}, "roofColors": ["#2f5f8f", "#c0443c", "#e9edf0"], "trim": "#ffffff",
+      "shop": true, "door": "#1d5f9e", "awning": ["#1d5f9e", "#ffffff"], "roofSign": 0,
+      "signs": [["#1d5f9e", "#ffffff"], ["#c0443c", "#ffffff"], ["#f2f5f8", "#1d5f9e"]],
+      "names": ["ハーバー・マーケット", "SEA GRILL", "カモメ亭", "BOAT HOUSE", "灯台守の家", "貝殻の店", "FISH & CHIPS"],
+      "scatter": 4, "scatterW": [12, 18], "scatterD": [10, 12], "scatterH": [6, 9],
+      "trees": {"perHa": 4, "kinds": {"palm": 1, "round": 2}},
+      "plaza": {"r": 16}, "lamp": "sea",
+      "features": [{"at": "far", "kind": "lighthouse"}, {"at": "side", "kind": "galleon"}]
+    },
+    "スイート・ヒル": {
+      "kind": "sweet", "seed": 16, "fh": 3.4, "bay": 3.0, "setback": 4.0, "rows": 1, "rowGap": 6, "mainW": 9, "branchW": 6, "branchEvery": 48, "wiggle": [6, 70],
+      "w": [7, 12], "d": [7, 11], "h": [6, 14], "gap": [2.0, 6.0],
+      "wall": [5, 0], "colors": ["#ffd1e6", "#c9f0df", "#fff0b8", "#d6d0ff", "#ffe0c2"],
+      "roofs": {"hip": 3, "cone": 2, "gable": 1}, "roofColors": ["#ff7fb5", "#7fd6b8", "#a58bff", "#ffb347"], "trim": "#ffffff",
+      "shop": true, "door": "#ff7fb5", "awning": ["#ff7fb5", "#ffffff", "#7fd6b8", "#ffffff"], "roofSign": 0,
+      "signs": [["#ff7fb5", "#ffffff"], ["#7fd6b8", "#ffffff"], ["#a58bff", "#fff6c9"], ["#ffb347", "#ffffff"]],
+      "names": ["キャンディ・ショップ", "チョコレート工房", "SODA POP", "アイス屋さん", "マカロン通り", "CANDY HOUSE", "ジャム工場"],
+      "scatter": 10, "scatterW": [7, 10], "scatterD": [7, 9], "scatterH": [6, 10],
+      "trees": {"perHa": 10, "kinds": {"lolli": 3, "blossom": 2}},
+      "plaza": {"r": 20}, "lamp": "candy",
+      "features": [{"at": "far", "kind": "pad"}, {"at": "side", "kind": "lollipops"}]
+    },
+    "ミッドナイト・ロット": {
+      "kind": "night", "seed": 17, "fh": 4.0, "bay": 3.4, "setback": 4.0, "rows": 1, "rowGap": 6, "mainW": 8, "branchW": 6, "branchEvery": 60,
+      "w": [9, 14], "d": [9, 13], "h": [10, 18], "gap": [2.0, 6.0],
+      "wall": [3, 2], "colors": ["#3b3350", "#2f2b3d", "#4a3a55", "#5a4a4a"],
+      "roofs": {"gablefront": 3, "hip": 2, "cone": 1}, "roofColors": ["#1f1a2b", "#3a2250", "#2b2b34"], "trim": "#7a6f8f",
+      "shop": false, "door": "#1a1520", "awning": [], "roofSign": 0, "towerChance": 0.3,
+      "signs": [["#2a1740", "#ff9a3d"], ["#1a1a22", "#b8ff6a"], ["#3a0f1f", "#ffd0a0"]],
+      "names": ["月夜の洋館", "HAUNTED STUDIO", "古い映写室", "NO.13", "ほうき倉庫", "ホラー・シアター", "THE LAST REEL"],
+      "scatter": 6, "scatterW": [9, 12], "scatterD": [9, 11], "scatterH": [9, 14],
+      "trees": {"perHa": 14, "kinds": {"dead": 4, "pine": 1}},
+      "plaza": {"r": 14}, "lamp": "gas",
+      "landmark": {"w": 26, "d": 16, "h": 22, "roof": "gablefront", "roofH": 12, "wall": 3, "color": "#3b3350", "roofColor": "#1f1a2b", "towers": 2, "name": "ミッドナイト館"},
+      "features": [{"at": "side", "kind": "graves"}]
+    }
+  }
+}
