@@ -56,33 +56,9 @@ export class Minimap {
     this.map = m;
   }
 
-  // 線路の延長 (rail_ext.json) の下絵。地図の範囲の外 (東戸塚など) で自分の位置が分かるように、建物・道路・線路・ホームだけを粗く描く。
-  // 大きい地図 (bigmap.js) も this.ext を使う。lowMem (スマホ) は解像度を下げる
-  setExt(ext, lowMem = false) {
-    if (!ext || !ext.terrain) return;
-    const T = ext.terrain, s2 = lowMem ? 0.3 : 0.5;
-    const x0 = T.x0, z0 = T.z0, w = T.nx * T.step, h = T.nz * T.step;
-    const m = document.createElement('canvas');
-    m.width = Math.ceil(w * s2); m.height = Math.ceil(h * s2);
-    const g = m.getContext('2d');
-    const X = (x) => (x - x0) * s2, Z = (z) => (z - z0) * s2;
-    // 線路の近く (地形を作った所) だけを地の色で塗る
-    g.fillStyle = '#e9e6df';
-    for (const row of T.rows) { const [j, i0] = row; g.fillRect(i0 * T.step * s2, j * T.step * s2, (row.length - 2) * T.step * s2 + 1, T.step * s2 + 1); }
-    g.lineCap = g.lineJoin = 'round';
-    g.strokeStyle = '#ffffff';
-    for (const rd of ext.roads || []) {
-      g.lineWidth = Math.max(1, rd[0] * s2);
-      g.beginPath(); for (let k = 1; k + 1 < rd.length; k += 2) k === 1 ? g.moveTo(X(rd[k]), Z(rd[k + 1])) : g.lineTo(X(rd[k]), Z(rd[k + 1])); g.stroke();
-    }
-    g.fillStyle = '#c9c1b3';
-    for (const [ring] of ext.buildings) { g.beginPath(); ring.forEach(([x, z], i) => i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z))); g.closePath(); g.fill(); }
-    g.strokeStyle = '#777'; g.lineWidth = Math.max(1.5, 3 * s2);
-    for (const r of ext.routes) { g.beginPath(); r.p.forEach((q, i) => i ? g.lineTo(X(q[0]), Z(q[2])) : g.moveTo(X(q[0]), Z(q[2]))); g.stroke(); }
-    g.fillStyle = '#b9b4aa';
-    for (const st of ext.stations || []) for (const pf of st.platforms || [st.platform]) { g.beginPath(); [...pf.left, ...pf.right.slice().reverse()].forEach(([x, z], i) => i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z))); g.closePath(); g.fill(); }
-    this.ext = { canvas: m, x0, z0, s: s2 };
-  }
+  // 線路の延長 (data/rail_ext/) の下絵。地図の範囲の外 (東戸塚など) で自分の位置が分かるように。
+  // E = detail/railext.js の map ({ bounds, draw })。全体の粗い絵と、読み込んだ区間の細かい絵 (建物・道路・線路・ホーム) を draw が描く。大きい地図 (bigmap.js) も this.ext を使う
+  setExt(E) { this.ext = E || null; }
 
   // ワールド上の相対ベクトル (dx, dz) → ミニマップ画面上の座標 (中心基準)
   toScreen(dx, dz, yaw) {
@@ -101,9 +77,9 @@ export class Minimap {
     c.fillStyle = '#d8d4cb'; c.fillRect(0, 0, W, H);
     c.translate(R, R);
     c.rotate(yaw);
+    const E = this.ext, r = R / ZOOM;
+    if (E) E.draw(c, (x) => (x - px) * ZOOM, (z) => (z - pz) * ZOOM, ZOOM, [px - r, pz - r, px + r, pz + r]);
     c.scale(ZOOM / S, ZOOM / S);
-    const E = this.ext;
-    if (E) c.drawImage(E.canvas, (E.x0 - px) * S, (E.z0 - pz) * S, E.canvas.width / E.s * S, E.canvas.height / E.s * S);
     c.drawImage(this.map, -(px - B.minX) * S, -(pz - B.minZ) * S);
     c.restore();
 

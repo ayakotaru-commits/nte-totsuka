@@ -2,8 +2,9 @@
 
 使い方: python tools/rail_ext.py            (初回は国土地理院のタイル・PLATEAU・標高タイルを取る。数分)
         python tools/rail_ext.py --find 保土ケ谷 35.4436,139.5960   (駅の位置を調べる: 目安の緯度経度のまわり 2 km の注記と「駅部分」。設定に書く lat/lon が分かる)
-        python tools/rail_ext.py --plot out.png                    (今の rail_ext.json の平面図: 道筋・ホーム・建物・道路・坑口。確かめる用)
-出力:   public/data/rail_ext.json
+        python tools/rail_ext.py --plot out.png                    (今の data/raw/rail_ext_full.json の平面図: 道筋・ホーム・建物・道路・坑口。確かめる用)
+出力:   data/raw/rail_ext_full.json (全部入り。git に入れない) → tools/rail_ext_split.py で public/data/rail_ext/ (index.json と 1 km 四方の区間ごとのファイル) に分ける。
+        下の形は全部入りのもの (区間のファイルの形は rail_ext_split.py の先頭)
   routes:   [{route: props.json の rail.routes の番号, line, at: "end" (道筋の終わりに足す) | "start" (始めに足す),
               p: [[x, y, z], ...] (約 5 m おき。y = レールの上面。"start" は延長の先から地図の端へ向かう順 = そのまま前につなげる順),
               stops: [{s: 止まる位置 (先頭の、p の始点からの距離 m), name: 駅名}]}]
@@ -33,7 +34,7 @@ from mvt import decode
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CACHE = ROOT / "data" / "raw" / "gsi_ext"
 PCACHE = ROOT / "data" / "raw" / "plateau"
-OUT = ROOT / "public" / "data" / "rail_ext.json"
+OUT = ROOT / "data" / "raw" / "rail_ext_full.json"   # 全部入り (git に入れない)。rail_ext_split.py が public/data/rail_ext/ に区間ごとに分ける
 
 CONFIG = ROOT / "data" / "rail_ext_config.json"
 MAX_LEN = 12000.0      # たどる長さの上限 (m)
@@ -721,6 +722,8 @@ def main():
         "poles": poles, "roads": out_roads, "trees": trees, "portals": portals,
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"-> {OUT} ({OUT.stat().st_size / 1e6:.2f} MB)")
+    import rail_ext_split
+    rail_ext_split.write(json.loads(OUT.read_text(encoding="utf-8")))
 
 
 def plateau_buildings(near_track, allP, ext_routes):

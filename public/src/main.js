@@ -55,7 +55,7 @@ async function main() {
   const coverP = getJSON('data/cover.json', !QS.has('nocover'));      // 地面の種類 (tools/lidar_cover.py。見比べ用に ?nocover で使わない)
   const wallsP = getJSON('data/walls.json', QS.has('walls'));         // 擁壁 (tools/lidar_walls.py --osm。見た目が不十分なので ?walls のときだけ)
   const propsP = getJSON('data/props.json');                          // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py)
-  const extP = getJSON('data/rail_ext.json', !QS.has('noext'));      // 線路の延長 (東戸塚駅まで。tools/rail_ext.py。?noext で使わない)
+  const extP = getJSON('data/rail_ext/index.json', !QS.has('noext')); // 線路の延長 (横浜駅まで。tools/rail_ext.py。?noext で使わない)。地形・建物は区間ごとに後から読む (detail/railext.js)
   const [city, terrain, cover, walls, props, ext] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP, extP]);
   if (terrain) setTerrain(terrain);
   if (cover) setCover(cover);
@@ -142,7 +142,7 @@ async function main() {
   let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
   const minimap = new Minimap(city, $('minimap'));
-  if (ext) minimap.setExt(ext, TOUCH);   // 線路の延長 (東戸塚など) も地図に描く
+  if (detail.railExt) minimap.setExt(detail.railExt.map);   // 線路の延長 (東戸塚など) も地図に描く (読み込んだ区間は細かく)
   const labels = new Labels(city.pois, scene);
   // マップで選んだ場所へワープ (建物の中なら一番近い屋外)。向きはそのまま
   let ride = null;                                              // 電車の乗り降り (下で作る)
@@ -360,6 +360,7 @@ async function main() {
     if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, tod.cur.win);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
+    detail.railExt?.update(camera.position.x, camera.position.z); // 線路の延長: カメラの近くの区間を読み込む・遠い区間を捨てる
 
     // 影は常にプレイヤー周辺
     sun.target.position.copy(player.pos);

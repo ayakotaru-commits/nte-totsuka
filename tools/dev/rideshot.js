@@ -1,4 +1,4 @@
-// 線路の延長・駅の画面を撮る (rail_ext.json。駅を足したときの見た目の確認用)。ridecheck.js と同じ準備で、ミニマップも写す。
+// 線路の延長・駅の画面を撮る (data/rail_ext/。駅を足したときの見た目の確認用)。ridecheck.js と同じ準備で、ミニマップも写す。
 // 撮るもの: 1_platform (駅のホーム。止まっている電車)、2_aerial (駅を上から)、3_ride (途中を走る電車を外から)、4_window (車窓)
 // 使い方: node tools/dev/rideshot.js <出力フォルダ> [--station 東戸塚]   (5〜10 分)
 const { chromium } = require('playwright');
@@ -69,10 +69,12 @@ function terrain() {
   await page.waitForFunction(() => window.__g, null, { timeout: 240000 });
   await page.addStyleTag({ content: '#help{display:none!important}' }); // 操作説明は隠す
   const frames = (n) => page.evaluate((n) => new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
-  const shot = async (name) => { await frames(3); await page.waitForTimeout(3000); await page.screenshot({ path: path.join(out, name + '.png'), timeout: 240000 }); console.log('shot', name); };
+  // 線路の延長の区間 (detail/railext.js) を読み終わるまで待つ (読み込みはコマごとに進むので、コマを進めながら)
+  const extIdle = async () => { for (let k = 0; k < 200; k++) { await frames(2); if (await page.evaluate(() => !window.__railext || window.__railext.stats.idle)) return; } console.log('区間の読み込みが終わらない'); };
+  const shot = async (name) => { await frames(3); await extIdle(); await page.waitForTimeout(3000); await page.screenshot({ path: path.join(out, name + '.png'), timeout: 240000 }); console.log('shot', name); };
   const ST = await page.evaluate((want) => { const R = window.__ride; window.__trains.hold = Date.now() / 1000;
     const pl = R.plats.slice(2).find((p) => !want || p.name === want); return pl ? { name: pl.name, idx: R.plats.indexOf(pl) } : null; }, stationName);
-  if (!ST) { console.log('延ばした先の駅がありません (rail_ext.json)'); await browser.close(); server.close(); return; }
+  if (!ST) { console.log('延ばした先の駅がありません (data/rail_ext/)'); await browser.close(); server.close(); return; }
   // 駅: 止まる電車 (戸塚から来る向き) が止まっている時刻にして、ホームの端寄りから中央へ向く
   await page.evaluate((idx) => {
     const R = window.__ride, T = window.__trains, pl = R.plats[idx], { r, si } = pl.routes.find((x) => x.r.stops.some((q) => q.name === '戸塚')) || pl.routes[0], P = r.L.period;

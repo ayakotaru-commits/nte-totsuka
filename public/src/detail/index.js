@@ -11,6 +11,7 @@ import { buildWalkways } from './walkways.js';
 import { buildYard } from './yard.js';
 import { buildTrains } from './trains.js';
 import { buildRailExt } from './railext.js';
+import { LOW_MEM } from '../lowmem.js';
 import { buildTrackbed } from './trackbed.js';
 
 export async function loadDetail({ scene, city, world, built, props, ext = null }) {
@@ -20,6 +21,7 @@ export async function loadDetail({ scene, city, world, built, props, ext = null 
   const emissive = [];
   const updaters = []; // 毎フレーム呼ぶもの (信号の切り替え)
   let trains = null;
+  let railExt = null; // 線路の延長 (区間ごとに読み込む。main.js が毎コマ update(カメラの位置) を呼ぶ)
   if (!props) console.warn('[detail] data/props.json がありません。python tools/build_props.py で作ってください (小物・外構・ベランダ・看板なし)');
 
   if (DETAIL.props && props) {
@@ -75,9 +77,9 @@ export async function loadDetail({ scene, city, world, built, props, ext = null 
     const tb = buildTrackbed(city); // 線路のバラスト・枕木・レール
     scene.add(tb.group);
     parts.push({ set: (v) => { tb.group.visible = v; } });
-    if (ext) { // 線路の延長 (地図の北の端 → 東戸塚駅。rail_ext.json)。V キーに関係なく出す (ホームの当たり判定があるので)
-      const re = buildRailExt(ext, world, city.bounds);
-      scene.add(re.group);
+    if (ext) { // 線路の延長 (地図の北の端 → 横浜駅。data/rail_ext/)。V キーに関係なく出す (ホームの当たり判定があるので)
+      railExt = buildRailExt(ext, world, city.bounds, { low: LOW_MEM });
+      scene.add(railExt.group);
     }
     const tr = buildTrains(props, ext); // 走る電車 (道筋は props.json の rail.routes + rail_ext.json の延長)
     trains = tr.api;               // 乗り降り (ride.js) が時刻と位置を使う
@@ -104,6 +106,7 @@ export async function loadDetail({ scene, city, world, built, props, ext = null 
 
   let on = true;
   return {
+    railExt, // 線路の延長 (detail/railext.js。update(x, z)・map・stats。無いときは null)
     trains,  // 電車の時刻・位置の計算 (detail/trains.js の api。電車が無いときは null)
     emissive, // 夜に光らせるマテリアル (TimeOfDay に渡す)
     get on() { return on; },
