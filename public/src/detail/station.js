@@ -24,7 +24,9 @@ export function buildStation(props, sign = { kanji: '戸 塚', kana: 'と つ �
     const n = pf.y.length;
     for (let k = 0; k + 1 < n; k++) {
       const l0 = pf.left[k], l1 = pf.left[k + 1], r0 = pf.right[k], r1 = pf.right[k + 1], y0 = pf.y[k], y1 = pf.y[k + 1];
-      top.quad(P(l0, y0), P(r0, y0), P(r1, y1), P(l1, y1), UP);
+      const parts = R.cut && R.cut(l0, r0, l1, r1);   // 床に穴 (階段の口) を抜く駅 (延ばした先の舞浜。detail/stationsite.js)
+      if (parts) for (const q of parts) { const [a, b, c, d] = q.map((v) => [v[0], y0 + (y1 - y0) * v[2], v[1]]); top.quad(a, b, c, d, UP); }
+      else top.quad(P(l0, y0), P(r0, y0), P(r1, y1), P(l1, y1), UP);
       for (const [a, b, o] of [[l0, l1, r0], [r0, r1, l0]]) {
         const nx = a[0] - o[0], nz = a[1] - o[1], nl = Math.hypot(nx, nz) || 1;
         side.quad(P(a, y0 - SKIRT), P(b, y1 - SKIRT), P(b, y1), P(a, y0), [nx / nl, 0, nz / nl]);

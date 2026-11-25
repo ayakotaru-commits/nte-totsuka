@@ -7,6 +7,7 @@
 // 電車の時刻と位置は detail/trains.js の api (実際の時計で決まる。だれが見ても同じ所を走る) から取る。
 // 確認用: window.__ride (状態)、window.__trains.skew (時計をずらす秒)
 import * as THREE from 'three';
+import { siteSpot } from './detail/stationsite.js';
 
 const REACH_GATE = 2.2;   // 改札・階段の下で操作できる距離 (m)
 const REACH_XFER = 2.5;   // 延ばした先の駅の「のりかえ」の案内板の前で操作できる距離 (m)
@@ -48,6 +49,8 @@ export class Ride {
     this.plats = rail.platforms.map((pf) => mkPlat(pf, '戸塚'));
     this.nHome = this.plats.length;   // 戸塚のホームの数 (この後ろが延ばした先の駅)
     for (const st of (ext && ext.stations) || []) for (const pf of st.platforms || [st.platform]) this.plats.push(mkPlat(pf, st.name, st.lineName || ''));   // 駅ごとに複数のホーム (横浜など)
+    // 駅舎と駅前のある駅 (舞浜) の、北口の広場のワープ先 (stationSpots)
+    this.siteSpots = ((ext && ext.stations) || []).filter((st) => st.site).map((st) => ({ name: st.name, label: `${st.name}駅（北口）`, ...siteSpot(st) }));
     const P = new THREE.Vector3();
     for (const r of trains.R) {
       r.stops.forEach((st, si) => {
@@ -204,7 +207,7 @@ export class Ride {
       out.push({ name: pl.name, sub: pl.sub, x: (pf.left[k][0] + pf.right[k][0]) / 2, y: pf.y[k], z: (pf.left[k][1] + pf.right[k][1]) / 2,
         face: Math.atan2(pf.left[k + 1][0] - pf.left[k][0], pf.left[k + 1][1] - pf.left[k][1]) });
     }
-    return out;
+    return out.concat(this.siteSpots || []);
   }
 
   // (x, z) があるホーム (無ければ null)

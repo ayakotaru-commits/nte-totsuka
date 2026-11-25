@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { setTerrainExt } from '../terrain.js';
 import { buildStation } from './station.js';
+import { buildStationSite, siteCut, siteBlocked } from './stationsite.js';
 import { canvasTexture } from './util.js';
 import { releaseGeometryAfterUpload } from '../lowmem.js';
 
@@ -570,17 +571,21 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     const mid = (k) => [(pf.left[k][0] + pf.right[k][0]) / 2, (pf.left[k][1] + pf.right[k][1]) / 2];
     const dirYaw = (k) => { const p = mid(Math.max(0, k - 1)), q = mid(Math.min(n - 1, k + 1)); return Math.atan2(q[0] - p[0], q[1] - p[1]); };
     const columns = [], benches = [], nameSigns = [];
+    // 駅舎のある駅 (site。舞浜): ホームの床に階段の口の穴を抜く (cut)。穴の上・近くには屋根の柱・ベンチ・駅名標を置かない
+    const cut = st.site ? siteCut(st) : null, blocked = st.site ? siteBlocked(st, 1.2) : () => false;
     for (let k = 0; k < cn.left.length; k += 2) {
       const x = (cn.left[k][0] + cn.right[k][0]) / 2, z = (cn.left[k][1] + cn.right[k][1]) / 2;
-      columns.push([x, z, cn.y[k] - 3.4, cn.y[k]]);
+      if (!blocked(x, z)) columns.push([x, z, cn.y[k] - 3.4, cn.y[k]]);
     }
     for (let k = 6; k < n - 6; k += 12) {
       const [x, z] = mid(k), yaw = dirYaw(k);
+      if (blocked(x, z)) continue;
       benches.push({ x: x + Math.cos(yaw) * 1.2, y: pf.y[k], z: z - Math.sin(yaw) * 1.2, yaw: yaw + Math.PI / 2 });
       benches.push({ x: x - Math.cos(yaw) * 1.2, y: pf.y[k], z: z + Math.sin(yaw) * 1.2, yaw: yaw - Math.PI / 2 });
     }
     for (const k of [10, n >> 1, n - 11]) {
       const [x, z] = mid(k), yaw = dirYaw(k);
+      if (blocked(x, z)) continue;
       nameSigns.push({ x: x + Math.cos(yaw) * 2.6, y: pf.y[k], z: z - Math.sin(yaw) * 2.6, yaw: yaw + Math.PI / 2 });
       nameSigns.push({ x: x - Math.cos(yaw) * 2.6, y: pf.y[k], z: z + Math.sin(yaw) * 2.6, yaw: yaw - Math.PI / 2 });
     }
@@ -594,7 +599,9 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
           const [y0, y1, z0, z1] = e0 === pf.left[k] ? [t0, t1, b0, b1] : [t1, t0, b1, b0];
           pos.push(...P3(e0, z0), ...P3(e1, z1), ...P3(e1, y1), ...P3(e0, z0), ...P3(e1, y1), ...P3(e0, y0));
         }
-        pos.push(...P3(pf.left[k], b0), ...P3(pf.right[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k + 1], b1));
+        const parts = cut && cut(pf.left[k], pf.right[k], pf.left[k + 1], pf.right[k + 1]);
+        if (!parts) pos.push(...P3(pf.left[k], b0), ...P3(pf.right[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k + 1], b1));
+        else for (const q of parts) { const [A, B, Cq, Dq] = q.map((v) => [v[0], b0 + (b1 - b0) * v[2], v[1]]); pos.push(...A, ...B, ...Cq, ...A, ...Cq, ...Dq); }
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -603,7 +610,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       m.name = 'ext_el_station'; m.castShadow = m.receiveShadow = true;
       group.add(m);
     }
-    const sb = buildStation({ rail: { platforms: [pf], canopies: box ? [] : [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns } },
+    const sb = buildStation({ rail: { platforms: [pf], canopies: box ? [] : [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns, cut } },
       { kanji: [...st.name].join(' '), kana: st.kana, roman: st.roman });
     group.add(sb.group);
     // ホームが 2 面以上の駅 (横浜): ホームの中央の「のりかえ」の案内板 (ride.js がこの前で F / Q → ほかのホームへ移す。場所は ride.js と同じ式)
@@ -615,13 +622,17 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     const poly = [];
     for (let k = 0; k + 1 < n; k++) {
       const y = (pf.y[k] + pf.y[k + 1]) / 2;
-      poly.push([[pf.left[k], pf.left[k + 1], pf.right[k + 1], pf.right[k]], y - 1.1, y]);
+      const parts = cut && cut(pf.left[k], pf.right[k], pf.left[k + 1], pf.right[k + 1]);
+      if (parts) for (const q of parts) poly.push([q.map((v) => [v[0], v[1]]), y - 1.1, y]);
+      else poly.push([[pf.left[k], pf.left[k + 1], pf.right[k + 1], pf.right[k]], y - 1.1, y]);
     }
     const line = [];
     const edge = (pts) => { const l = [0.05, 1.2]; for (let k = 0; k < pts.length; k++) l.push(pts[k][0], pts[k][1], pf.y[Math.min(k, n - 1)]); line.push(l); };
     edge(pf.left); edge(pf.right);
     edge([pf.left[0], pf.right[0]]); edge([pf.left[n - 1], pf.right[n - 1]]);
     world.addColliders({ poly, line }, true);
+    // 駅舎と駅前 (site。舞浜: 高架の下の改札・ホームへの階段・北口の建物・デッキ・広場)。駅ごとに 1 回 (最初のホームのとき)
+    if (st.site && pi === 0) group.add(buildStationSite(st, world));
   });
 
   // 地下の駅の箱の形: 両側の壁 (タイルの腰壁と白い壁)、天井、床、両端の壁 (トンネルの口は抜く)、天井の照明の帯
