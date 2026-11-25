@@ -11,16 +11,18 @@ import { buildWalkways } from './walkways.js';
 import { buildYard } from './yard.js';
 import { buildTrains } from './trains.js';
 import { buildRailExt } from './railext.js';
+import { createParkCut, buildPark } from './park.js';
 import { LOW_MEM } from '../lowmem.js';
 import { buildTrackbed } from './trackbed.js';
 
-export async function loadDetail({ scene, city, world, built, props, ext = null }) {
+export async function loadDetail({ scene, city, world, built, props, ext = null, park = null }) {
   const c = city.start || { x: 0, z: 0 };
   const ctx = { city, world, built, cx: c.x, cz: c.z, R: DETAIL.radius };
   const parts = [];
   const emissive = [];
   const updaters = []; // 毎フレーム呼ぶもの (信号の切り替え)
   let trains = null;
+  let parkApi = null; // フェアリー・リールパーク (detail/park.js。設定 data/park.json があるときだけ。main.js が毎コマ update(カメラの位置) を呼ぶ)
   let railExt = null; // 線路の延長 (区間ごとに読み込む。main.js が毎コマ update(カメラの位置) を呼ぶ)
   if (!props) console.warn('[detail] data/props.json がありません。python tools/build_props.py で作ってください (小物・外構・ベランダ・看板なし)');
 
@@ -78,8 +80,9 @@ export async function loadDetail({ scene, city, world, built, props, ext = null 
     scene.add(tb.group);
     parts.push({ set: (v) => { tb.group.visible = v; } });
     if (ext) { // 線路の延長 (地図の北の端 → 横浜駅。data/rail_ext/)。V キーに関係なく出す (ホームの当たり判定があるので)
-      railExt = buildRailExt(ext, world, city.bounds, { low: LOW_MEM });
+      railExt = buildRailExt(ext, world, city.bounds, { low: LOW_MEM, park: park ? createParkCut(park) : null });
       scene.add(railExt.group);
+      if (park) { parkApi = buildPark(park, world); scene.add(parkApi.group); }
     }
     const tr = buildTrains(props, ext); // 走る電車 (道筋は props.json の rail.routes + rail_ext.json の延長)
     trains = tr.api;               // 乗り降り (ride.js) が時刻と位置を使う
@@ -106,6 +109,7 @@ export async function loadDetail({ scene, city, world, built, props, ext = null 
 
   let on = true;
   return {
+    park: parkApi, // フェアリー・リールパーク (detail/park.js。update(x, z)。無いときは null)
     railExt, // 線路の延長 (detail/railext.js。update(x, z)・map・stats。無いときは null)
     trains,  // 電車の時刻・位置の計算 (detail/trains.js の api。電車が無いときは null)
     emissive, // 夜に光らせるマテリアル (TimeOfDay に渡す)

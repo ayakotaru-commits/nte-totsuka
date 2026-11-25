@@ -56,7 +56,8 @@ async function main() {
   const wallsP = getJSON('data/walls.json', QS.has('walls'));         // 擁壁 (tools/lidar_walls.py --osm。見た目が不十分なので ?walls のときだけ)
   const propsP = getJSON('data/props.json');                          // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py)
   const extP = getJSON('data/rail_ext/index.json', !QS.has('noext')); // 線路の延長 (東京駅まで。tools/rail_ext.py。?noext で使わない)。地形・建物は区間ごとに後から読む (detail/railext.js)
-  const [city, terrain, cover, walls, props, ext] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP, extP]);
+  const parkP = getJSON('data/park.json', !QS.has('nopark'));        // フェアリー・リールパーク (舞浜の架空のテーマパーク。tools/park.py。?nopark で使わない)
+  const [city, terrain, cover, walls, props, ext, park] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP, extP, parkP]);
   if (terrain) setTerrain(terrain);
   if (cover) setCover(cover);
   if (walls) city.walls = walls.walls;
@@ -129,7 +130,7 @@ async function main() {
   }
   if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
   const shrineG = props ? buildShrines(props.shrines, scene, world) : null; // 神社の社殿 (shrine.js。V キーに関係なく描く)
-  const detail = await loadDetail({ scene, city: shown, world, built, props, ext }); built.windowMats.push(...detail.emissive); // detail (お試し)
+  const detail = await loadDetail({ scene, city: shown, world, built, props, ext, park }); built.windowMats.push(...detail.emissive); // detail (お試し)
   if (shrineG) built.windowMats.push(...(shrineG.userData.emissive || [])); // 灯籠・提灯の明かり (夜に光る。time.js)
   const doors = new DoorControl(world); // 開け閉めできる扉 (時計の棟。形は detail が作って登録する)
 
@@ -362,6 +363,7 @@ async function main() {
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
     detail.railExt?.update(camera.position.x, camera.position.z); // 線路の延長: カメラの近くの区間を読み込む・遠い区間を捨てる
+    detail.park?.update(camera.position.x, camera.position.z); // フェアリー・リールパーク: 地形を読めたら試作を作る
     sky.position.copy(camera.position); // 空の箱 (一辺 10 km) をカメラに付いて動かす。原点のままだと、延長の先 (舞浜は 40 km 先) で箱の外に出て空が黒くなった
 
     // 影は常にプレイヤー周辺
