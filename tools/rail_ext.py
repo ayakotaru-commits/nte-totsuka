@@ -1472,7 +1472,7 @@ def site_frames(stations):
         f["gy"] = round(hs[len(hs) // 2], 2)
         f["py"] = pf["y"][len(pf["y"]) // 2]
         site["frame"] = f
-        f["rects"] = {k: site[k] for k in ("clear", "under") if k in site}
+        f["rects"] = {k: site[k] for k in ("clear", "clear2", "under") if k in site}
         out.append(f)
         print(f"  {st['name']}: 駅舎・駅前 (地面 {f['gy']} m、ホーム {f['py']} m)")
     return out
@@ -1480,12 +1480,10 @@ def site_frames(stations):
 
 def site_in(f, x, z, key, pad=0.0):
     """(x, z) が駅の site の範囲 key ([s0, s1, t0, t1]、駅の向きの座標) の中か"""
-    r = f["rects"].get(key)
-    if not r:
-        return False
+    rs = [f["rects"][k] for k in ((key, "clear2") if key == "clear" else (key,)) if k in f["rects"]]   # clear = clear と clear2 (南口)
     s = (x - f["cx"]) * f["sx"] + (z - f["cz"]) * f["sz"]
     t = (x - f["cx"]) * f["nx"] + (z - f["cz"]) * f["nz"]
-    return r[0] - pad <= s <= r[1] + pad and r[2] - pad <= t <= r[3] + pad
+    return any(r[0] - pad <= s <= r[1] + pad and r[2] - pad <= t <= r[3] + pad for r in rs)
 
 
 def platform_cover(ring_xz, stations):

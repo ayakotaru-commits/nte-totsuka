@@ -13,6 +13,9 @@ const VRM_DIR = path.join(__dirname, '.cache', 'vrm', 'package');
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.vrm': 'model/gltf-binary', '.glb': 'model/gltf-binary', '.webp': 'image/webp' };
 
 const VIEWS = [
+  { name: 's1_south_aerial', at: [20, -40], y: 'G', look: [0.2, 1], pitch: 0.6, dist: 90 },
+  { name: 's2_rotary', at: [10, -30], y: 'G', look: [0.3, -1], pitch: 0.12, dist: 14 },
+  { name: 's3_facade', at: [30, -60], y: 'G', look: [0, 1], pitch: 0.1, dist: 14 },
   { name: '1_north_aerial', at: [70, 30], y: 'G', look: [-0.6, -1], pitch: 0.55, dist: 75 },
   { name: '2_plaza', at: [80, 30], y: 'G', look: [-1, -0.35], pitch: 0.12, dist: 16 },
   { name: '3_terrace', at: [40, 31], y: 'F', look: [-0.2, -1], pitch: 0.1, dist: 8 },

@@ -40,6 +40,14 @@ export function siteSpot(st) {
   return { x, y: fr.gy + 0.12, z, face: Math.atan2(-fr.sx, -fr.sz) };
 }
 
+// 地図のワープ先 (南口のロータリー。デッキからの階段の下): { x, y, z, face }
+export function siteSpotSouth(st) {
+  const fr = siteFrame(st), so = st.site && st.site.south;
+  if (!fr || !so) return null;
+  const q = so.gstairs[so.gstairs.length - 1], [x, z] = fr.xz(q[0] + q[1] * 12, (q[2] + q[3]) / 2);
+  return { x, y: fr.gy + 0.12, z, face: Math.atan2(fr.nx, fr.nz) };
+}
+
 // ホームの床の穴 (階段の口): [{ s0, s1, t0, t1, a, d }]
 export function siteHoles(st) {
   const f = st.site && st.site.frame;
@@ -204,7 +212,9 @@ export function buildStationSite(st, world) {
   hq(IN, cs0 + 2, cs1 - 2, 3.0, 3.3, F + 0.015, COL.tactile);
   hq(IN, cs0 + 2, cs1 - 2, -3.3, -3.0, F + 0.015, COL.tactile);
   // 壁: 南 (t0) の全体、西・東の端、北 (t1) の北口の建物より西
-  const walls = [[cs0, ct0, cs1, ct0, TD], [cs0, ct0, cs0, ct1, SD], [cs1, ct0, cs1, ht0, neg(SD)], [cs0, ct1, hs0, ct1, neg(TD)]];
+  const SO = site.south;   // 南口 (あれば南の壁に開きを作る)
+  const southWall = SO ? [[cs0, ct0, SO.open[0], ct0, TD], [SO.open[1], ct0, cs1, ct0, TD]] : [[cs0, ct0, cs1, ct0, TD]];
+  const walls = [...southWall, [cs0, ct0, cs0, ct1, SD], [cs1, ct0, cs1, ht0, neg(SD)], [cs0, ct1, hs0, ct1, neg(TD)]];
   for (const [s0, t0, s1, t1, hint] of walls) {
     wallBands(IN, s0, t0, s1, t1, F, CEIL, hint);
     S.quad(P(s0, t0, F), P(s1, t1, F), P(s1, t1, PY - 2.75), P(s0, t0, PY - 2.75), COL.tile, neg(hint));   // 外の面
@@ -495,6 +505,128 @@ export function buildStationSite(st, world) {
   }
   // 車止め (広場と道の境目)
   for (let s = ps0 + 2; s < ls - RO - 1; s += 1.6) { cyl(S, s, pt1 - 0.3, 0.1, PV, PV + 0.8, COL.steel, 8); postC(s, pt1 - 0.3, 0.12, PV, PV + 0.8); }
+
+  // ================= 南口 (south) =================
+  // 駅の南の面: 改札 (南の壁の開き) → 屋根付きのデッキ (改札の階) → 地上への階段 → ロータリー (バス・タクシーの乗り場)。
+  // 位置は航空写真と国土地理院の道路から。形・色は一般的なもの (写真のあるのは広場の屋根の青緑の柱と、暗い灰色と桃色のタイルの敷石だけ)。
+  if (SO) {
+    const TEAL = C('#3f9c97'), TEALD = C('#2c746f'), PINK = C('#d9a89c'), SLATE = C('#5d6068'), TILEP = C('#b9a3a1');
+    const [ds0, ds1, dt0, dt1] = SO.deck, [go0, go1] = SO.open, [gx0, gx1, gz] = SO.gates;
+    const [as0, as1, at0, at1] = SO.apron, [rs0, rs1, rt0, rt1] = SO.rotary;
+    // 改札 (南): 壁の開きの内側にガラスの仕切りと改札機。改札の中は北口と同じ作り
+    for (const [a, b] of [[go0, gx0], [gx1, go1]]) {
+      GL.quad(P(a, gz, F), P(b, gz, F), P(b, gz, F + 2.1), P(a, gz, F + 2.1), COL.glass, TD);
+      box(IN, a, b, gz - 0.05, gz + 0.05, F, F + 0.25, COL.steel);
+      wallC(a, gz, b, gz, F, 2.1, 0.08);
+    }
+    const NGS = Math.round((gx1 - gx0) / 0.95);
+    for (let i = 0; i <= NGS; i++) {
+      const sg = gx0 + (gx1 - gx0) * i / NGS, w = 0.16;
+      box(IN, sg - w, sg + w, gz - 0.9, gz + 0.9, F, F + 1.0, COL.steel, 'b', COL.black);
+      box(IN, sg - w - 0.01, sg + w + 0.01, gz - 0.2, gz + 0.2, F + 0.55, F + 0.8, COL.green, 'b');
+      col.poly.push([ring(sg - w, sg + w, gz - 0.9, gz + 0.9), F, F + 1.0]);
+    }
+    sign(text([['JR', 54, 64, '#fff', 60], ['舞浜駅  南口', 58, 50, '#fff', 300], ['Maihama Station  South Exit', 26, 100, '#fff', 300]], '#2f9a5c', '#fff', 640, 128),
+      640, 128, (gx0 + gx1) / 2, gz - 0.3, F + 2.75, 3.4, 0.68, -1, false, true);
+    sign(text([['ディズニーリゾート方面', 34, 40, '#fff'], ['リゾートライン ⇒', 34, 92, '#ffd84a']], '#1d2a3a', '#fff', 512, 128),
+      512, 128, (gx0 + gx1) / 2, gz + 0.3, F + 2.75, 2.8, 0.7, 1, false, true);
+    for (let sg = go0 + 1; sg < go1 - 0.5; sg += 6) lamps.push([sg, (gz + dt1 / 2) / 2 - 2, CEIL - 0.03, 2.2, 0.35]);
+    // デッキ (改札の階): 敷石 (暗い灰色と桃色のタイル)、点字ブロック、青緑の屋根と柱、手すり
+    box(S, ds0, ds1, dt0, dt1, F - 0.5, F, COL.tileD, '', SLATE);
+    for (let sg = ds0 + 2; sg < ds1; sg += 6) hq(S, sg, sg + 3, dt0 + 1, dt1 - 1, F + 0.006, TILEP);
+    hq(S, ds0, ds1, dt0 + 0.4, dt0 + 0.7, F + 0.012, COL.tactile);
+    col.poly.push([ring(ds0, ds1, dt0, dt1), F - 0.5, F]);
+    const RYS = F + 4.4;
+    for (let sg = ds0 + 3; sg <= ds1 - 2; sg += 6) {
+      cyl(S, sg, dt0 + 0.6, 0.22, F - 0.5, RYS, TEAL, 10);
+      cyl(S, sg, dt0 + 0.6, 0.36, F - 0.5, F + 0.25, PINK, 10);
+      postC(sg, dt0 + 0.6, 0.38, F - 0.5, RYS);
+      cyl(S, sg, dt1 - 0.6, 0.22, F, RYS, TEAL, 10);
+      postC(sg, dt1 - 0.6, 0.24, F, RYS);
+      box(S, sg - 0.12, sg + 0.12, dt0 + 0.6, dt1 - 0.6, RYS - 0.3, RYS, TEALD);
+    }
+    box(S, ds0, ds1, dt0 + 0.4, dt0 + 0.8, RYS - 0.4, RYS, TEAL);
+    GL.quad(P(ds0, dt1 + 0.3, RYS + 0.02), P(ds1, dt1 + 0.3, RYS + 0.02), P(ds1, dt0 - 0.3, RYS + 0.3), P(ds0, dt0 - 0.3, RYS + 0.3), COL.glass, UP);
+    // 南の縁・端の手すり (地上への階段の口を残す)
+    const stairsS = SO.gstairs;   // [上の端の s, 下りる向き (±1), t0, t1]
+    const gapAt = (sEdge) => stairsS.find((q) => q[0] === sEdge);
+    const post2 = (sx, tx) => { box(S, sx - 0.15, sx + 0.15, tx - 0.15, tx + 0.15, F, F + 1.2, COL.post, 'b'); };
+    const edgeSegs = [[ds0, dt0, ds1, dt0]];
+    for (const [sEdge] of [[ds0], [ds1]]) {
+      const q = gapAt(sEdge);
+      if (q) { edgeSegs.push([sEdge, dt0, sEdge, q[2]], [sEdge, q[3], sEdge, dt1]); } else edgeSegs.push([sEdge, dt0, sEdge, dt1]);
+    }
+    for (const [s0, t0, s1, t1] of edgeSegs) {
+      const L = Math.hypot(s1 - s0, t1 - t0), n = Math.max(1, Math.round(L / 2));
+      for (let i = 0; i <= n; i++) post2(s0 + (s1 - s0) * i / n, t0 + (t1 - t0) * i / n);
+      const hint = s0 === s1 ? SD : neg(TD);
+      S.quad(P(s0, t0, F + 0.25), P(s1, t1, F + 0.25), P(s1, t1, F + 1.1), P(s0, t0, F + 1.1), COL.lattice, hint);
+      S.quad(P(s0, t0, F + 1.1), P(s1, t1, F + 1.1), P(s1, t1, F + 1.16), P(s0, t0, F + 1.16), COL.steel, UP);
+      wallC(s0, t0, s1, t1, F, 1.2, 0.12);
+    }
+    // 地上への階段 (東の端は +s へ、西の端は -s へ下りる)
+    for (const [sTop, dir, t0, t1] of stairsS) {
+      const n = Math.max(8, Math.round((F - G) / 0.17)), h = (F - G) / n, half = n >> 1;
+      let sc = sTop;
+      for (let k = 1; k <= n; k++) {
+        const len = k === half ? 1.5 : RUN, y = F - k * h, a = Math.min(sc, sc + dir * len), b = Math.max(sc, sc + dir * len);
+        box(S, a, b, t0, t1, G - 0.3, y, COL.tileD, 'b', SLATE);
+        hq(S, dir > 0 ? a : b - 0.05, dir > 0 ? a + 0.05 : b, t0, t1, y + 0.004, COL.tactile);
+        solid(a, b, t0, t1, y - 0.4, y);
+        sc += dir * len;
+      }
+      for (const t of [t0, t1]) {
+        const sa = Math.min(sTop, sc), sb = Math.max(sTop, sc);
+        S.quad(P(sTop, t, F + 0.9), P(sc, t, G + 0.9), P(sc, t, G + 0.96), P(sTop, t, F + 0.96), COL.steel, UP);
+        for (let q = 0.5; q < Math.abs(sc - sTop); q += 1.6) { const sx = sTop + dir * q, y = F - q / Math.abs(sc - sTop) * (F - G); box(S, sx - 0.03, sx + 0.03, t - 0.03, t + 0.03, y, y + 0.93, COL.steel, 'b'); }
+        wallC(sTop, t, sc, t, G, F - G + 1.0, 0.08);
+        void sa; void sb;
+      }
+    }
+    // 地上: 駅前の舗装 (西へのびる広い歩道を含む)、ロータリー (アスファルト)、島 (植え込みと木)、西の円形の乗降所
+    hq(S, as0, as1, at0, at1, PV, TILEP);
+    for (let sg = as0 + 3; sg < as1; sg += 3) S.quad(P(sg, at0, PV + 0.004), P(sg + 0.08, at0, PV + 0.004), P(sg + 0.08, at1, PV + 0.004), P(sg, at1, PV + 0.004), COL.paveD, UP);
+    col.poly.push([ring(as0, as1, at0, at1), G - 1, PV]);
+    hq(S, rs0, rs1, rt0, rt1, PV + 0.02, COL.asphalt);
+    col.poly.push([ring(rs0, rs1, rt0, rt1), G - 1, PV + 0.02]);
+    const blob = (cs, ct, rx, ry, y0, y1, side, top, seg = 24) => {
+      const pts = [];
+      for (let i = 0; i < seg; i++) { const a = i / seg * Math.PI * 2; pts.push([cs + Math.cos(a) * rx, ct + Math.sin(a) * ry]); }
+      for (let i = 0; i < seg; i++) {
+        const [a0, b0] = pts[i], [a1, b1] = pts[(i + 1) % seg];
+        S.quad(P(a0, b0, y0), P(a1, b1, y0), P(a1, b1, y1), P(a0, b0, y1), side, [fr.sx * (a0 - cs) + fr.nx * (b0 - ct), 0, fr.sz * (a0 - cs) + fr.nz * (b0 - ct)]);
+        S.tri(P(cs, ct, y1), P(a0, b0, y1), P(a1, b1, y1), top, UP);
+      }
+      col.poly.push([pts.map(([a, b]) => fr.xz(a, b)), G - 1, y1]);
+    };
+    for (const [is, it, irx, iry] of SO.islands) {
+      blob(is, it, irx, iry, PV + 0.02, PV + 0.27, COL.curb, COL.grass);
+      for (const [ds, dtt, k] of [[0, 0, 1.2], [irx * 0.5, iry * 0.2, 0.9], [-irx * 0.5, -iry * 0.2, 1.0], [0, iry * 0.55, 0.8], [0, -iry * 0.55, 0.85]]) trees.push([is + ds, it + dtt, k]);
+    }
+    const [wcs, wct, wcr] = SO.west;
+    blob(wcs, wct, wcr, wcr, PV + 0.02, PV + 0.03, COL.asphalt, COL.asphalt, 28);
+    blob(wcs, wct, wcr * 0.42, wcr * 0.42, PV + 0.03, PV + 0.28, COL.curb, SLATE, 20);
+    // バス・タクシーの乗り場の標識と屋根、街灯、車止め
+    const drawBusS = (c, w, h) => { c.fillStyle = '#fff'; c.beginPath(); c.arc(w / 2, h / 2, w / 2 - 4, 0, Math.PI * 2); c.fill(); c.fillStyle = '#d33a2c'; c.beginPath(); c.arc(w / 2, h / 2, w / 2 - 14, 0, Math.PI * 2); c.fill(); c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = 'bold 54px sans-serif'; c.fillText('バス', w / 2, 112); c.font = 'bold 44px sans-serif'; c.fillText('のりば', w / 2, 166); c.font = 'bold 24px sans-serif'; c.fillText('舞浜駅南口', w / 2, 204); };
+    for (const [bs0, bt0] of SO.bus) {
+      pole(bs0, bt0, 2.8, drawBusS, 'bus_sign_s');
+      box(S, bs0 - 2, bs0 + 2, bt0 - 1.4, bt0 + 0.3, PV + 2.4, PV + 2.55, COL.white, '');
+      for (const sx of [bs0 - 1.8, bs0 + 1.8]) { cyl(S, sx, bt0 - 1.2, 0.05, PV, PV + 2.4, COL.steel, 6); postC(sx, bt0 - 1.2, 0.08, PV, PV + 2.4); }
+      box(S, bs0 - 1.4, bs0 + 1.4, bt0 - 1.25, bt0 - 0.75, PV + 0.42, PV + 0.48, C('#8a6a4a'), '');
+    }
+    pole(SO.taxi[0], SO.taxi[1], 2.8, (c, w, h) => { c.fillStyle = '#fff'; c.fillRect(0, 0, w, h); c.fillStyle = '#1f3f8a'; c.fillRect(8, 8, w - 16, h - 16); c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = 'bold 60px sans-serif'; c.fillText('タクシー', w / 2, 110); c.font = 'bold 46px sans-serif'; c.fillText('のりば', w / 2, 175); c.font = 'bold 30px sans-serif'; c.fillText('TAXI', w / 2, 225); }, 'taxi_sign_s');
+    for (const [ls_, lt_] of SO.lights) {
+      cyl(S, ls_, lt_, 0.08, PV, PV + 5.5, COL.lattice, 8);
+      postC(ls_, lt_, 0.12, PV, PV + 5.5);
+      box(S, ls_ - 0.3, ls_ + 0.3, lt_ - 0.3, lt_ + 0.3, PV + 5.5, PV + 5.75, COL.lattice);
+      lamps.push([ls_, lt_, PV + 5.48, 0.5, 0.5]);
+    }
+    // 横断歩道 (ロータリーの南の道。白い縞)
+    if (SO.crossing) {
+      const [cx0, cx1, ctz0, ctz1] = SO.crossing;
+      for (let sg = cx0; sg < cx1 - 0.2; sg += 1.0) S.quad(P(sg, ctz0, PV + 0.045), P(sg + 0.5, ctz0, PV + 0.045), P(sg + 0.5, ctz1, PV + 0.045), P(sg, ctz1, PV + 0.045), COL.white, UP);
+    }
+  }
 
   // ================= 形をまとめる =================
   const outMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, side: THREE.DoubleSide });
