@@ -55,6 +55,21 @@ export async function applyTextures({ built, cx, cz, R }) {
   return { set: (v) => { common.uDetOn.value = v ? 1 : 0; } };
 }
 
+// 街の本体の外の建物 (線路の延長・フェアリー・リールパークなど) の壁の材質にも、同じ模様・目地・つやを付ける (段階 0 の調査 → 段階 2 で使う)。
+// 返す patch(mat, key) は、頂点ごとに matId (0〜5 = city.js の WALL_MAT) を持つ壁の材質に掛ける。窓は map の色 (明るい = 壁、青みの暗い = ガラス) で見分けるので、
+// 窓の絵を持つ map が要る (railext.js の MAT.walls と同じ作り)。cx・cz・R = 模様を出す範囲 (街の本体はスタート地点の半径 DETAIL.radius。延長の先はそこから遠いので別に渡す)
+export async function makeWallPatcher(cx, cz, R) {
+  const [plaster, ftile, conc] = await Promise.all(['white_rough_plaster', 'rectangular_facade_tiles', 'concrete_wall_008'].map(load));
+  const U = {
+    uDetC: { value: new THREE.Vector2(cx, cz) }, uDetR: { value: R }, uDetOn: { value: 1 },
+    uPl: { value: plaster.diff }, uPlN: { value: plaster.nor }, uPlAvg: { value: plaster.avg },
+    uTi: { value: ftile.diff }, uTiN: { value: ftile.nor }, uTiAvg: { value: ftile.avg },
+    uCo: { value: conc.diff }, uCoN: { value: conc.nor }, uCoAvg: { value: conc.avg },
+    uGlass: { value: 6.0 },
+  };
+  return (mat, key = 'ext') => patchWall(mat, U, key);
+}
+
 const VERT = (s) => s
   .replace('#include <common>', '#include <common>\nvarying vec3 vDW;')
   .replace('#include <begin_vertex>', '#include <begin_vertex>\nvDW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
