@@ -196,6 +196,69 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   check("外周の柵で止まる (外へ出られない)", fo && !fo.ok && fd < 3.2, { distToEdge: +fd.toFixed(2) });
   check('NaN なし (段階 1)', !toLake.nan && !dive.nan && !tow.nan && !fence.nan);
 
+  // ---- 段階 2: 各エリア (建物・内側の道・広場・木・看板・門・特別な物) ----
+  const gen = park.gen;
+  check('設定に各エリアの建物がある (gen)', gen && gen.buildings.length > 300 && gen.areas.length === 7, gen && { buildings: gen.buildings.length, trees: gen.trees.length, signs: gen.signs.length });
+  const parts = await page.evaluate(() => { const g = window.__g.scene.getObjectByName('park_areas'); if (!g) return null; const n = {}; g.traverse((o) => { if (o.isMesh) { const k = o.name.replace(/_\d+$/, '') || (o.isInstancedMesh ? 'inst' : 'mesh'); n[k] = (n[k] || 0) + 1; } }); return n; });
+  console.log(JSON.stringify(parts));
+  check('各エリアの壁・屋根・看板の面が出ている (7 エリア分)', parts && parts.park_walls === 7 && parts.park_trim >= 6 && parts.park_signs >= 6, parts);
+  const walls = await page.evaluate(() => { let patched = 0, vis = 0, n = 0; window.__g.scene.traverse((o) => { if (o.isMesh && o.name.startsWith('park_walls_')) { n++; if (o.visible) vis++; if (o.material.onBeforeCompile && String(o.material.onBeforeCompile).length > 200) patched++; } }); return { n, vis, patched }; });
+  check('壁の柄 (街の本体と同じ) が付き、壁が見えている', walls.n === 7 && walls.vis === 7 && walls.patched === 7, walls);
+  const aName = gen.areas.map((q) => q.name);
+  const approach = (b, d) => [b.x + Math.sin(b.yaw) * (b.d / 2 + d), b.z + Math.cos(b.yaw) * (b.d / 2 + d)];
+  let allNaN = false;
+  for (let ai = 0; ai < gen.areas.length; ai++) {
+    // 主な通り (最も長い内側の道。アベニューは園の道) を歩き通す
+    let route;
+    if (gen.areas[ai].kind === 'avenue') route = park.paths[1].pts.map((p) => [p[0], p[1]]);
+    else {
+      const ps = gen.paths.filter((q) => q.a === ai).sort((p, q) => q.pts.length - p.pts.length);
+      const mainP = ps.find((q) => q.pts.length > 3) || ps[0];
+      const ar = gen.arches.find((q) => q.a === ai);
+      route = [[ar.x, ar.z], ...mainP.pts.map((p) => [p[0], p[1]])];
+      // 通りの終わりは遠い広場の中心。そこに火山・灯台・台座があれば根元までは行けないので、手前の点まで
+      const fp = gen.plazas.find((q) => q.a === ai && q.far), ft = fp && gen.props.find((q) => q.a === ai && Math.hypot(q.x - fp.x, q.z - fp.z) < 1 && q.k !== 'pad');
+      if (ft) route.pop();
+    }
+    const [sx0, sz0] = route[0], sy = await hAt(sx0, sz0);
+    await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [sx0, sy + 0.2, sz0]);
+    await frames(page, 3); await extIdle(page); await frames(page, 4);
+    const r = await page.evaluate((rt) => window.__walkXZ(rt.slice(1), { maxT: 60, tol: 3.0, keepGoing: true }), route);
+    allNaN = allNaN || !!r.nan;
+    const okN = r.out.filter((q) => q.ok).length;
+    check(`${aName[ai]}: 入口から主な通りを歩き通せる`, !r.nan && okN === r.out.length && r.out.length === route.length - 1, { ok: okN, of: route.length - 1, bad: r.out.filter((q) => !q.ok).slice(0, 2) });
+    // 建物の前 3 m から中心へ向かうと、壁の手前で止まる (3 棟。通りに近い順)
+    const bs = gen.buildings.filter((q) => q.a === ai && !q.lm).sort((p, q) => Math.hypot(p.x - route[1][0], p.z - route[1][1]) - Math.hypot(q.x - route[1][0], q.z - route[1][1])).slice(0, 3);
+    let solid = 0, info = [];
+    for (const b of bs) {
+      const [bx, bz] = approach(b, 2.5), by = await hAt(bx, bz);
+      await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [bx, by + 0.2, bz]);
+      await frames(page, 2);
+      const h = await page.evaluate((a) => window.__walkXZ(a, { maxT: 8, walk: true, keepGoing: true, tol: 0.3 }), [[b.x, b.z]]);
+      const q = h.out[0], dd = q ? Math.hypot(q.at[0] - b.x, q.at[1] - b.z) : 0, hz = b.d / 2;
+      if (q && !q.ok && dd > hz - 0.6 && dd < hz + 2.5) solid++;
+      info.push(q && +dd.toFixed(1));
+    }
+    check(`${aName[ai]}: 建物の中には入れない (壁の手前で止まる)`, solid === bs.length, { solid, of: bs.length, dist: info });
+  }
+  // 特別な物: 火山・灯台は中心へ向かうと根元で止まる
+  for (const pr of gen.props.filter((q) => q.k === 'volcano' || q.k === 'lighthouse')) {
+    // 植え込みの輪などに当たることがあるので、4 方向から試して、どれかが根元で止まれば良い
+    let best = null;
+    for (const ang of [0.8, 2.4, 4.0, 5.5]) {
+      const sx1 = pr.x + Math.cos(ang) * (pr.r + 14), sz1 = pr.z + Math.sin(ang) * (pr.r + 14), sy1 = await hAt(sx1, sz1);
+      await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [sx1, sy1 + 0.2, sz1]);
+      await frames(page, 3); await extIdle(page); await frames(page, 2);
+      const h = await page.evaluate((a) => window.__walkXZ(a, { maxT: 12, walk: true, keepGoing: true, tol: 0.3 }), [[pr.x, pr.z]]);
+      allNaN = allNaN || !!h.nan;
+      const q = h.out[0], dd = q ? Math.hypot(q.at[0] - pr.x, q.at[1] - pr.z) : 99;
+      if (!best || dd < best.dd) best = { dd, ok: q && q.ok };
+      if (q && !q.ok && dd > pr.r * 0.6 && dd < pr.r + 3) break;
+    }
+    check(`${pr.k} (${aName[pr.a]}) の根元で止まる`, best && !best.ok && best.dd > pr.r * 0.6 && best.dd < pr.r + 3, { r: pr.r, dist: +best.dd.toFixed(1) });
+  }
+  check('NaN なし (段階 2)', !allNaN);
+
   await browser.close(); server.close();
   const bad = results.filter((r) => !r.ok);
   console.log(`\n${results.length - bad.length}/${results.length} OK`);

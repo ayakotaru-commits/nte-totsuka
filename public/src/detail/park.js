@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { H } from '../terrain.js';
 import { canvasTexture } from './util.js';
+import { buildAreas } from './parkareas.js';
 
 const bboxOf = (p) => {
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -158,7 +159,7 @@ export function createParkCut(cfg, ext) {
 }
 
 // パークの見た目と当たり判定。区間 (地形) を読み込んだ後でないと地面の高さが分からないので、update(x, z) を毎コマ呼び、地形が読めたら 1 回だけ作る
-export function buildPark(cfg, world) {
+export function buildPark(cfg, world, opts = {}) {
   const group = new THREE.Group();
   group.name = 'park';
   const emissive = [];   // 夜に光らせる材質 (time.js)。作るのは地形が読めた後でも、材質はここで作って先に渡す
@@ -369,11 +370,18 @@ export function buildPark(cfg, world) {
       col.circle.push([x + Math.cos(yaw) * 1.1, z - Math.sin(yaw) * 1.1, 0.14, y, y + 3], [x - Math.cos(yaw) * 1.1, z + Math.sin(yaw) * 1.1, 0.14, y, y + 3]);
     }
 
+    // ---- 段階 2: 各エリアの建物・内側の道・広場・木・看板・門・特別な物 (public/data/park.json の gen) ----
+    if (cfg.gen) {
+      const t0 = performance.now();
+      const ar = buildAreas({ cfg, ground, std, glowMat, group, col, emissive, low: !!opts.low, flat, stripPos });
+      api.areas = ar;
+      console.info(`[park] 各エリア: 建物 ${ar.stats.buildings}・木 ${ar.stats.trees}・看板 ${ar.stats.signs}、${(performance.now() - t0).toFixed(0)} ms`);
+    }
     world.addColliders(col, true);   // V キーに関係なく有効
     console.info(`[park] ${cfg.name}: 土台を作った (柵 ${col.line.length} 本の線・当たり判定 円 ${col.circle.length}・線 ${col.line.length}・箱 ${col.box.length}、ゲートの地面 ${ground(gx, gz).toFixed(2)} m)`);
   }
   const api = {
-    group, emissive, beams: null,
+    group, emissive, beams: null, areas: null,
     // カメラの位置。区間 (地形) を読み込めたら 1 回だけ作る (敷地の 1.5 km 以内のとき調べる)。光線は回す
     update(x, z) {
       if (!built && Math.hypot(x - gate.at[0], z - gate.at[1]) < 1500 && ready()) build();
