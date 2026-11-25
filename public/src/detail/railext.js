@@ -454,6 +454,31 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       }
     }
 
+    // 歩道 (入園口へ歩く道。地形に沿わせた帯。道路より少し上。薄い舗装の色)
+    if (D.walks && D.walks.length) {
+      const pos = [], col = [], cl = new THREE.Color('#cbbfae');
+      for (const rd of D.walks) {
+        const hw = rd[0] / 2;
+        for (let k = 1; k + 3 < rd.length; k += 2) {
+          const ax = rd[k], az = rd[k + 1], bx = rd[k + 2], bz = rd[k + 3], L = Math.hypot(bx - ax, bz - az);
+          if (L < 0.1) continue;
+          const nx = -(bz - az) / L * hw, nz = (bx - ax) / L * hw, n = Math.ceil(L / 3);
+          for (let t = 0; t < n; t++) {
+            const x0 = ax + (bx - ax) * t / n, z0 = az + (bz - az) * t / n, x1 = ax + (bx - ax) * (t + 1) / n, z1 = az + (bz - az) * (t + 1) / n;
+            const P = [[x0 + nx, z0 + nz], [x0 - nx, z0 - nz], [x1 - nx, z1 - nz], [x1 + nx, z1 + nz]].map(([x, z]) => [x, (sampleAt(x, z) ?? 0) + 0.15, z]);
+            for (const i of [0, 1, 2, 0, 2, 3]) { pos.push(...P[i]); col.push(cl.r, cl.g, cl.b); }
+          }
+        }
+      }
+      if (pos.length) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        geo.computeVertexNormals();
+        mesh(geo, MAT.road, 'ext_walks');
+      }
+    }
+
     // 木 (幹と、丸い葉のかたまり。位置は決まりで散らしたもの。色は通し番号で決める)
     if (D.trees.length) {
       const trunk = new THREE.InstancedMesh(GEO.trunk, MAT.trunk, D.trees.length);

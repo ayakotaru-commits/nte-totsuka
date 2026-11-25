@@ -1156,6 +1156,16 @@ def main(routes_only=None):
             out_roads.append([round(w, 1)] + cur)
     print(f"道路: {len(out_roads)}")
 
+    # 駅の site の promenade (入園口へ歩く道。駅の向きの座標 [幅, [s, t], ...] → 地図の座標): 道路と同じ形の帯 (歩道の色で描く)
+    out_walks = []
+    for st in stations:
+        site = st.get("site") or {}
+        f = site.get("frame")
+        for pr in site.get("promenade", []):
+            if f:
+                out_walks.append([pr[0]] + [round(v, 1) for s_, t_ in pr[1:] for v in (f["cx"] + f["sx"] * s_ + f["nx"] * t_, f["cz"] + f["sz"] * s_ + f["nz"] * t_)])
+    print(f"歩道: {len(out_walks)}")
+
     # ---------- 木: 建物・線路・道路から離れた所に、9 m 四方に 1 本くらい (決まりで散らす) ----------
     bgrid = set()
     for ring, _, _, _ in buildings:
@@ -1164,7 +1174,7 @@ def main(routes_only=None):
             for j in range(int((min(zs) - 6) // 5), int((max(zs) + 6) // 5) + 1):
                 bgrid.add((i, j))
     rgrid = set()
-    for rd in out_roads:
+    for rd in out_roads + out_walks:
         w = rd[0]
         pts = list(zip(rd[1::2], rd[2::2]))
         for (ax, az), (bx, bz) in zip(pts, pts[1:]):
@@ -1262,7 +1272,7 @@ def main(routes_only=None):
     OUT.write_text(json.dumps({
         "source": "国土地理院ベクトルタイル・標高タイル、国土交通省 PLATEAU 横浜市 (2024)・川崎市 (2022)・東京都 23 区 (2020)",
         "routes": out_routes, "stations": stations, "terrain": terrain, "coarse": coarse, "buildings": buildings,
-        "poles": poles, "roads": out_roads, "trees": trees, "portals": portals, **({"piers": piers} if piers else {}),
+        "poles": poles, "roads": out_roads, **({"walks": out_walks} if out_walks else {}), "trees": trees, "portals": portals, **({"piers": piers} if piers else {}),
         **({"lines": {L["id"]: {k: L[k] for k in ("name", "band", "cars", "period", "phase", "dirs") if k in L} for L in cfg["lines"]}} if cfg.get("lines") else {}),
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"-> {OUT} ({OUT.stat().st_size / 1e6:.2f} MB)")
