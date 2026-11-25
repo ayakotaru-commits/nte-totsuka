@@ -108,6 +108,7 @@ export class BigMap {
   pickAt(clientX, clientY) {
     const r = this.canvas.getBoundingClientRect(), hit = this.touch ? 26 : 16;
     for (const e of this.events) {
+      if (e.minScale && this.scale < e.minScale) continue;   // 縮小して印を出していないときは選べない
       if (Math.hypot(this.sx(e.x) - (clientX - r.left), this.sy(e.z) - (clientY - r.top)) <= hit) return { x: e.x, z: e.z, event: e.name };
     }
     return this.toWorld(clientX, clientY);
@@ -142,6 +143,8 @@ export class BigMap {
     c.imageSmoothingEnabled = this.scale < S;
     const E = this.minimap.ext;   // 線路の延長 (地図の範囲の外。minimap.js の setExt)
     if (E) E.draw(c, (x) => this.sx(x), (z) => this.sy(z), this.scale, [this.cx - W / 2 / this.scale, this.cz - H / 2 / this.scale, this.cx + W / 2 / this.scale, this.cz + H / 2 / this.scale]);
+    const PK = this.minimap.park;   // フェアリー・リールパーク (parkmap.js)
+    if (PK) PK.draw(c, (x) => this.sx(x), (z) => this.sy(z), this.scale, [this.cx - W / 2 / this.scale, this.cz - H / 2 / this.scale, this.cx + W / 2 / this.scale, this.cz + H / 2 / this.scale]);
     c.drawImage(this.map, 0, 0, this.map.width, this.map.height,
       this.sx(B.minX), this.sy(B.minZ), this.map.width / S * this.scale, this.map.height / S * this.scale);
 
@@ -180,6 +183,7 @@ export class BigMap {
 
     // イベントの場所 (名前つき)
     for (const e of this.events) {
+      if (e.minScale && this.scale < e.minScale) continue;   // 縮小したときは、細かい印 (園内の各エリアなど) は出さない
       const x = this.sx(e.x), y = this.sy(e.z);
       drawEventMark(c, x, y, 11, e.color, e.active(), e.glyph);
       c.font = 'bold 13px "Yu Gothic UI", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';

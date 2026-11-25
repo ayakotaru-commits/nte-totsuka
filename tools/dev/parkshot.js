@@ -45,6 +45,18 @@ const VIEWS = [
   { name: 'q5_parade_lake', at: [31510, -25560], look: [0, -1], pitch: 0.15, dist: 40, show: { parade: 560 } },
   { name: 'q6_float_close', at: [31440, -25794], look: [-0.66, -0.76], pitch: 0.2, dist: 8, show: { parade: 160 } },
   { name: 'q7_parade_gate', at: [31330, -25919], look: [0.5, 0.866], pitch: 0.2, dist: 16, show: { parade: 40 } },
+  // 段階 5: 園内の人・観客・地図 (settle = 人が出て歩き出すまで待つコマ数。map = 大きい地図を開いて撮る { zoom })
+  { name: 'x1_crowd_plaza', at: [31440, -25720], look: [0.3, 1], pitch: 0.2, dist: 18, settle: 12 },            // 昼のプラザ (歩く人・スマホを見る人)
+  { name: 'x2_crowd_avenue', at: [31352, -25896], look: [0.66, 0.76], pitch: 0.12, dist: 14, settle: 12 },     // ネオン・アベニューの人
+  { name: 'x3_crowd_aerial', at: [31490, -25672], look: [0, 1], pitch: 0.9, dist: 120, settle: 12 },            // プラザを上から (人の散らばり)
+  { name: 'x4_viewers_parade', at: [31440, -25794], look: [-0.66, -0.76], pitch: 0.12, dist: 10, show: { parade: 154 }, settle: 14 },   // パレードを待つ観客 (アベニューの両側)
+  { name: 'x5_viewers_aerial', at: [31440, -25794], look: [0.66, 0.76], pitch: 0.7, dist: 70, show: { parade: 154 }, settle: 14 },
+  { name: 'x6_viewers_fw', at: [31510, -25548], look: [0, 1], pitch: 0.12, dist: 22, show: { fw: 'burst:20' }, settle: 14 },      // 花火を見る観客 (湖の北の岸。--night)
+  { name: 'x7_viewers_before', at: [31440, -25794], look: [-0.66, -0.76], pitch: 0.12, dist: 10, show: { parade: -150 }, settle: 14 },   // パレードの 40 秒ほど前 (集まり始め)
+  { name: 'm1_bigmap_park', at: [31490, -25672], look: [0, 1], pitch: 0.5, dist: 20, map: { zoom: 0.9 } },      // 大きい地図 (園全体)
+  { name: 'm2_bigmap_plaza', at: [31490, -25672], look: [0, 1], pitch: 0.5, dist: 20, map: { zoom: 2.4 } },     // 大きい地図 (拡大。建物・道)
+  { name: 'm3_bigmap_wide', at: [31490, -25672], look: [0, 1], pitch: 0.5, dist: 20, map: { zoom: 0.3 } },      // 大きい地図 (縮小。ゲートの印だけ)
+  { name: 'm4_minimap_show', at: [31410, -25827], look: [0.66, 0.76], pitch: 0.2, dist: 14, show: { parade: -100 }, settle: 4 },   // ミニマップ (パレードの印が点滅 = 始まる 40 秒以内)
   { name: 'a8_station_side', at: [31730, -25950], look: [-1, 0.2], pitch: 0.4, dist: 60 },      // 駅の南口のロータリー (敷地の縁。省いた所と残した所の境目)
 ];
 
@@ -191,9 +203,11 @@ try {
         window.__showClock = () => 600 * 1000 + phase;
       }, v.show);
     } else await page.evaluate(() => { window.__showClock = () => 600 * 1000 + 100; });
-    await frames(3); await page.waitForTimeout(2000);
+    await frames(v.settle || 3); await page.waitForTimeout(2000);
+    if (v.map) { await page.evaluate((m) => { const b = window.__bigmap; b.show(window.__g.player.pos.x, window.__g.player.pos.z); b.scale = m.zoom; }, v.map); await frames(3); }
     await page.screenshot({ path: path.join(out, v.name + '.png'), timeout: 300000 });
     if (v.board) await page.evaluate(() => { window.__pride.cancel(); Date.now = window.__realNow; });
+    if (v.map) await page.evaluate(() => window.__bigmap.hide());
     console.log('shot', v.name, 'ground', gy.toFixed(2));
   }
   await browser.close();

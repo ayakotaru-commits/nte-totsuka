@@ -18,6 +18,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import park_areas  # noqa: E402
+import park_crowd  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "data" / "park.json"
@@ -99,6 +100,9 @@ def build(cfg):
     out["areas"] = {k: v for k, v in cfg["areas"].items() if not k.startswith("_")}
     out["protect"] = protect
     out["gen"] = park_areas.generate(cfg)   # 段階 2: 各エリアの建物・内側の道・広場・木・看板・門 (tools/park_areas.py。決まった乱数)
+    pc = park_crowd.generate(out)           # 段階 5: 園内を歩く人の通り道 (crowd) と、地図の印・ワープ先 (spots)。tools/park_crowd.py (乱数なし)
+    out["crowd"] = pc["crowd"]
+    out["spots"] = pc["spots"]
     return out
 
 
@@ -204,6 +208,7 @@ def main():
     OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     print(f"park: {OUT.relative_to(ROOT)} を書いた ({OUT.stat().st_size} バイト。名前 {out['name']}、エリア {len(out['areas'])}、駅の範囲 {len(out['protect'])})")
     print(park_areas.stats(out["gen"]))
+    print(park_crowd.stats(out))
 
 
 if __name__ == "__main__":

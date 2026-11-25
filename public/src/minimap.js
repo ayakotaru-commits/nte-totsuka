@@ -59,6 +59,8 @@ export class Minimap {
   // 線路の延長 (data/rail_ext/) の下絵。地図の範囲の外 (東戸塚など) で自分の位置が分かるように。
   // E = detail/railext.js の map ({ bounds, draw })。全体の粗い絵と、読み込んだ区間の細かい絵 (建物・道路・線路・ホーム) を draw が描く。大きい地図 (bigmap.js) も this.ext を使う
   setExt(E) { this.ext = E || null; }
+  // フェアリー・リールパークの下絵 (parkmap.js の createParkMap)。線路の延長の下絵の上に描く。大きい地図 (bigmap.js) も this.park を使う
+  setPark(P) { this.park = P || null; }
 
   // ワールド上の相対ベクトル (dx, dz) → ミニマップ画面上の座標 (中心基準)
   toScreen(dx, dz, yaw) {
@@ -79,6 +81,7 @@ export class Minimap {
     c.rotate(yaw);
     const E = this.ext, r = R / ZOOM;
     if (E) E.draw(c, (x) => (x - px) * ZOOM, (z) => (z - pz) * ZOOM, ZOOM, [px - r, pz - r, px + r, pz + r]);
+    if (this.park) this.park.draw(c, (x) => (x - px) * ZOOM, (z) => (z - pz) * ZOOM, ZOOM, [px - r, pz - r, px + r, pz + r]);
     c.scale(ZOOM / S, ZOOM / S);
     c.drawImage(this.map, -(px - B.minX) * S, -(pz - B.minZ) * S);
     c.restore();
