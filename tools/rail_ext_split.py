@@ -12,7 +12,8 @@
                   (細かい地形の下に隠れる升目・地図の範囲の升目は rail_ext.py の元の描き方と同じく除く)
           urban:  市街地 (建物の近く) の 10 m 升目 (base64 のビット列。区間 + まわり 2 升 = 104 × 104)
           buildings: [[輪郭, 足元の y, 高さ, 下端, 色の乱数の種 (位置から)], ...] (輪郭の外接矩形の中心で区間を決める)
-          roads: 道路を区間の境目で切ったもの、trees: [[x, y, z, 大きさ, 番号 (位置から)]]、poles、portals
+          roads: 道路を区間の境目で切ったもの、trees: [[x, y, z, 大きさ, 番号 (位置から)]]、poles、portals、
+          piers: 高架の橋脚 [[x, 上端, z, 向き, 下端, 幅], ...] (新しい線の高架。ある区間だけ)
 区間に分けても、描いた結果が分ける前と同じになるようにしてある (法線・色・乱数の種。detail/railext.js)。
 建物の色の種・木の番号は位置から決める (段階 2 で、通し番号から変えた。駅を足すと、通し番号ではほかの所の色が全部ずれたため)。
 """
@@ -181,6 +182,8 @@ def split(E):
         chunk(ck(p[0], p[2]))["poles"].append(p)
     for p in E["portals"]:
         chunk(ck(p[0], p[2]))["portals"].append(p)
+    for p in E.get("piers", ()):   # 高架の橋脚 (新しい線。段階 3b)。ある区間だけ
+        chunk(ck(p[0], p[2])).setdefault("piers", []).append(p)
     return chunks
 
 

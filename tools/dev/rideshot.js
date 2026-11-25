@@ -1,6 +1,6 @@
 // 線路の延長・駅の画面を撮る (data/rail_ext/。駅を足したときの見た目の確認用)。ridecheck.js と同じ準備で、ミニマップも写す。
 // 撮るもの: 1_platform (駅のホーム。止まっている電車)、2_aerial (駅を上から)、3_ride (途中を走る電車を外から)、4_window (車窓)
-// 使い方: node tools/dev/rideshot.js <出力フォルダ> [--station 東戸塚]   (5〜10 分)
+// 使い方: node tools/dev/rideshot.js <出力フォルダ> [--station 東戸塚] [--from 東京 --before 150]   (5〜10 分。京葉線の駅は --from 東京)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -32,6 +32,8 @@ function terrain() {
   const props = flag('--props');
   const extraQ = flag('--q') || '';
   const stationName = flag('--station');   // 確かめる延長の駅 (無ければ最初の駅)
+  const fromName = flag('--from') || '戸塚';   // 途中の画面で乗る駅 (京葉線の駅なら 東京)
+  const before = +(flag('--before') || 150);   // 途中の画面: 着く何秒前か (車窓はその 60 秒後)
   const [out] = args; const viewsFile = 'x';
   if (!out) { console.error('usage: node tools/dev/shot.js <出力フォルダ> <視点.json> [--city <city.json>] [--dump]'); process.exit(1); }
   if (!fs.existsSync(path.join(THREE_DIR, 'build', 'three.module.js'))) {
@@ -77,7 +79,7 @@ function terrain() {
   if (!ST) { console.log('延ばした先の駅がありません (data/rail_ext/)'); await browser.close(); server.close(); return; }
   // 駅: 止まる電車 (戸塚から来る向き) が止まっている時刻にして、ホームの端寄りから中央へ向く
   await page.evaluate((idx) => {
-    const R = window.__ride, T = window.__trains, pl = R.plats[idx], { r, si } = pl.routes.find((x) => x.r.stops.some((q) => q.name === '戸塚')) || pl.routes[0], P = r.L.period;
+    const R = window.__ride, T = window.__trains, pl = R.plats[idx], { r, si } = pl.routes.find((x) => x.r.stops.some((q) => q.name === '戸塚')) || pl.routes.find((x) => x.r.dir === 'out') || pl.routes[0], P = r.L.period;
     T.hold += ((((r.tArrs[si] + 10 - T.phase(r, T.hold)) % P) + P) % P);
     const pf = pl.pf, k = pf.left.length - 14, x = (pf.left[k][0] + pf.right[k][0]) / 2, z = (pf.left[k][1] + pf.right[k][1]) / 2;
     const yaw = Math.atan2(pf.left[k - 5][0] - pf.left[k][0], pf.left[k - 5][1] - pf.left[k][1]);
@@ -88,14 +90,14 @@ function terrain() {
   await page.evaluate(() => { const c = window.__g.cam; c.yaw += 1.3; c.pitch = 0.75; c.dist = 30; });
   await shot('2_aerial');
   // 途中: 戸塚からこの駅へ向かう電車に乗り、着く 150 秒前 (外から) と 90 秒前 (車窓)
-  await page.evaluate((name) => {
+  await page.evaluate(([name, from, before]) => {
     const R = window.__ride, T = window.__trains;
-    const r = T.R.find((q) => q.stops.findIndex((x) => x.name === '戸塚') >= 0 && q.stops.findIndex((x) => x.name === '戸塚') < q.stops.findIndex((x) => x.name === name));
-    const si = r.stops.findIndex((x) => x.name === '戸塚'), P = r.L.period, pl = R.plats.find((p) => p.routes.some((x) => x.r === r && x.si === si));
+    const r = T.R.find((q) => q.stops.findIndex((x) => x.name === from) >= 0 && q.stops.findIndex((x) => x.name === from) < q.stops.findIndex((x) => x.name === name));
+    const si = r.stops.findIndex((x) => x.name === from), P = r.L.period, pl = R.plats.find((p) => p.routes.some((x) => x.r === r && x.si === si));
     T.hold += ((((r.tArrs[si] + 10 - T.phase(r, T.hold)) % P) + P) % P);
     R.board(r, R.dwellAt(r, si, T.hold).j, 4, pl);
-    const sj = r.stops.findIndex((x) => x.name === name); T.hold += r.tArrs[sj] - 150 - (T.hold - R.riding.dep);
-  }, ST.name);
+    const sj = r.stops.findIndex((x) => x.name === name); T.hold += r.tArrs[sj] - before - (T.hold - R.riding.dep);
+  }, [ST.name, fromName, before]);
   await frames(3);
   await page.evaluate(() => { const c = window.__g.cam; c.yaw = Math.PI * 0.75; c.pitch = 0.3; c.dist = 30; });
   await shot('3_ride');
