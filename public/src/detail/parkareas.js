@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { makeWallPatcher } from './textures.js';
+import { buildRides } from './parkrides.js';
 
 const C = (s) => new THREE.Color(s);
 const mulberry = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -424,11 +425,14 @@ export function buildAreas(ctx) {
         const wx = p.x + Math.cos(a) * rr * Math.cos(p.yaw || 0) + Math.sin(a) * rr * Math.sin(p.yaw || 0), wz = p.z - Math.cos(a) * rr * Math.sin(p.yaw || 0) + Math.sin(a) * rr * Math.cos(p.yaw || 0);
         col.circle.push([wx, wz, 0.5, gy - 1, gy + h]);
       }
-    } else if (p.k === 'pad') {   // 観覧車の台座の跡 (段階 3 で観覧車を置く。今は輪の模様だけ)
+    } else if (p.k === 'pad') {   // 観覧車の台座 (輪の模様。観覧車は parkrides.js が上に置く)
       for (const [r, c] of [[p.r, '#fff6c9'], [p.r * 0.8, '#ffb3d9'], [p.r * 0.6, '#c9f0df']]) { const d = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.04, 40), std(c, 0.8)); d.position.y = 0.24 + (p.r - r) * 0.002; d.receiveShadow = true; g.add(d); }
     }
     api.group.add(g);
   }
+
+  // ---------- 乗り物 (段階 3。観覧車・メリーゴーラウンド・コースター) ----------
+  api.rides = buildRides({ cfg, ground, std, glowMat, group, col, emissive });
 
   api.stats.signs = G.signs.length;
   api.stats.meshes = api.group.children.length;

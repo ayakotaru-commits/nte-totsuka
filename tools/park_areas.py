@@ -1,4 +1,4 @@
-"""フェアリー・リールパーク 段階 2: 各エリアの建物・内側の道・広場・木・看板・門を、設定から決まった乱数で作る。
+"""フェアリー・リールパーク 段階 2・3: 各エリアの建物・内側の道・広場・木・看板・門と、乗り物の置き場所を、設定から決まった乱数で作る。
 
 入力: data/park.json (敷地・エリア・広場・道) と data/park_areas.json (エリアごとのテーマ)。
 出力: tools/park.py が public/data/park.json の gen に入れる (何度実行しても同じ結果)。描画は public/src/detail/parkareas.js。
@@ -536,7 +536,94 @@ def generate(cfg):
             tree_pts.append((x, z))
             out["trees"].append([rl(x), rl(z), pick(rng, tr["kinds"]), rl(rng.uniform(0.8, 1.3)), inf["ai"]])
             got += 1
+
+    # ---- 乗り物 (段階 3)。乱数は使わない (ここより前の出力は変わらない) ----
+    out["rides"] = make_rides(cfg, A.get("rides"), info, out, site, ellipses, circles, inner, park_paths, ell_hit, path_clear)
     return out
+
+
+def make_rides(cfg, R, info, out, site, ellipses, circles, inner, park_paths, ell_hit, path_clear):
+    """観覧車 (台座の上)・メリーゴーラウンド (近い広場)・コースター (エリアの外の空き地)。"""
+    rides = {}
+    if not R:
+        return rides
+    allpaths = park_paths + inner + [(p["pts"], p["w"] / 2) for inf in info.values() for p in inf["paths"]]
+
+    def nearest_path_pt(x, z):
+        best = None
+        for pts, hw in allpaths:
+            for i in range(len(pts) - 1):
+                d = seg_dist(x, z, pts[i], pts[i + 1])
+                if best is None or d < best[0]:
+                    a, b = pts[i], pts[i + 1]
+                    ex, ez = b[0] - a[0], b[1] - a[1]
+                    t = max(0, min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / (ex * ex + ez * ez or 1e-9)))
+                    best = (d, (a[0] + ex * t, a[1] + ez * t))
+        return best
+
+    # 観覧車: 台座 (pad) の上。のりばは近い道の側
+    f = R.get("ferris")
+    if f:
+        pad = next((q for q in out["props"] if q["k"] == "pad" and out["areas"][q["a"]]["name"] == f["area"]), None)
+        if pad is None:
+            sys.exit("park_areas: 観覧車の台座 (pad) が無い")
+        d, q = nearest_path_pt(pad["x"], pad["z"])
+        yaw = math.atan2(q[0] - pad["x"], q[1] - pad["z"])
+        rides["ferris"] = {"x": pad["x"], "z": pad["z"], "yaw": rl(yaw), "R": f["R"], "hub": f["hub"], "cars": f["cars"], "rev": f["rev"], "a": pad["a"]}
+
+    # メリーゴーラウンド: そのエリアの、遠くない方の広場の中心
+    c = R.get("carousel")
+    if c:
+        ai = next(i for i, a in enumerate(out["areas"]) if a["name"] == c["area"])
+        pl = next((p for p in out["plazas"] if p["a"] == ai and not p["far"]), None)
+        if pl is None:
+            sys.exit("park_areas: メリーゴーラウンドの広場が無い")
+        d, q = nearest_path_pt(pl["x"], pl["z"])
+        rides["carousel"] = {"x": pl["x"], "z": pl["z"], "yaw": rl(math.atan2(q[0] - pl["x"], q[1] - pl["z"])), "R": c["R"], "a": ai}
+
+    # コースター: 形の輪を、エリアの外・湖・道・敷地の縁から離れた空き地に置く。near の中心に近い順に、向きを変えて試す
+    k = R.get("coaster")
+    if k:
+        shape, clear = k["shape"], k.get("clear", 7)
+        dense = []
+        for i in range(len(shape)):
+            a, b = shape[i], shape[(i + 1) % len(shape)]
+            n = max(1, int(math.hypot(b[0] - a[0], b[1] - a[1]) / 4))
+            for j in range(n):
+                dense.append((a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n))
+        near = cfg["areas"][k["near"]]
+        ncx, ncz = sum(q[0] for q in near) / len(near), sum(q[1] for q in near) / len(near)
+        area_polys = [a for n, a in cfg["areas"].items() if not n.startswith("_")]
+        xs, zs = [q[0] for q in site], [q[1] for q in site]
+        cands = []
+        for cx in range(int(min(xs)), int(max(xs)), 6):
+            for cz in range(int(min(zs)), int(max(zs)), 6):
+                for deg in range(0, 180, 15):
+                    cands.append((math.hypot(cx - ncx, cz - ncz), cx, cz, deg))
+        cands.sort()
+        chosen = None
+        for dist, cx, cz, deg in cands:
+            yaw = math.radians(deg)
+            cs, sn = math.cos(yaw), math.sin(yaw)
+            ok = True
+            for u, v in dense:
+                x, z = cx + u * cs + v * sn, cz - u * sn + v * cs
+                if not inside(x, z, site, 12) or ell_hit(x, z, 4.0) or any(math.hypot(x - c0[0], z - c0[1]) < c0[2] + 4 for c0 in circles) or not path_clear(x, z, 5.0):
+                    ok = False
+                    break
+                if any(inpoly(x, z, ap) or poly_edge_dist(x, z, ap) < clear for ap in area_polys):
+                    ok = False
+                    break
+            if ok:
+                chosen = (cx, cz, yaw)
+                break
+        if chosen is None:
+            sys.exit("park_areas: コースターを置ける空き地が無い")
+        cx, cz, yaw = chosen
+        cs, sn = math.cos(yaw), math.sin(yaw)
+        pts = [[rl(cx + u * cs + v * sn), rl(cz - u * sn + v * cs), h] for u, v, h in shape]
+        rides["coaster"] = {"name": k["name"], "x": cx, "z": cz, "yaw": rl(yaw), "pts": pts, "liftIdx": k["liftIdx"], "stationIdx": k["stationIdx"], "near": k["near"]}
+    return rides
 
 
 def av_w(av, cfg):
@@ -548,6 +635,10 @@ def stats(gen):
     rows = []
     for i, n in enumerate(names):
         rows.append(f"  {n}: 建物 {sum(1 for b in gen['buildings'] if b['a'] == i)}・木 {sum(1 for t in gen['trees'] if t[4] == i)}・道 {sum(1 for p in gen['paths'] if p['a'] == i)}・広場 {sum(1 for p in gen['plazas'] if p['a'] == i)}・街灯 {sum(1 for p in gen['lamps'] if p[2] == i)}・植え込み {sum(1 for p in gen['beds'] if p[6] == i)}・特別な物 {sum(1 for p in gen['props'] if p['a'] == i)}")
+    rd = gen.get("rides", {})
+    if rd:
+        k = rd.get("coaster")
+        rows.append("  乗り物: " + "・".join(n for n in ("観覧車" if "ferris" in rd else "", "メリーゴーラウンド" if "carousel" in rd else "", f"コースター（{k['name']}、輪の中心 {k['x']:.0f}, {k['z']:.0f}、点 {len(k['pts'])}）" if k else "") if n))
     return f"建物 {len(gen['buildings'])}・木 {len(gen['trees'])}・看板 {len(gen['signs'])}・門 {len(gen['arches'])}\n" + "\n".join(rows)
 
 
@@ -583,6 +674,13 @@ def plot(cfg, gen, path):
         g.ellipse([*P((p["x"] - p["r"], p["z"] - p["r"])), *P((p["x"] + p["r"], p["z"] + p["r"]))], outline="red")
     for a in gen["arches"]:
         g.ellipse([*P((a["x"] - 3, a["z"] - 3)), *P((a["x"] + 3, a["z"] + 3))], fill="magenta")
+    rd = gen.get("rides", {})
+    if "coaster" in rd:
+        pts = [P(q) for q in rd["coaster"]["pts"]]
+        g.line(pts + [pts[0]], fill="#d00", width=3)
+    for key, r in (("ferris", 13.5), ("carousel", 7.4)):
+        if key in rd:
+            g.ellipse([*P((rd[key]["x"] - r, rd[key]["z"] - r)), *P((rd[key]["x"] + r, rd[key]["z"] + r))], outline="#d00", width=3)
     im.save(path)
 
 

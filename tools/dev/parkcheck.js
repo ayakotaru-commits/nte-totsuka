@@ -1,5 +1,5 @@
 // フェアリー・リールパーク (舞浜の架空のテーマパーク。PARK_PLAN.md) の段階 0 の試作を、キャラを歩かせて確かめる (疑似入力。画面は撮らない)。
-// 使い方: node tools/dev/parkcheck.js [--quick]   (--quick = 最初の ?nopark の確認を省く。3〜10 分。three.js は tools/dev/.cache/package に要る = CLAUDE.md の手順)
+// 使い方: node tools/dev/parkcheck.js [--quick] [--rides]   (--quick = 最初の ?nopark の確認を省く。--rides = 段階 3 の乗り物の確認だけ (約 5 分)。全部で 3〜20 分。three.js は tools/dev/.cache/package に要る = CLAUDE.md の手順)
 // 確かめること: 敷地の中の実在の道路・木が省かれ、駅の範囲は残る / 舞浜駅の南口の広場から歩いてゲートに着く / 柱の間を通れ、柱には止められる /
 //   ゲートから広場の円の中心まで歩ける (地面に立つ) / 看板の板・広場の円が出ている / ?nopark で元に戻る / NaN が無い
 const { chromium } = require('playwright');
@@ -48,8 +48,127 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   const frames = (page, n) => page.evaluate((n) => new Promise((r) => { let k = 0; const fn = () => (++k >= n ? r() : requestAnimationFrame(fn)); requestAnimationFrame(fn); }), n);
   const extIdle = async (page) => { for (let k = 0; k < 400; k++) { await frames(page, 2); if (await page.evaluate(() => !window.__railext || window.__railext.stats.idle)) return; } console.log('区間の読み込みが終わらない'); };
 
+  const ridesOnly = process.argv.includes('--rides');
+
+  // ---- 段階 3: 乗り物 (観覧車に乗って降りる・メリーゴーラウンドとコースターが動く・当たり判定) ----
+  async function stage3(page) {
+    const rd = park.gen.rides || {};
+    check('設定に乗り物 3 つがある (gen.rides)', rd.ferris && rd.carousel && rd.coaster && rd.coaster.pts.length >= 10, rd.coaster && { pts: rd.coaster.pts.length });
+    const g0 = park.gate.at, gh0 = await page.evaluate(async ([x, z]) => (await import('/src/terrain.js')).H(x, z), g0);
+    await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [rd.ferris.x, gh0 + 0.2, rd.ferris.z + 30]);
+    for (let k = 0; k < 60; k++) { await frames(page, 3); await extIdle(page); if (await page.evaluate(() => !!window.__g.scene.getObjectByName('park_rides'))) break; }
+    const built = await page.evaluate(() => { const g = window.__g.scene.getObjectByName('park_rides'); if (!g) return null; let meshes = 0, inst = 0; g.traverse((o) => { if (o.isMesh) { meshes++; if (o.isInstancedMesh) inst++; } }); const r = window.__pride.park.areas.rides; return { meshes, inst, tris: r.stats.tris, coaster: r.stats }; });
+    console.log(JSON.stringify(built));
+    check('乗り物のグループが出ている (park_rides)', built && built.meshes >= 20 && built.inst >= 8, built);
+    const T = await page.evaluate(() => { const r = window.__pride.park.areas.rides; return { period: r.coaster.period, length: r.coaster.length, top: r.coaster.cfg && null }; });
+    check('コースターの一周は 20〜120 秒・長さ 250 m 以上', T.period > 20 && T.period < 120 && T.length > 250, T);
+
+    // 動き: 時刻を進めて、観覧車の輪・メリーゴーラウンド・コースターの車両が動く (update を直接呼ぶ)
+    const mv = await page.evaluate(() => {
+      const r = window.__pride.park.areas.rides, F = r.ferris, K = r.coaster, grp = window.__g.scene.getObjectByName('park_rides');
+      const insts = []; grp.traverse((o) => { if (o.isInstancedMesh) insts.push(o); });
+      const snap = () => insts.map((o) => Array.from(o.instanceMatrix.array.slice(0, 16)).map((v) => +v.toFixed(3)).join(','));
+      const cx = F.group.position.x, cz = F.group.position.z;
+      r.update(1000, cx, cz); const a = snap();
+      r.update(1007.3, cx, cz); const b = snap();
+      const moved = a.map((v, i) => v !== b[i]).filter(Boolean).length;
+      // 回る部分 (メリーゴーラウンドの spin) と輪
+      const rot = []; grp.traverse((o) => { if (o.isGroup && Math.abs(o.rotation.y) > 1e-6 && o.children.some((c) => c.isInstancedMesh)) rot.push(+o.rotation.y.toFixed(3)); });
+      let wz = null; grp.traverse((o) => { if (o.isGroup && o.position.y > 10 && o.children.some((c) => c.isTorus || (c.geometry && c.geometry.type === 'TorusGeometry'))) wz = +o.rotation.z.toFixed(3); });
+      r.update(1000, cx, cz); const wz0 = (() => { let v = null; grp.traverse((o) => { if (o.isGroup && o.position.y > 10 && o.children.some((c) => c.geometry && c.geometry.type === 'TorusGeometry')) v = +o.rotation.z.toFixed(3); }); return v; })();
+      // コースター: 0.1 秒ごとに先頭の位置を取って、速さの範囲と、とびの無さ
+      const P = new (F.bottom.constructor)(), Q = new (F.bottom.constructor)();
+      let vmin = 1e9, vmax = 0, bad = 0, jump = 0, ymax = -1e9, ymin = 1e9, base = K.h0;
+      let prev = null;
+      for (let t = 0; t < K.period * 1.02; t += 0.1) {
+        K.carPos(0, 5000 + t, P);
+        if (!Number.isFinite(P.x + P.y + P.z)) bad++;
+        ymax = Math.max(ymax, P.y); ymin = Math.min(ymin, P.y);
+        if (prev) { const d = P.distanceTo(prev), v = d / 0.1; vmin = Math.min(vmin, v); vmax = Math.max(vmax, v); if (d > 3) jump++; }
+        prev = P.clone();
+      }
+      K.carPos(0, 6000, P); K.carPos(1, 6000, Q);
+      return { moved, nInst: insts.length, rot, wz, wz0, vmin: +vmin.toFixed(2), vmax: +vmax.toFixed(2), bad, jump, top: +(ymax - base).toFixed(1), low: +(ymin - base).toFixed(1), carGap: +P.distanceTo(Q).toFixed(2) };
+    });
+    console.log(JSON.stringify(mv));
+    check('時刻を進めると、ゴンドラ・馬・コースターの車両が動く (InstancedMesh の行列が変わる)', mv.moved >= 4, { moved: mv.moved, of: mv.nInst });
+    check('観覧車の輪とメリーゴーラウンドの回る部分が回る', mv.wz !== null && mv.wz !== mv.wz0 && mv.rot.length >= 1, { wz: mv.wz, wz0: mv.wz0, rot: mv.rot });
+    check('コースターの車両: 速さ 3〜25 m/s・とびが無い・NaN なし・最高 25 m 以上・車両の間 約 3.2 m', mv.vmin > 1.5 && mv.vmax < 25 && mv.jump === 0 && mv.bad === 0 && mv.top > 25 && Math.abs(mv.carGap - 3.2) < 0.4, mv);
+
+    // 当たり判定: 観覧車の脚・券売所、メリーゴーラウンド、コースターの柱・のりばの小屋
+    const toward = async (x0, z0, x1, z1, label, rmin, rmax, cx, cz) => {
+      const y0 = await page.evaluate(async ([x, z]) => (await import('/src/terrain.js')).H(x, z), [x0, z0]);
+      await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [x0, y0 + 0.2, z0]);
+      await frames(page, 2);
+      const h = await page.evaluate((a) => window.__walkXZ(a, { maxT: 12, walk: true, keepGoing: true, tol: 0.3 }), [[x1, z1]]);
+      const q = h.out[0], dd = q ? Math.hypot(q.at[0] - cx, q.at[1] - cz) : 99;
+      check(label, q && !q.ok && dd > rmin && dd < rmax && !h.nan, { dist: +dd.toFixed(2) });
+    };
+    const W = (o, lx, lz) => [o.x + lx * Math.cos(o.yaw) + lz * Math.sin(o.yaw), o.z - lx * Math.sin(o.yaw) + lz * Math.cos(o.yaw)];
+    const F = rd.ferris, C = rd.carousel;
+    const bx = F.R * 0.6;
+    {   // 観覧車の脚の根元 (横から中心へ向かう)
+      const [lx, lz] = W(F, bx, 2.7 * 1.25), [ox, oz] = W(F, bx + 8, 2.7 * 1.25);
+      await toward(ox, oz, lx, lz, '観覧車の脚の根元で止まる (通り抜けない)', 0.5, 2.2, lx, lz);
+    }
+    {   // メリーゴーラウンド: 外から中心へ
+      const sx = C.x + 14 * Math.sin(C.yaw + 1.2), sz = C.z + 14 * Math.cos(C.yaw + 1.2);
+      await toward(sx, sz, C.x, C.z, 'メリーゴーラウンドの台のふちで止まる (中には入れない)', C.R - 0.5, C.R + 2.2, C.x, C.z);
+    }
+    {   // コースターの柱: 柱のどれか 1 本の中心へ
+      const post = await page.evaluate(() => { const r = window.__pride.park.areas.rides.coaster; return r.posts && r.posts[Math.floor(r.posts.length / 3)]; });
+      if (post) await toward(post.x + 4, post.z, post.x, post.z, 'コースターの柱で止まる', 0.1, 1.6, post.x, post.z);
+      else check('コースターの柱の位置が取れる', false);
+    }
+
+    // 観覧車に乗る・降りる (時計を差し替えて、ゴンドラ 0 が底に来た時刻から進める)
+    const ride = await page.evaluate(async ({ F, gy }) => {
+      const pr = window.__pride, fw = pr.ferris, pl = window.__g.player, out = {};
+      const real = Date.now.bind(Date); let now = Math.ceil(real() / 1000 / F.rev) * F.rev;   // 輪の角度 0 (ゴンドラ 0 が底) の時刻
+      Date.now = () => now * 1000;
+      const K = (down) => ({ pressed: (k) => down.includes(k) });
+      const step = (sec, down = []) => { const n = Math.round(sec * 30); for (let i = 0; i < n; i++) { now += 1 / 30; pr.update(1 / 30, K(down)); if (pr.riding) pr.view(1 / 30); } };
+      // のりばへ置く
+      window.__ride.place(fw.spot.x, fw.spot.y, fw.spot.z, 0); pl.pos.y = fw.spot.y + 0.05;
+      step(0.2); out.hint = pr.hint && !pr.hint.hidden ? pr.hint.textContent : null;
+      // 遠いとき (のりばから 12 m) は乗れない
+      window.__ride.place(fw.spot.x + 12, fw.spot.y, fw.spot.z, 0); step(0.1, ['KeyF']); out.farRide = !!pr.riding;
+      window.__ride.place(fw.spot.x, fw.spot.y, fw.spot.z, 0); pl.pos.y = fw.spot.y + 0.05;
+      step(0.1, ['KeyF']); out.boarded = !!pr.riding; out.gond = pr.riding && pr.riding.i;
+      step(1.5); const P = new fw.bottom.constructor(); fw.pos(pr.riding.i, fw.theta(now), P);
+      out.seatErr = +Math.hypot(pl.pos.x - P.x, pl.pos.z - P.z, pl.pos.y + 0.93 - P.y).toFixed(3);
+      out.modelVisible = pl.model.root.visible;
+      // 半周 (75 秒) まで進めて、最高の高さ。途中で F を押しても降りない
+      let hmax = 0, early = false; const t0 = now;
+      for (let t = 0; t < F.rev * 0.5; t += 1 / 30) { step(1 / 30); hmax = Math.max(hmax, pl.pos.y - fw.gy); if (t > F.rev * 0.3 && t < F.rev * 0.31) { pr.update(1 / 30, K(['KeyF'])); if (!pr.riding) early = true; } }
+      out.hmax = +hmax.toFixed(1); out.earlyAlight = early; out.info = pr.info && pr.info.textContent;
+      // Q で中の視点: キャラが隠れ、カメラがゴンドラの中
+      pr.update(1 / 30, K(['KeyQ'])); pr.view(1 / 30);
+      const cp = window.__g.camera.position, dC = Math.hypot(cp.x - pl.pos.x, cp.y - (pl.pos.y + 1.5), cp.z - pl.pos.z);
+      out.inView = { hidden: !pl.model.root.visible, cam: +dC.toFixed(2), finite: Number.isFinite(cp.x + cp.y + cp.z) };
+      pr.update(1 / 30, K(['KeyQ'])); pr.view(1 / 30); out.backOut = pl.model.root.visible;
+      // 一周 (150 秒) まで進めて、底に着いたら降りる
+      let canAt = null;
+      for (let t = 0; t < F.rev * 0.7; t += 1 / 30) { step(1 / 30); if (pr.riding && pr.riding.can) { canAt = +(now - t0 + 1.5).toFixed(1); break; } }
+      out.canAt = canAt; out.heightWhenCan = pr.riding ? +(pl.pos.y - fw.gy).toFixed(2) : null;
+      pr.update(1 / 30, K(['KeyF']));
+      out.alighted = !pr.riding; out.after = { d: +Math.hypot(pl.pos.x - fw.spot.x, pl.pos.z - fw.spot.z).toFixed(2), dy: +(pl.pos.y - fw.gy).toFixed(2), visible: pl.model.root.visible };
+      // ワープで降りる (cancel)
+      step(0.5); pr.update(1 / 30, K(['KeyF'])); out.reboard = !!pr.riding; pr.cancel(); out.cancel = { riding: !!pr.riding, visible: pl.model.root.visible, dist: window.__g.cam.dist };
+      Date.now = real;
+      return out;
+    }, { F, gy: gh0 });
+    console.log(JSON.stringify(ride));
+    check('のりばの近くで「観覧車に乗る」の案内が出る・遠いと乗れない', ride.hint && /観覧車/.test(ride.hint) && ride.farRide === false, { hint: ride.hint, far: ride.farRide });
+    check('F で乗れて、キャラがゴンドラの床に立つ (誤差 5 cm 以内)', ride.boarded && ride.seatErr < 0.05 && ride.modelVisible, { err: ride.seatErr });
+    check('半周で 20 m 以上まで上がる・途中では降りられない', ride.hmax > 20 && ride.earlyAlight === false, { hmax: ride.hmax, early: ride.earlyAlight });
+    check('Q でゴンドラの中の視点 (キャラが隠れ、カメラがゴンドラの中) と、外からの視点へ戻る', ride.inView && ride.inView.hidden && ride.inView.cam < 0.2 && ride.inView.finite && ride.backOut, ride.inView);
+    check('一周して底に着いたら降りられる (のりばの近く・地面の高さ)', ride.canAt && ride.canAt > 135 && ride.alighted && ride.after.d < 1.5 && Math.abs(ride.after.dy) < 0.6 && ride.after.visible, { canAt: ride.canAt, after: ride.after });
+    check('ワープ・リスポーン (cancel) で降りてキャラが出る', ride.reboard && !ride.cancel.riding && ride.cancel.visible, ride.cancel);
+  }
+
   // ---- 1. ?nopark: 試作が出ない (--quick で省く) ----
-  const quick = process.argv.includes('--quick');
+  const quick = process.argv.includes('--quick') || ridesOnly;
   let page;
   if (!quick) {
     page = await open('&nopark');
@@ -107,6 +226,13 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     };
     window.__groundH = async (x, z) => (await import('/src/terrain.js')).H(x, z);
   }, f);
+  if (ridesOnly) {   // 段階 3 の乗り物だけ
+    await stage3(page);
+    await browser.close(); server.close();
+    const bad0 = results.filter((r) => !r.ok);
+    console.log(`\n${results.length - bad0.length}/${results.length} OK`);
+    process.exit(bad0.length ? 1 : 0);
+  }
   const [sx, sz] = XZ(82, -21.5);   // 南口の地上への階段の下 (地図の「舞浜駅（南口）」のワープ先とほぼ同じ)
   await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [sx, f.gy + 0.12, sz]);
   await frames(page, 3); await extIdle(page); await frames(page, 10);
@@ -208,6 +334,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   const approach = (b, d) => [b.x + Math.sin(b.yaw) * (b.d / 2 + d), b.z + Math.cos(b.yaw) * (b.d / 2 + d)];
   let allNaN = false;
   for (let ai = 0; ai < gen.areas.length; ai++) {
+    if (process.env.PARK_AREA && aName[ai] !== process.env.PARK_AREA) continue;   // 1 つのエリアだけ確かめるとき (例: PARK_AREA=スイート・ヒル)
     // 主な通り (最も長い内側の道。アベニューは園の道) を歩き通す
     let route;
     if (gen.areas[ai].kind === 'avenue') route = park.paths[1].pts.map((p) => [p[0], p[1]]);
@@ -219,6 +346,9 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       // 通りの終わりは遠い広場の中心。そこに火山・灯台・台座があれば根元までは行けないので、手前の点まで
       const fp = gen.plazas.find((q) => q.a === ai && q.far), ft = fp && gen.props.find((q) => q.a === ai && Math.hypot(q.x - fp.x, q.z - fp.z) < 1 && q.k !== 'pad');
       if (ft) route.pop();
+      // 段階 3: 通りが近い広場の中心を通るエリアは、メリーゴーラウンドの台 (中には入れない) を、横へ回り込む点に置き換える
+      const cr = gen.rides && gen.rides.carousel;
+      if (cr && cr.a === ai) route = route.map((p, k) => { if (k === 0 || Math.hypot(p[0] - cr.x, p[1] - cr.z) > cr.R + 3) return p; const q = route[k - 1], dx = p[0] - q[0], dz = p[1] - q[1], L = Math.hypot(dx, dz) || 1; return [cr.x - dz / L * (cr.R + 4), cr.z + dx / L * (cr.R + 4)]; });
     }
     const [sx0, sz0] = route[0], sy = await hAt(sx0, sz0);
     await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [sx0, sy + 0.2, sz0]);
@@ -258,6 +388,8 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     check(`${pr.k} (${aName[pr.a]}) の根元で止まる`, best && !best.ok && best.dd > pr.r * 0.6 && best.dd < pr.r + 3, { r: pr.r, dist: +best.dd.toFixed(1) });
   }
   check('NaN なし (段階 2)', !allNaN);
+
+  await stage3(page);
 
   await browser.close(); server.close();
   const bad = results.filter((r) => !r.ok);
