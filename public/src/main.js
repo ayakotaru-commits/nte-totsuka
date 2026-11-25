@@ -362,6 +362,7 @@ async function main() {
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
     detail.railExt?.update(camera.position.x, camera.position.z); // 線路の延長: カメラの近くの区間を読み込む・遠い区間を捨てる
+    sky.position.copy(camera.position); // 空の箱 (一辺 10 km) をカメラに付いて動かす。原点のままだと、延長の先 (舞浜は 40 km 先) で箱の外に出て空が黒くなった
 
     // 影は常にプレイヤー周辺
     sun.target.position.copy(player.pos);

@@ -34,11 +34,19 @@ def tile(kind, tx, ty):
         return _tiles[key]
     path = CACHE / f"{kind}_{Z}_{tx}_{ty}.txt"
     if not path.exists():
-        try:
-            with urllib.request.urlopen(urllib.request.Request(URL.format(k=kind, z=Z, x=tx, y=ty), headers=UA), timeout=60) as r:
-                path.write_bytes(r.read())
-        except Exception:  # noqa: BLE001  (範囲外は 404)
-            path.write_text("")
+        for attempt in range(5):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(URL.format(k=kind, z=Z, x=tx, y=ty), headers=UA), timeout=60) as r:
+                    path.write_bytes(r.read())
+                break
+            except urllib.error.HTTPError:   # 範囲外は 404
+                path.write_text("")
+                break
+            except Exception:  # noqa: BLE001  (通信が切れたら取り直す。5 回だめなら値の無いタイル)
+                if attempt == 4:
+                    path.write_text("")
+                else:
+                    time.sleep(2 * (attempt + 1))
         time.sleep(0.05)
     rows = [l.strip().split(",") for l in path.read_text().splitlines() if l.strip()]
     grid = [[None if v == "e" else float(v) for v in row] for row in rows] if rows else None

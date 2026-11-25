@@ -13,6 +13,7 @@ import { canvasTexture } from './util.js';
 import { releaseGeometryAfterUpload } from '../lowmem.js';
 
 const RAIL_TOP = 0.55;   // レールの上面 (地面から)。tools/rail_ext.py と同じ
+const DECK_T = 1.2;     // 高架の橋桁の厚さ (砕石の下面から)。tools/rail_ext.py と同じ
 const UCELL = 10, UPAD = 2;   // 市街地の升目 (tools/rail_ext_split.py と同じ)
 
 const unbits = (s, n) => { const b = atob(s), out = new Uint8Array(n); for (let k = 0; k < n; k++) out[k] = (b.charCodeAt(k >> 3) >> (k & 7)) & 1; return out; };
@@ -136,6 +137,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     trunk: new THREE.CylinderGeometry(0.18, 0.25, 2.6, 6).translate(0, 1.3, 0),
     crown: new THREE.IcosahedronGeometry(2.6, 0).translate(0, 4.2, 0),
     lamp: new THREE.BoxGeometry(0.12, 0.12, 1.2),
+    pier: new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
   };
   const shared = new Set(Object.values(GEO));
   const WALLS = ['#e7e1d4', '#d9d4c8', '#cfd3d6', '#e9e6df', '#c9bfae', '#d6cbb8', '#bfc5c9', '#ece8dc'];
@@ -152,8 +154,10 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
   });
   // トンネルの中の点 (新しい線の地下の区間。routes[].ug = [[k0, k1], ...])。道筋ごとに p の点の数だけの 0 / 1
   const ugOf = ext.routes.map((r) => { const f = new Uint8Array(r.p.length); for (const [k0, k1] of r.ug || []) f.fill(1, k0, k1 + 1); return f; });
-  const near = new Set();   // 線路の 3 m 以内 (4 m 四方の升目。道路を省く所。地下の線路の上は省かない)
-  ext.routes.forEach((r, ri) => r.p.forEach((q, k) => { if (!ugOf[ri][k]) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) near.add((Math.floor(q[0] / 4) + i) * 100000 + Math.floor(q[2] / 4) + j); }));
+  // 高架の点 (新しい線の地面より上の区間。routes[].el = [[k0, k1], ...]。段階 3b の京葉線)。橋桁を描き、下の道路は省かない
+  const elOf = ext.routes.map((r) => { const f = new Uint8Array(r.p.length); for (const [k0, k1] of r.el || []) f.fill(1, k0, k1 + 1); return f; });
+  const near = new Set();   // 線路の 3 m 以内 (4 m 四方の升目。道路を省く所。地下・高架の線路の下は省かない)
+  ext.routes.forEach((r, ri) => r.p.forEach((q, k) => { if (!ugOf[ri][k] && !elOf[ri][k]) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) near.add((Math.floor(q[0] / 4) + i) * 100000 + Math.floor(q[2] / 4) + j); }));
   // 地下の駅の箱 (ホームと両側の線路を囲む壁・天井。下の「延ばした先の駅」で作る)。トンネルの筒はこの中では描かない
   const ugBoxes = [];
   for (const st of ext.stations || []) if (st.underground) for (const pf of st.platforms || [st.platform]) ugBoxes.push(stationBox(pf));
@@ -305,7 +309,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     // 線路: 砕石の帯・レール・枕木・架線 (線分の中点がこの区間にあるもの)
     const segs = segsOf.get(keyOf(a, b));
     if (segs) {
-      const bp = [], bc = [], rp = [], cat = [], sleepers = [], tp = [], tc = [], lamps = [];
+      const bp = [], bc = [], rp = [], cat = [], sleepers = [], tp = [], tc = [], lamps = [], dp = [];
       const BAL = new THREE.Color('#8a8580');
       for (let s = 0; s < segs.length; s += 2) {
         const P = ext.routes[segs[s]].p, k = segs[s + 1];
@@ -324,6 +328,19 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
             const f = t / L, x = pa[0] + dx * f, z = pa[2] + dz * f, y = pa[1] + (pb[1] - pa[1]) * f - RAIL_TOP;
             lamps.push(x + nx * 2.42, y + 4.1, z + nz * 2.42, Math.atan2(nx, nz));
           }
+        }
+        // 高架の橋桁 (新しい線。幅 5.2 m・厚さ DECK_T の箱と、進む向きの左 = 外側の高欄 (高さ 1.1 m)。右は反対の向きの線路かホーム)
+        if (elOf[segs[s]][k] && elOf[segs[s]][k + 1]) {
+          const W0 = -2.6, W1 = 2.6, Hp = 1.1, Tp = 0.18;
+          const box = (o0, o1, y0, y1) => {
+            const A0 = gp(pa, o0, y0), A1 = gp(pa, o1, y0), A2 = gp(pa, o1, y1), A3 = gp(pa, o0, y1), B0 = gp(pb, o0, y0), B1 = gp(pb, o1, y0), B2 = gp(pb, o1, y1), B3 = gp(pb, o0, y1);
+            dp.push(...A3, ...B3, ...B2, ...A3, ...B2, ...A2);   // 上
+            dp.push(...A0, ...A1, ...B1, ...A0, ...B1, ...B0);   // 下
+            dp.push(...A0, ...B0, ...B3, ...A0, ...B3, ...A3);   // 右 (-)
+            dp.push(...A1, ...A2, ...B2, ...A1, ...B2, ...B1);   // 左 (+)
+          };
+          box(W0, W1, -DECK_T, 0);
+          box(W1 - Tp, W1, 0, Hp);
         }
         // 砕石 (幅 3.4 m、台形の断面)
         const sec = [[-2.2, 0.0], [-1.5, 0.35], [1.5, 0.35], [2.2, 0.0]];
@@ -356,6 +373,12 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       g2.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
       g2.computeVertexNormals();
       mesh(g2, MAT.rails, 'ext_rails', false, false);
+      if (dp.length) {
+        const gd = new THREE.BufferGeometry();
+        gd.setAttribute('position', new THREE.Float32BufferAttribute(dp, 3));
+        gd.computeVertexNormals();
+        mesh(gd, MAT.conc, 'ext_viaduct', true);
+      }
       if (tp.length) {
         const gt = new THREE.BufferGeometry();
         gt.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3));
@@ -391,6 +414,16 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       post.castShadow = arm.castShadow = true; post.name = 'ext_poles'; arm.name = 'ext_pole_arms';
       post.computeBoundingSphere(); arm.computeBoundingSphere();
       g.add(post, arm);
+    }
+
+    // 高架の橋脚 (新しい線。[x, 上端, z, 向き, 下端, 幅]。高架の駅はホームの下にも)
+    const PI = D.piers || [];
+    if (PI.length) {
+      const pm = new THREE.InstancedMesh(GEO.pier, MAT.conc, PI.length);
+      const M = new THREE.Matrix4(), Pp = new THREE.Vector3(), Qq = new THREE.Quaternion(), Ss = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+      PI.forEach(([x, top, z, yaw, bot, w], i) => pm.setMatrixAt(i, M.compose(Pp.set(x, bot, z), Qq.setFromAxisAngle(Y, yaw), Ss.set(w, top - bot, 1.4))));
+      pm.castShadow = pm.receiveShadow = true; pm.name = 'ext_piers'; pm.computeBoundingSphere();
+      g.add(pm);
     }
 
     // 道路: 地形に沿わせた帯 (アスファルトの色)。線路の上は省く
@@ -550,6 +583,25 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       const [x, z] = mid(k), yaw = dirYaw(k);
       nameSigns.push({ x: x + Math.cos(yaw) * 2.6, y: pf.y[k], z: z - Math.sin(yaw) * 2.6, yaw: yaw + Math.PI / 2 });
       nameSigns.push({ x: x - Math.cos(yaw) * 2.6, y: pf.y[k], z: z + Math.sin(yaw) * 2.6, yaw: yaw - Math.PI / 2 });
+    }
+    // 高架の駅 (新しい線): ホームの下を橋桁の下面まで埋める (両側の面と底。下は橋脚 = 区間の piers)
+    if (st.elevated) {
+      const pos = [];
+      const P3 = (q, y) => [q[0], y, q[1]];
+      for (let k = 0; k + 1 < n; k++) {
+        const t0 = pf.y[k] - 0.3, t1 = pf.y[k + 1] - 0.3, b0 = pf.y[k] - 1.0 - RAIL_TOP - DECK_T, b1 = pf.y[k + 1] - 1.0 - RAIL_TOP - DECK_T;
+        for (const [e0, e1] of [[pf.left[k], pf.left[k + 1]], [pf.right[k + 1], pf.right[k]]]) {
+          const [y0, y1, z0, z1] = e0 === pf.left[k] ? [t0, t1, b0, b1] : [t1, t0, b1, b0];
+          pos.push(...P3(e0, z0), ...P3(e1, z1), ...P3(e1, y1), ...P3(e0, z0), ...P3(e1, y1), ...P3(e0, y0));
+        }
+        pos.push(...P3(pf.left[k], b0), ...P3(pf.right[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k + 1], b1));
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: '#a8a59c', roughness: 0.9, side: THREE.DoubleSide }));
+      m.name = 'ext_el_station'; m.castShadow = m.receiveShadow = true;
+      group.add(m);
     }
     const sb = buildStation({ rail: { platforms: [pf], canopies: box ? [] : [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns } },
       { kanji: [...st.name].join(' '), kana: st.kana, roman: st.roman });

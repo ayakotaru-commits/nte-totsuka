@@ -90,7 +90,7 @@ function terrain() {
       plats: R.plats.filter((p) => p.routes.some((x) => x.r.line === LINE)).map((p) => p.name + '|' + p.sub + ' ' + p.routes.map((x) => x.r.dir).join(',')) };
   }, LINE);
   check(`${LINE}: 道筋が 2 本 (下り・上り)、駅ごとに両方が止まる`, info.n === 2 && info.plats.length >= 2 && info.plats.every((p) => /out/.test(p) && /in/.test(p)), info);
-  const [S0, S1] = info.routes.find((r) => r.dir === 'out').stops.map((q) => q.split('@')[0]);
+  const outStops = info.routes.find((r) => r.dir === 'out').stops.map((q) => q.split('@')[0]), [S0, S1] = outStops, SL = outStops[outStops.length - 1];
   // 1. 地図の印 → 最初の駅 (東京の京葉線ホーム) へワープ。地下のホームの上に立つ (地上へ飛び出さない)
   const warp = await page.evaluate(([S0, LINE]) => {
     const g = window.__g, R = window.__ride, e = g.bigmap.events.find((q) => q.name.startsWith(S0 + '駅（') && /京葉線|ホーム/.test(q.name) && q.name !== S0 + '駅（ホーム）');
@@ -190,20 +190,24 @@ function terrain() {
   await frames(2); await page.waitForFunction(() => !window.__ride.busy); await frames(2);
   s = await st();
   check(`止まった後、電車が消えると${S0}のホームに戻る`, !s.riding && s.visible && s.onPlat && s.info.includes(S0 + '駅 京葉線 ホーム'), s);
-  // 6. 下りで範囲の端まで乗ると、最後に止まった駅 (八丁堀) のホームに戻る
+  // 6. 下りで範囲の端まで乗ると、最後に止まった駅 (段階 3b からは舞浜) のホームに戻る
   await beside({ line: LINE, dir: 'out', from: S0 }); await frames(2);
   await press('KeyF'); await frames(2);
   await page.evaluate(() => { const R = window.__ride, r = R.riding.r, T = window.__trains, t = T.now() - R.riding.dep;
     for (let d = 0; d < 6000; d += 1) { if (T.front(r, t + d) > r.len - 25) { T.hold += d; break; } } });
   await frames(2); await page.waitForFunction(() => !window.__ride.busy); await frames(2);
   s = await st();
-  check(`範囲の端で ${S1}のホームに戻る`, !s.riding && s.onPlat && s.info.includes(S1 + '駅'), s);
+  check(`範囲の端で ${SL}のホームに戻る`, !s.riding && s.onPlat && s.info.includes(SL + '駅'), s);
   // 7. 地上: 地下の駅の真上の道を歩いても落ちない
-  const above = await page.evaluate(() => { const R = window.__ride, g = window.__g, pl = R.plats.find((p) => p.sub && p.name === R.plats.find((q) => q.sub).name), pf = pl.pf, m = pf.left.length >> 1;
+  const xz = await page.evaluate(() => { const R = window.__ride, g = window.__g, pl = R.plats.find((p) => p.sub && p.name === R.plats.find((q) => q.sub).name), pf = pl.pf, m = pf.left.length >> 1;
     const x = (pf.left[m][0] + pf.right[m][0]) / 2, z = (pf.left[m][1] + pf.right[m][1]) / 2;
-    g.player.teleport(x, z); for (let i = 0; i < 10; i++) g.player.update(1 / 30, { ax: 0, az: 0, pressed: () => false, held: () => false, endFrame() {} }, g.cam);
-    return { y: +g.player.pos.y.toFixed(2), surf: +window.__H(x, z).toFixed(2) }; });
-  check('地下の駅の真上の地上に立てる (落ちない)', Math.abs(above.y - above.surf) < 1, above);
+    g.player.teleport(x, z); return [x, z]; });
+  // ワープの先の区間を読み終わってから (読む前は地形が -200 m で、何もしなくても通ってしまう。段階 3b で、舞浜から戻ったときに起きた)
+  await frames(2); await page.waitForFunction(() => window.__railext && window.__railext.stats.idle, null, { timeout: 600000 }).catch(() => {}); await frames(2);
+  const above = await page.evaluate(([x, z]) => { const g = window.__g; g.player.teleport(x, z);
+    for (let i = 0; i < 10; i++) g.player.update(1 / 30, { ax: 0, az: 0, pressed: () => false, held: () => false, endFrame() {} }, g.cam);
+    return { y: +g.player.pos.y.toFixed(2), surf: +window.__H(x, z).toFixed(2) }; }, xz);
+  check('地下の駅の真上の地上に立てる (落ちない)', Math.abs(above.y - above.surf) < 1 && above.surf > -150, above);
   // 8. 東京駅: 京葉線のホームと東海道線のホームの「のりかえ」(同じ名前の駅のホーム)
   const xf = await page.evaluate((S0) => { const R = window.__ride, x = R.xfers.find((q) => q.pl.name === S0 && q.pl.sub);
     if (!x) return null; R.place(x.spot.x - Math.sin(x.face) * 1.2, x.spot.y, x.spot.z - Math.cos(x.face) * 1.2, x.face);
