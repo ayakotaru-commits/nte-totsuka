@@ -1,6 +1,8 @@
 // 6. 走る電車: 東海道線・横須賀線 (15 両) と貨物列車 (機関車 + コンテナ車)。
 // 道筋 (props.json の rail.routes) は tools/build_props.py が線路をつないで作ったもの。旅客線は戸塚駅のホームで 30 秒止まる。
 // rail_ext (tools/rail_ext.py) があれば、道筋を地図の端から先の駅 (今は北の東戸塚駅〜横浜駅、東海道線は東京駅) まで延ばし、その駅にも止まる (止まる線は data/rail_ext_config.json)。
+// 新しい線 (設定の lines。京葉線など。rail_ext の routes の at: "own") は、地図の中の道筋とは別の道筋として足す。線の名前・帯の色・両数・周期は rail_ext の lines。
+// 最初の駅が終点 (rest) の道筋は、そのホームに止まった状態で現れて発車し、終点に着く道筋 (term) は止まった後に消える。
 // 道筋が長くなって 1 本の電車が走りきる時間が周期を超えるので、同じ道筋に何本か (前の周期の電車) を同時に走らせる。
 // 時刻は実際の時計 (Date.now) から決めるので、だれが見ても同じ所を走る (マルチプレイでもそろう)。
 // 色は一般的な近郊電車の配色 (銀色の車体に、線ごとの帯の色)。特定の形式の再現ではない。
@@ -14,17 +16,26 @@ const CAR = 20;            // 1 両の長さ (m)。build_props.py の CAR_LEN �
 const V = 22;              // 走る速さ (m/s = 約 80 km/h)
 const ACC = 0.9;           // 加速・減速 (m/s²)
 const DWELL = 30;          // 駅で止まる時間 (秒)
-const LINES = {
-  tokaido: { cars: 15, period: 300, offset: 0, band: ['#f08a1c', '#2e9a4c'] },   // オレンジと緑の帯
-  yokosuka: { cars: 15, period: 300, offset: 140, band: ['#1f5fae', '#efe4c4'] }, // 青とクリームの帯
-  freight: { cars: 20, period: 720, offset: 330 },
+const BASE_LINES = {
+  tokaido: { name: '東海道線', cars: 15, period: 300, offset: 0, band: ['#f08a1c', '#2e9a4c'] },   // オレンジと緑の帯
+  yokosuka: { name: '横須賀線', cars: 15, period: 300, offset: 140, band: ['#1f5fae', '#efe4c4'] }, // 青とクリームの帯
+  freight: { name: '貨物線', cars: 20, period: 720, offset: 330 },
 };
 
-// 先頭の位置 (道筋の始点からの距離 m) を、出発からの経過秒 t から求める。stops = 止まる位置 (先頭の位置 m、昇順)。無ければ等速
+// 先頭の位置 (道筋の始点からの距離 m) を、出発からの経過秒 t から求める。stops = 止まる位置 (先頭の位置 m、昇順)。無ければ等速。
+// rest = 最初の駅 (終点) に止まった状態で始まる (t = 0〜DWELL は止まっていて、そこから加速)
 const DB = V * V / (2 * ACC), TB = V / ACC;
-function frontAt(t, stops) {
-  let s0 = 0, t0 = 0;
-  for (const stop of stops) {
+function frontAt(t, stops, rest = false) {
+  let s0 = 0, t0 = 0, i0 = 0;
+  if (rest && stops.length) {
+    const s = stops[0];
+    if (t < DWELL) return s;
+    const u = t - DWELL;
+    if (u < TB) return s + ACC * u * u / 2;
+    s0 = s + DB; t0 = DWELL + TB; i0 = 1;
+  }
+  for (let i = i0; i < stops.length; i++) {
+    const stop = stops[i];
     const tc = Math.max(0, stop - DB - s0) / V;
     if (t < t0 + tc) return s0 + V * (t - t0);
     let u = t - t0 - tc;
@@ -37,11 +48,13 @@ function frontAt(t, stops) {
   }
   return s0 + V * (t - t0);
 }
-// 各駅に着く時刻 (出発からの秒)
-function arriveTimes(stops) {
+// 各駅に着く時刻 (出発からの秒)。rest なら最初の駅は 0 (止まった状態で始まる)
+function arriveTimes(stops, rest = false) {
   const out = [];
-  let s0 = 0, t0 = 0;
-  for (const stop of stops) {
+  let s0 = 0, t0 = 0, i0 = 0;
+  if (rest && stops.length) { out.push(0); s0 = stops[0] + DB; t0 = DWELL + TB; i0 = 1; }
+  for (let i = i0; i < stops.length; i++) {
+    const stop = stops[i];
     const tc = Math.max(0, stop - DB - s0) / V;
     out.push(t0 + tc + TB);
     s0 = stop + DB; t0 += tc + 2 * TB + DWELL;
@@ -49,9 +62,9 @@ function arriveTimes(stops) {
   return out;
 }
 // 先頭が道筋の終わりを過ぎ、最後尾も出きるまでの時間
-function runTime(len, stops) {
+function runTime(len, stops, rest = false) {
   let t = 0;
-  while (frontAt(t, stops) < len) t += 5;
+  while (frontAt(t, stops, rest) < len) t += 5;
   return t;
 }
 // 道筋 r に、延ばした線路 exts (rail_ext.json の routes のうち、この道筋のもの。始め・終わりに 1 つずつまで) をつなぐ。
@@ -118,29 +131,56 @@ export function buildTrains(props, ext = null) {
   const Q = new URLSearchParams(location.search);
   if (!routes.length || Q.has('notrain')) return { group, emissive: [], update() {}, api: null };
   const fixed = Q.has('trainAt') ? +Q.get('trainAt') : null;
+  // 線の設定: 地図の中の 3 線 + 新しい線 (rail_ext の lines)
+  const LINES = { ...BASE_LINES };
+  for (const [id, l] of Object.entries((ext && ext.lines) || {})) LINES[id] = { name: l.name || id, cars: l.cars || 10, period: l.period || 300, offset: l.phase || 0, band: l.band || ['#888', '#ccc'], dirs: l.dirs || {} };
+  const accOf = (p) => { const acc = [0]; for (let k = 1; k < p.length; k++) acc.push(acc[k - 1] + Math.hypot(p[k][0] - p[k - 1][0], p[k][2] - p[k - 1][2])); return acc; };
 
   // 道筋ごとの累積距離 (点は約 5 m おき)
   const R = routes.map((r0, i) => {
     const { p, stops } = joinExt(r0, ext && ext.routes ? ext.routes.filter((x) => x.route === i) : []);
     const r = { ...r0, p };
-    const acc = [0];
-    for (let k = 1; k < p.length; k++) acc.push(acc[k - 1] + Math.hypot(p[k][0] - p[k - 1][0], p[k][2] - p[k - 1][2]));
+    const acc = accOf(p);
     const L = LINES[r.line];
     const dir = p[p.length - 1][2] < p[0][2] ? 'north' : 'south';   // z が減る = 北 = 横浜・東京方面
     const S = stops.map((st) => st.s), tArrs = arriveTimes(S);
     let offset = L.offset + i * 37;
     const ti = stops.findIndex((st) => st.name === '戸塚');    // 戸塚に着く時刻を、周期の中の決まった位置にそろえる
     if (ti >= 0 && ARRIVE_PHASE[dir][r.line] != null) offset = ARRIVE_PHASE[dir][r.line] - tArrs[ti];
-    return { ...r, i, acc, len: acc[acc.length - 1], L, dir, offset, run: 0, stops, S, tArrs, m: 1 };
+    return { ...r, i, acc, len: acc[acc.length - 1], L, dir, up: dir === 'north', offset, run: 0, stops, S, tArrs, m: 1 };
   });
-  for (const r of R) { r.run = runTime(r.len + r.L.cars * CAR, r.S); r.m = Math.ceil(r.run / r.L.period); }
+  // 新しい線の道筋: 下り (out) は最初の駅を phase 秒に出て、上り (in) は最初の駅に半周期ずれて着く
+  for (const e of (ext && ext.routes) || []) {
+    if (e.at !== 'own' || !LINES[e.line] || e.p.length < 2) continue;
+    const L = LINES[e.line], acc = accOf(e.p), stops = (e.stops || []).slice().sort((a, b) => a.s - b.s), S = stops.map((st) => st.s);
+    const tArrs = arriveTimes(S, !!e.rest);
+    const out = ext.routes.find((q) => q.at === 'own' && q.line === e.line && q.dir === 'out');
+    const first = out && out.stops && out.stops.length ? out.stops[0].name : null, fi = stops.findIndex((st) => st.name === first);
+    const offset = e.dir === 'out' ? L.offset - (fi >= 0 ? tArrs[fi] : 0) : L.offset + L.period / 2 - (fi >= 0 ? tArrs[fi] : 0);
+    R.push({ line: e.line, p: e.p, i: R.length, acc, len: acc[acc.length - 1], L, dir: e.dir, up: e.dir === 'in', dirName: L.dirs[e.dir] || '', own: true,
+      rest: !!e.rest, term: !!e.term, ug: e.ug || [], offset, run: 0, stops, S, tArrs, m: 1 });
+  }
+  for (const r of R) {
+    // 終点に着く道筋は、終点で止まった後に消える (行き止まりの先へは進まない)
+    r.run = r.term && r.tArrs.length ? r.tArrs[r.tArrs.length - 1] + DWELL : runTime(r.len + r.L.cars * CAR, r.S, r.rest);
+    r.m = Math.ceil(r.run / r.L.period);
+  }
   const api = {
     R, CAR, DWELL, skew: 0, hold: null,    // skew: 時計をずらす秒、hold: 時刻を止める (どちらも確認用)
     now: () => api.hold != null ? api.hold : (fixed != null ? fixed : Date.now() / 1000) + api.skew,
     phase: (r, now) => { const T = r.L.period; return ((now - r.offset) % T + T) % T; },   // いちばん新しく出発した電車の、出発からの秒
     tOf: (r, j, now) => api.phase(r, now) + j * r.L.period,   // j 本前に出発した電車 (0〜r.m-1) の、出発からの秒
-    front: (r, t) => t < r.run ? frontAt(t, r.S) : -1e9,
-    speed: (r, t) => t < r.run ? (frontAt(t + 0.1, r.S) - frontAt(t, r.S)) / 0.1 : 0,
+    front: (r, t) => t >= 0 && t < r.run ? frontAt(t, r.S, r.rest) : -1e9,
+    speed: (r, t) => t >= 0 && t < r.run ? (frontAt(t + 0.1, r.S, r.rest) - frontAt(t, r.S, r.rest)) / 0.1 : 0,
+    LINES,
+    // 道筋の距離 s の所がトンネルの中か (新しい線の ug = [[k0, k1], ...] は p の番号)
+    inTunnel(r, s) {
+      if (!r.ug || !r.ug.length) return false;
+      const a = r.acc;
+      let lo = 0, hi = a.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (a[m] <= s) lo = m; else hi = m; }
+      return r.ug.some(([k0, k1]) => lo >= k0 && lo <= k1);
+    },
     // j 本前の電車の k 両目 (0 = 先頭) の中心と向き。道筋の外なら false
     carPose(r, k, now, outC, outQ, j = 0) { return api.carPoseT(r, k, api.tOf(r, j, now), outC, outQ); },
     // 出発から t 秒の電車の k 両目 (乗っている電車は出発の時刻で追う。j は周期が変わると次の電車を指すため)
@@ -174,7 +214,7 @@ export function buildTrains(props, ext = null) {
   const slots = []; // {r, k (何両目), meshes: [[mesh, index], ...]}
   const meshes = {};
   const mk = (geo, mat, n, name) => { const m = new THREE.InstancedMesh(geo, mat, n); m.name = name; m.castShadow = m.receiveShadow = true; m.frustumCulled = false; group.add(m); return m; };
-  for (const line of ['tokaido', 'yokosuka']) {
+  for (const line of Object.keys(LINES).filter((l) => l !== 'freight')) {
     const rs = R.filter(r => r.line === line);
     if (!rs.length) continue;
     const L = LINES[line], n = rs.reduce((t, r) => t + r.m, 0) * L.cars;

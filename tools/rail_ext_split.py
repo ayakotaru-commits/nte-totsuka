@@ -3,7 +3,7 @@
 使い方: python tools/rail_ext_split.py      (data/raw/rail_ext_full.json → public/data/rail_ext/。rail_ext.py も最後にこれを呼ぶ)
 出力:   public/data/rail_ext/index.json   最初に読む小さいファイル
           source, chunk (区間の大きさ m), bounds (延長の範囲 {minX, maxX, minZ, maxZ}),
-          routes, stations (rail_ext.py と同じ。電車の道筋・駅は全部を最初から持つ),
+          routes, stations (rail_ext.py と同じ。電車の道筋・駅は全部を最初から持つ), lines (新しい線の設定。あれば),
           chunks: [[a, b, バイト数], ...] (区間 a_b = x が 1000a〜1000(a+1)、z が 1000b〜1000(b+1))
           overview: 大きい地図の下絵 {step, x0, z0, rows: [[j, i0, n, i0, n, ...], ...] (細かい地形のある所。25 m 升目), roads: 幅 8 m 以上の道路}
         public/data/rail_ext/c_<a>_<b>.json   区間ごと
@@ -221,6 +221,8 @@ def write(E):
         "coarse": {k: E["coarse"][k] for k in ("step", "x0", "z0", "nx", "nz")},
         "routes": E["routes"], "stations": E["stations"], "chunks": lst, "overview": overview(E),
     }
+    if E.get("lines"):   # 新しい線 (京葉線など) の名前・帯の色・両数・周期・向きの名前 (detail/trains.js・ride.js)
+        index["lines"] = E["lines"]
     ip = OUT_DIR / "index.json"
     ip.write_text(json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     tot = sum(q[2] for q in lst)

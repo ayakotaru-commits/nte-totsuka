@@ -1,6 +1,7 @@
 // 線路の延長 (地図の北の端 → 東戸塚駅・保土ケ谷駅・横浜駅の先。data/rail_ext/ = tools/rail_ext.py → tools/rail_ext_split.py)。
 // 電車の窓から見える範囲だけを作る: 線路の近くの地形 (5 m 間隔) と建物 (PLATEAU の輪郭と高さの箱)、その外の粗い地形 (25 m 間隔)、
 // 線路 (砕石・枕木・レール)・架線柱・架線・道路・木・坑口、延ばした先の駅のホーム (ホームの上だけ歩ける。縁に見えない柵)。
+// 新しい線 (設定の lines。京葉線など) の地下の区間 (routes[].ug) はトンネル (単線の箱形の筒と照明)、地下の駅 (stations[].underground) は壁・天井の箱で、world.addUnderground で「床に立てる地下の空間」として登録する。
 // 区間ごとの読み込み (舞浜までの計画の段階 1): index.json (道筋・駅・下絵) を最初に読み、地形・建物などは 1 km 四方の区間 (c_<a>_<b>.json) ごとに、
 // カメラから LOAD_R 以内の区間だけを読んで作り、UNLOAD_R より離れたら捨てる (update() を毎コマ呼ぶ)。駅のホームと当たり判定は最初から全部作る。
 // 区間に分けても描いた結果は分ける前と同じ (法線は隣の升目まで含めて計算、色の乱数の種と木の通し番号はファイルに入っている)。
@@ -105,13 +106,36 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     crown: new THREE.MeshStandardMaterial({ color: '#56743d', roughness: 1, flatShading: true }),
     conc: new THREE.MeshStandardMaterial({ color: '#a8a59c', roughness: 0.9 }),
     dark: new THREE.MeshBasicMaterial({ color: '#0c0c0c', side: THREE.DoubleSide }),
+    // 地下 (トンネル・地下の駅): 照明で明るい所なので、日の光・時間帯に関係ない色 (面ごとの明るさを頂点の色に入れてある)
+    tunnel: new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+    lamp: new THREE.MeshBasicMaterial({ color: '#fff4d6' }),
   };
+  // トンネルの断面 [線路の中心からの横の位置, 道床からの高さ, 色] (反時計回りでなくてよい。両面で描く)
+  const TC = (h) => new THREE.Color(h);
+  const TUBE = [[-2.2, 0, TC('#4a4743')], [-2.5, 0, TC('#5e5a54')], [-2.5, 4.3, TC('#625e58')], [-1.7, 5.3, TC('#6c6862')], [1.7, 5.3, TC('#625e58')], [2.5, 4.3, TC('#5e5a54')], [2.5, 0, TC('#4a4743')], [2.2, 0, TC('#4a4743')]];
+  const r_acc = (() => {   // 道筋 ri の点 k の、始点からの距離 (照明の間隔をそろえる)
+    const A = ext.routes.map((r) => { const a = new Float32Array(r.p.length); for (let k = 1; k < r.p.length; k++) a[k] = a[k - 1] + Math.hypot(r.p[k][0] - r.p[k - 1][0], r.p[k][2] - r.p[k - 1][2]); return a; });
+    return (ri, k) => A[ri][k];
+  })();
+  // 地下の駅の箱: ホームの縁の点から、両側の線路の外 (線路の中心から 2.6 m) の壁、天井 (ホームの上 4.2 m)、床 (道床の高さ)
+  function stationBox(pf) {
+    const n = pf.left.length, wl = [], wr = [], fy = [], cy = [];
+    for (let k = 0; k < n; k++) {
+      const [lx, lz] = pf.left[k], [rx, rz] = pf.right[k], d = Math.hypot(lx - rx, lz - rz) || 1, ux = (lx - rx) / d, uz = (lz - rz) / d;
+      wl.push([lx + ux * 4.22, lz + uz * 4.22]); wr.push([rx - ux * 4.22, rz - uz * 4.22]);
+      fy.push(pf.y[k] - 1.0 - RAIL_TOP); cy.push(pf.y[k] + 4.2);
+    }
+    const ring = [...wl, ...wr.slice().reverse()], xs = ring.map((q) => q[0]), zs = ring.map((q) => q[1]);
+    return { pf, wl, wr, fy, cy, ring, minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs),
+      floor: Math.min(...fy), ceil: Math.min(...cy) };
+  }
   const GEO = {   // 区間を捨てても dispose しない
     sleeper: new THREE.BoxGeometry(2.2, 0.14, 0.22),
     post: new THREE.BoxGeometry(0.25, 7.2, 0.25).translate(0, 3.6, 0),
     arm: new THREE.BoxGeometry(2.8, 0.12, 0.12).translate(-1.3, 6.4, 0),
     trunk: new THREE.CylinderGeometry(0.18, 0.25, 2.6, 6).translate(0, 1.3, 0),
     crown: new THREE.IcosahedronGeometry(2.6, 0).translate(0, 4.2, 0),
+    lamp: new THREE.BoxGeometry(0.12, 0.12, 1.2),
   };
   const shared = new Set(Object.values(GEO));
   const WALLS = ['#e7e1d4', '#d9d4c8', '#cfd3d6', '#e9e6df', '#c9bfae', '#d6cbb8', '#bfc5c9', '#ece8dc'];
@@ -126,8 +150,19 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       segsOf.get(key).push(ri, k);
     }
   });
-  const near = new Set();   // 線路の 3 m 以内 (4 m 四方の升目。道路を省く所)
-  for (const r of ext.routes) for (const q of r.p) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) near.add((Math.floor(q[0] / 4) + i) * 100000 + Math.floor(q[2] / 4) + j);
+  // トンネルの中の点 (新しい線の地下の区間。routes[].ug = [[k0, k1], ...])。道筋ごとに p の点の数だけの 0 / 1
+  const ugOf = ext.routes.map((r) => { const f = new Uint8Array(r.p.length); for (const [k0, k1] of r.ug || []) f.fill(1, k0, k1 + 1); return f; });
+  const near = new Set();   // 線路の 3 m 以内 (4 m 四方の升目。道路を省く所。地下の線路の上は省かない)
+  ext.routes.forEach((r, ri) => r.p.forEach((q, k) => { if (!ugOf[ri][k]) for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) near.add((Math.floor(q[0] / 4) + i) * 100000 + Math.floor(q[2] / 4) + j); }));
+  // 地下の駅の箱 (ホームと両側の線路を囲む壁・天井。下の「延ばした先の駅」で作る)。トンネルの筒はこの中では描かない
+  const ugBoxes = [];
+  for (const st of ext.stations || []) if (st.underground) for (const pf of st.platforms || [st.platform]) ugBoxes.push(stationBox(pf));
+  const inRing = (x, z, ring) => {
+    let ins = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, zi] = ring[i], [xj, zj] = ring[j]; if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) ins = !ins; }
+    return ins;
+  };
+  const inBox = (x, z) => ugBoxes.some((b) => x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ && inRing(x, z, b.ring));
 
   // ---------- 区間を作る ----------
   function buildChunk(a, b, D) {
@@ -270,13 +305,26 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     // 線路: 砕石の帯・レール・枕木・架線 (線分の中点がこの区間にあるもの)
     const segs = segsOf.get(keyOf(a, b));
     if (segs) {
-      const bp = [], bc = [], rp = [], cat = [], sleepers = [];
+      const bp = [], bc = [], rp = [], cat = [], sleepers = [], tp = [], tc = [], lamps = [];
       const BAL = new THREE.Color('#8a8580');
       for (let s = 0; s < segs.length; s += 2) {
         const P = ext.routes[segs[s]].p, k = segs[s + 1];
         const pa = P[k], pb = P[k + 1], dx = pb[0] - pa[0], dz = pb[2] - pa[2], L = Math.hypot(dx, dz) || 1;
         const nx = dz / L, nz = -dx / L;   // 横の向き
         const gp = (p, off, dy) => [p[0] + nx * off, p[1] - RAIL_TOP + dy, p[2] + nz * off];
+        // トンネル (地下の区間。単線の箱形: 幅 5 m・高さ 5.3 m、上の角を落とす)。地下の駅の箱の中は除く。照明は 12 m おきに壁の上
+        if (ugOf[segs[s]][k] && ugOf[segs[s]][k + 1] && !inBox((pa[0] + pb[0]) / 2, (pa[2] + pb[2]) / 2)) {
+          for (let q = 0; q + 1 < TUBE.length; q++) {
+            const [o0, y0, c0] = TUBE[q], [o1, y1] = TUBE[q + 1];
+            tp.push(...gp(pa, o0, y0), ...gp(pb, o0, y0), ...gp(pb, o1, y1), ...gp(pa, o0, y0), ...gp(pb, o1, y1), ...gp(pa, o1, y1));
+            for (let n = 0; n < 6; n++) tc.push(c0.r, c0.g, c0.b);
+          }
+          const d0 = r_acc(segs[s], k);
+          for (let t = Math.ceil(d0 / 12) * 12 - d0; t < L; t += 12) {
+            const f = t / L, x = pa[0] + dx * f, z = pa[2] + dz * f, y = pa[1] + (pb[1] - pa[1]) * f - RAIL_TOP;
+            lamps.push(x + nx * 2.42, y + 4.1, z + nz * 2.42, Math.atan2(nx, nz));
+          }
+        }
         // 砕石 (幅 3.4 m、台形の断面)
         const sec = [[-2.2, 0.0], [-1.5, 0.35], [1.5, 0.35], [2.2, 0.0]];
         for (let q = 0; q < 3; q++) {
@@ -308,6 +356,17 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       g2.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
       g2.computeVertexNormals();
       mesh(g2, MAT.rails, 'ext_rails', false, false);
+      if (tp.length) {
+        const gt = new THREE.BufferGeometry();
+        gt.setAttribute('position', new THREE.Float32BufferAttribute(tp, 3));
+        gt.setAttribute('color', new THREE.Float32BufferAttribute(tc, 3));
+        mesh(gt, MAT.tunnel, 'ext_tunnel', false, false);
+        const lm = new THREE.InstancedMesh(GEO.lamp, MAT.lamp, lamps.length / 4);
+        const M = new THREE.Matrix4(), Pp = new THREE.Vector3(), Qq = new THREE.Quaternion(), S1 = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
+        for (let i = 0; i < lamps.length / 4; i++) lm.setMatrixAt(i, M.compose(Pp.set(lamps[i * 4], lamps[i * 4 + 1], lamps[i * 4 + 2]), Qq.setFromAxisAngle(Y, lamps[i * 4 + 3]), S1));
+        lm.name = 'ext_tunnel_lamps'; lm.computeBoundingSphere();
+        g.add(lm);
+      }
       const n = sleepers.length / 4;
       const sl = new THREE.InstancedMesh(GEO.sleeper, MAT.sleeper, n);
       const M = new THREE.Matrix4(), Pp = new THREE.Vector3(), Qq = new THREE.Quaternion(), S1 = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
@@ -472,6 +531,9 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
   // 1 つの駅に複数のホーム (platforms・canopies。横浜など)。古い形 (platform・canopy 1 つ) も読む
   for (const st of ext.stations || []) (st.platforms || [st.platform]).forEach((pf, pi) => {
     const cn = (st.canopies || [st.canopy])[pi], n = pf.left.length;
+    // 地下の駅 (新しい線の京葉線の東京など): 屋根の代わりに、壁・天井の箱 (ugBoxes)。立てる所・カメラの入れる所として world に登録する
+    const box = st.underground ? ugBoxes.find((b) => b.pf === pf) : null;
+    if (box) { group.add(boxMesh(box, st)); world.addUnderground({ ring: box.ring, floor: box.floor, ceil: box.ceil }); }
     const mid = (k) => [(pf.left[k][0] + pf.right[k][0]) / 2, (pf.left[k][1] + pf.right[k][1]) / 2];
     const dirYaw = (k) => { const p = mid(Math.max(0, k - 1)), q = mid(Math.min(n - 1, k + 1)); return Math.atan2(q[0] - p[0], q[1] - p[1]); };
     const columns = [], benches = [], nameSigns = [];
@@ -489,7 +551,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       nameSigns.push({ x: x + Math.cos(yaw) * 2.6, y: pf.y[k], z: z - Math.sin(yaw) * 2.6, yaw: yaw + Math.PI / 2 });
       nameSigns.push({ x: x - Math.cos(yaw) * 2.6, y: pf.y[k], z: z + Math.sin(yaw) * 2.6, yaw: yaw - Math.PI / 2 });
     }
-    const sb = buildStation({ rail: { platforms: [pf], canopies: [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns } },
+    const sb = buildStation({ rail: { platforms: [pf], canopies: box ? [] : [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns } },
       { kanji: [...st.name].join(' '), kana: st.kana, roman: st.roman });
     group.add(sb.group);
     // ホームが 2 面以上の駅 (横浜): ホームの中央の「のりかえ」の案内板 (ride.js がこの前で F / Q → ほかのホームへ移す。場所は ride.js と同じ式)
@@ -509,6 +571,57 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     edge([pf.left[0], pf.right[0]]); edge([pf.left[n - 1], pf.right[n - 1]]);
     world.addColliders({ poly, line }, true);
   });
+
+  // 地下の駅の箱の形: 両側の壁 (タイルの腰壁と白い壁)、天井、床、両端の壁 (トンネルの口は抜く)、天井の照明の帯
+  function boxMesh(b, st) {
+    const pos = [], col = [], n = b.wl.length;
+    const quad = (A, B, C, D, c) => { pos.push(...A, ...B, ...C, ...A, ...C, ...D); for (let q = 0; q < 6; q++) col.push(c.r, c.g, c.b); };
+    const WALL = new THREE.Color('#d9d4c8'), BAND = new THREE.Color((ext.lines && ext.lines[st.line] && ext.lines[st.line].band && ext.lines[st.line].band[0]) || '#b5162b'), CEIL = new THREE.Color('#e4e2dc'), FLOOR = new THREE.Color('#4c4944'), END = new THREE.Color('#bdb8ad');
+    for (let k = 0; k + 1 < n; k++) for (const w of [b.wl, b.wr]) {
+      const a = w[k], c = w[k + 1], f0 = b.fy[k], f1 = b.fy[k + 1], c0 = b.cy[k], c1 = b.cy[k + 1];
+      const m0 = f0 + 2.6, m1 = f1 + 2.6, s0 = m0 + 0.35, s1 = m1 + 0.35;
+      quad([a[0], f0, a[1]], [c[0], f1, c[1]], [c[0], m1, c[1]], [a[0], m0, a[1]], END);
+      quad([a[0], m0, a[1]], [c[0], m1, c[1]], [c[0], s1, c[1]], [a[0], s0, a[1]], BAND);   // 線の色の帯
+      quad([a[0], s0, a[1]], [c[0], s1, c[1]], [c[0], c1, c[1]], [a[0], c0, a[1]], WALL);
+    }
+    for (let k = 0; k + 1 < n; k++) {
+      const l0 = b.wl[k], l1 = b.wl[k + 1], r0 = b.wr[k], r1 = b.wr[k + 1];
+      quad([l0[0], b.cy[k], l0[1]], [l1[0], b.cy[k + 1], l1[1]], [r1[0], b.cy[k + 1], r1[1]], [r0[0], b.cy[k], r0[1]], CEIL);
+      quad([l0[0], b.fy[k] - 0.02, l0[1]], [l1[0], b.fy[k + 1] - 0.02, l1[1]], [r1[0], b.fy[k + 1] - 0.02, r1[1]], [r0[0], b.fy[k] - 0.02, r0[1]], FLOOR);
+    }
+    // 両端の壁: 壁から線路のトンネルの口 (線路の中心 ± 2.5 m、高さ 5.3 m) を抜いた残り
+    for (const k of [0, n - 1]) {
+      const L = b.wl[k], Rr = b.wr[k], f = b.fy[k], c = b.cy[k], W = Math.hypot(L[0] - Rr[0], L[1] - Rr[1]);
+      const at = (t, y) => [L[0] + (Rr[0] - L[0]) * t / W, y, L[1] + (Rr[1] - L[1]) * t / W];
+      const holes = [[4.22 - 1.62 - 2.5, 4.22 - 1.62 + 2.5], [W - 4.22 + 1.62 - 2.5, W - 4.22 + 1.62 + 2.5]];
+      let t0 = 0;
+      for (const [h0, h1] of holes) {
+        if (h0 > t0) quad(at(t0, f), at(h0, f), at(h0, c), at(t0, c), END);
+        if (c > f + 5.3) quad(at(h0, f + 5.3), at(h1, f + 5.3), at(h1, c), at(h0, c), END);
+        t0 = h1;
+      }
+      if (W > t0) quad(at(t0, f), at(W, f), at(W, c), at(t0, c), END);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const g = new THREE.Group();
+    g.name = 'ext_ug_station';
+    g.add(new THREE.Mesh(geo, MAT.tunnel));
+    // 天井の照明 (ホームの上に 2 列、線路の上に 1 列ずつ、6 m おき)
+    const pf = b.pf, lp = [];
+    for (let k = 1; k + 1 < n; k += 1) for (const t of [0.3, 0.7, -0.45, 1.45]) {
+      const x = pf.left[k][0] + (pf.right[k][0] - pf.left[k][0]) * t, z = pf.left[k][1] + (pf.right[k][1] - pf.left[k][1]) * t;
+      if (k % (t > 0 && t < 1 ? 2 : 3)) continue;
+      lp.push(x, b.cy[k] - 0.05, z, Math.atan2(pf.left[k + 1][0] - pf.left[k][0], pf.left[k + 1][1] - pf.left[k][1]));
+    }
+    const lm = new THREE.InstancedMesh(new THREE.BoxGeometry(0.35, 0.06, 2.4), MAT.lamp, lp.length / 4);
+    const M = new THREE.Matrix4(), Pp = new THREE.Vector3(), Qq = new THREE.Quaternion(), S1 = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i < lp.length / 4; i++) lm.setMatrixAt(i, M.compose(Pp.set(lp[i * 4], lp[i * 4 + 1], lp[i * 4 + 2]), Qq.setFromAxisAngle(Y, lp[i * 4 + 3]), S1));
+    lm.computeBoundingSphere();
+    g.add(lm);
+    return g;
+  }
 
   // ---------- 地図の下絵 (minimap.js・bigmap.js): 全体の粗い絵 (index の overview) と、読み込んだ区間の細かい絵 (1 km 四方ずつ。描いたものを取っておく) ----------
   const mapTiles = new Map();   // "key|s" → canvas
@@ -538,6 +651,14 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     g.lineCap = g.lineJoin = 'round';
     g.strokeStyle = '#777'; g.lineWidth = Math.max(1.5, 3 * s);
     for (const r of ext.routes) { g.beginPath(); r.p.forEach((q, i) => i ? g.lineTo(X(q[0]), Z(q[2])) : g.moveTo(X(q[0]), Z(q[2]))); g.stroke(); }
+    // 地下の区間 (新しい線): 線の色の破線を重ねる
+    ext.routes.forEach((r) => {
+      if (!r.ug || !r.ug.length) return;
+      const l = ext.lines && ext.lines[r.line];
+      g.save(); g.setLineDash([Math.max(3, 12 * s), Math.max(3, 10 * s)]); g.strokeStyle = l && l.band ? l.band[0] : '#a33'; g.lineWidth = Math.max(1.5, 3 * s);
+      for (const [k0, k1] of r.ug) { g.beginPath(); for (let k = k0; k <= k1; k++) k === k0 ? g.moveTo(X(r.p[k][0]), Z(r.p[k][2])) : g.lineTo(X(r.p[k][0]), Z(r.p[k][2])); g.stroke(); }
+      g.restore();
+    });
     g.fillStyle = '#b9b4aa';
     for (const st of ext.stations || []) for (const pf of st.platforms || [st.platform]) { g.beginPath(); [...pf.left, ...pf.right.slice().reverse()].forEach(([x, z], i) => i ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z))); g.closePath(); g.fill(); }
   }

@@ -15,6 +15,10 @@ const RIDE_DIST = 16;     // 乗っている間のカメラの距離 (m)
 const EYE = 2.65;         // 車内の視点の高さ (レールの上面から)
 const LINE_NAME = { tokaido: '東海道線', yokosuka: '横須賀線' };
 const DIR_NAME = { north: '上り 横浜・東京方面', south: '下り 大船方面' };
+// 線の名前・行き先・色の札 (新しい線 = rail_ext の lines は、名前・行き先・帯の色を道筋 r が持つ)
+const lineName = (r) => LINE_NAME[r.line] || r.L.name || r.line;
+const dirName = (r) => r.dirName || DIR_NAME[r.dir] || '';
+const lineTag = (r) => `<span class="tl ${r.line}"${LINE_NAME[r.line] ? '' : ` style="background:${r.L.band ? r.L.band[0] : '#666'}"`}>${lineName(r)}</span>`;
 
 const inRing = (x, z, ring) => {
   let ins = false;
@@ -39,10 +43,11 @@ export class Ride {
 
     // ホーム: 輪郭 (左の縁 → 右の縁を逆に) と、縁の点ごとの高さ。ホームの横に止まる道筋
     // routes: [{ r (道筋), si (r.stops の何番目の駅か) }]
-    const mkPlat = (pf, name) => ({ ring: [...pf.left, ...pf.right.slice().reverse()], pf, name, routes: [] });
+    // sub = 新しい線の駅のホーム (京葉線の東京など) の線の名前。同じ名前の駅 (東京) でも、地図の印は別にする
+    const mkPlat = (pf, name, sub = '') => ({ ring: [...pf.left, ...pf.right.slice().reverse()], pf, name, sub, routes: [] });
     this.plats = rail.platforms.map((pf) => mkPlat(pf, '戸塚'));
     this.nHome = this.plats.length;   // 戸塚のホームの数 (この後ろが延ばした先の駅)
-    for (const st of (ext && ext.stations) || []) for (const pf of st.platforms || [st.platform]) this.plats.push(mkPlat(pf, st.name));   // 駅ごとに複数のホーム (横浜など)
+    for (const st of (ext && ext.stations) || []) for (const pf of st.platforms || [st.platform]) this.plats.push(mkPlat(pf, st.name, st.lineName || ''));   // 駅ごとに複数のホーム (横浜など)
     const P = new THREE.Vector3();
     for (const r of trains.R) {
       r.stops.forEach((st, si) => {
@@ -90,7 +95,7 @@ export class Ride {
       this.stairs.push({ ...down, gate: g });
     }
     // 1 つの改札から 2 つのホームへ行くときは、上り (横浜・東京方面) を F、下り (大船方面) を Q にする
-    const north = (d) => d.plat && d.plat.routes.some((x) => x.r.dir === 'north') ? 0 : 1;
+    const north = (d) => d.plat && d.plat.routes.some((x) => x.r.up) ? 0 : 1;
     for (const g of this.gates) g.downs.sort((a, b) => north(a) - north(b));
 
     // 延ばした先の駅で、ホームが 2 面以上ある所 (横浜): ホームの中央の「のりかえ」の場所 (railext.js の案内板と同じ所 = 縁の点の真ん中 + 1) から、
@@ -103,8 +108,8 @@ export class Ride {
       const xs = group.map((pl) => {
         const pf = pl.pf, k = Math.min(pf.left.length - 2, (pf.left.length >> 1) + 1);
         const x = (pf.left[k][0] + pf.right[k][0]) / 2, z = (pf.left[k][1] + pf.right[k][1]) / 2;
-        const lines = [...new Set(pl.routes.map((q) => LINE_NAME[q.r.line]))], dirs = new Set(pl.routes.map((q) => q.r.dir));
-        const label = lines.join('・') + (dirs.size === 1 ? (dirs.has('north') ? ' 上り' : ' 下り') : '') + 'ホーム';
+        const lines = [...new Set(pl.routes.map((q) => lineName(q.r)))], dirs = new Set(pl.routes.map((q) => q.r.up));
+        const label = lines.join('・') + (dirs.size === 1 ? (dirs.has(true) ? ' 上り' : ' 下り') : '') + 'ホーム';
         return { pl, spot: { x, y: pf.y[k], z }, face: Math.atan2(pf.left[k + 1][0] - pf.left[k][0], pf.left[k + 1][1] - pf.left[k][1]), label, targets: [] };
       });
       for (const a of xs) a.targets = xs.filter((b) => b !== a).slice(0, 2);
@@ -193,10 +198,10 @@ export class Ride {
     if (this.disabled) return [];
     const out = [], seen = new Set();
     for (const pl of this.plats.slice(this.nHome)) {
-      if (seen.has(pl.name)) continue;
-      seen.add(pl.name);
+      if (seen.has(pl.name + '|' + pl.sub)) continue;
+      seen.add(pl.name + '|' + pl.sub);
       const pf = pl.pf, k = Math.max(1, (pf.left.length >> 1) - 3);
-      out.push({ name: pl.name, x: (pf.left[k][0] + pf.right[k][0]) / 2, y: pf.y[k], z: (pf.left[k][1] + pf.right[k][1]) / 2,
+      out.push({ name: pl.name, sub: pl.sub, x: (pf.left[k][0] + pf.right[k][0]) / 2, y: pf.y[k], z: (pf.left[k][1] + pf.right[k][1]) / 2,
         face: Math.atan2(pf.left[k + 1][0] - pf.left[k][0], pf.left[k + 1][1] - pf.left[k][1]) });
     }
     return out;
@@ -322,9 +327,9 @@ export class Ride {
       // 次の電車の案内 (このホームに止まる線ごと)
       const rows = pl.routes.slice().sort((a, b) => this.nextArrive(a.r, a.si, now) - this.nextArrive(b.r, b.si, now)).map(({ r, si }) => {
         const dw = this.dwellAt(r, si, now), w = this.nextArrive(r, si, now);
-        return `<div><span class="tl ${r.line}">${LINE_NAME[r.line]}</span> ${DIR_NAME[r.dir]}　<b>${dw ? '停車中 発車まで ' + mmss(dw.left) : 'あと ' + mmss(w)}</b></div>`;
+        return `<div>${lineTag(r)} ${dirName(r)}　<b>${dw ? '停車中 発車まで ' + mmss(dw.left) : 'あと ' + mmss(w)}</b></div>`;
       });
-      this.setInfo(`<div class="tt">${pl.name}駅 ホーム</div>${rows.join('')}`);
+      this.setInfo(`<div class="tt">${pl.name}駅 ${pl.sub ? pl.sub + ' ' : ''}ホーム</div>${rows.join('')}`);
     } else this.setInfo(null);
 
     // 改札 (自由通路) と、ホームの階段の下
@@ -340,9 +345,9 @@ export class Ride {
       if (xf.pl === pl && Math.hypot(p.x - xf.spot.x, p.z - xf.spot.z) < REACH_XFER) { act = { type: 'xfer', xf }; break; }
     }
 
-    const platName = (d) => d.plat && d.plat.routes.length ? (d.plat.routes.some((x) => x.r.dir === 'north') ? '上り' : '下り') + 'ホーム' : 'ホーム';
+    const platName = (d) => d.plat && d.plat.routes.length ? (d.plat.routes.some((x) => x.r.up) ? '上り' : '下り') + 'ホーム' : 'ホーム';
     if (!act) this.setHint(null);
-    else if (act.type === 'board') this.setHint(`<b>F</b> 乗る　<span class="tl ${act.r.line}">${LINE_NAME[act.r.line]}</span> ${DIR_NAME[act.r.dir]}`, '乗る', null);
+    else if (act.type === 'board') this.setHint(`<b>F</b> 乗る　${lineTag(act.r)} ${dirName(act.r)}`, '乗る', null);
     else if (act.type === 'xfer') {
       const [t0, t1] = act.xf.targets;
       this.setHint(`のりかえ　<b>F</b> ${t0.label}へ` + (t1 ? `　<b>Q</b> ${t1.label}へ` : ''), t0.label + 'へ', t1 ? t1.label + 'へ' : null);
@@ -385,7 +390,7 @@ export class Ride {
     this.setHint(null);
     this.setInfo(null);
     if (this.viewBtn) this.viewBtn.hidden = false;
-    this.say(`${LINE_NAME[r.line]} ${DIR_NAME[r.dir]} に乗りました`, 3);
+    this.say(`${lineName(r)} ${dirName(r)} に乗りました`, 3);
   }
 
   // 降りる: 車両の横の、ホームの側に立つ
@@ -436,8 +441,8 @@ export class Ride {
     if (!api.carPoseT(r, rd.k, now - rd.dep, this.C, this.Q)) return this.endRide();
     // 先頭が道筋の終わりの 30 m 手前に来たら終わり (電車は端で消えるので)
     const t = now - rd.dep, front = api.front(r, t);
-    for (let si = 0; si < r.stops.length; si++) if (r.S[si] < front - 1) rd.last = si;   // 最後に通った (止まった) 駅
-    if (front > r.len - 30) return this.endRide();
+    for (let si = 0; si < r.stops.length; si++) if (r.S[si] <= front + 0.5) rd.last = si;   // 最後に通った (止まっている) 駅 (終点に止まっている間も、その駅)
+    if (front > r.len - 30 && !r.term) return this.endRide();   // 終点に着く道筋 (新しい線) は、止まった後に電車が消えたら終わり (上の carPoseT)
     const p = this.player;
     p.pos.copy(this.C);
     p.model.root.position.copy(this.C);
@@ -448,7 +453,7 @@ export class Ride {
     const nextSi = r.S.findIndex((s) => s > front + 1);
     const where = dw ? `${r.stops[dw.si].name} 停車中` : nextSi >= 0 ? (r.S[nextSi] - front < 700 ? 'まもなく ' : '次は ') + r.stops[nextSi].name
       : rd.last != null ? `${r.stops[rd.last].name}を出ました` : r.line === 'tokaido' ? '東戸塚は通過します' : '';
-    this.setInfo(`<div class="tt"><span class="tl ${r.line}">${LINE_NAME[r.line]}</span> ${DIR_NAME[r.dir]}　${rd.k + 1} 号車</div>`
+    this.setInfo(`<div class="tt">${lineTag(r)} ${dirName(r)}　${rd.k + 1} 号車</div>`
       + `<div>${where}　${left != null ? '発車まで <b>' + mmss(left) + '</b>' : '<b>' + kmh + '</b> km/h'}</div>`);
     this.setHint(`${left != null ? '<b>F</b> 降りる　' : ''}<b>Q</b> ${rd.view === 'out' ? '車内の視点' : '外からの視点'}`, left != null ? '降りる' : null);
     if (left != null && input.pressed('KeyF')) this.alight();
@@ -461,6 +466,16 @@ export class Ride {
     const cam = this.cam, C = this.C;
     if (rd.view === 'out') {
       if (this.interior) this.interior.visible = false;
+      // トンネルの中 (新しい線の地下の区間): 外から回り込むとトンネルの壁の外 (土の中) に出るので、線路の上の、先頭の 14 m 前から電車の前面を見る
+      // (後ろの車両の屋根の上からだと、画面が屋根だけになった)
+      const api = this.api, r = rd.r, t = api.now() - rd.dep, sf = api.front(r, t), sc = sf - (rd.k + 0.5) * api.CAR;
+      if (api.inTunnel(r, sc)) {
+        const A = api.pointAt(r, Math.min(r.len, sf + 14), new THREE.Vector3()), F = api.pointAt(r, Math.max(0, sf - 14), new THREE.Vector3());
+        this.camera.position.set(A.x, A.y + 2.7, A.z);
+        this.camera.lookAt(F.x, F.y + 2.0, F.z);
+        cam.target.set(C.x, C.y + 1.2, C.z);
+        return;
+      }
       cam.update(dt, { x: C.x, y: C.y + 1.2, z: C.z });
       return;
     }
