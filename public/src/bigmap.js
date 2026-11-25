@@ -10,6 +10,7 @@ export class BigMap {
     this.touch = touch; // タッチ操作のとき: ワープは画面のボタンから
     this.target = null; // クリックで選んだワープ先 {x, z}
     this.map = minimap.map;
+    this.minimap = minimap;
     this.B = city.bounds;
     this.start = city.start;
     this.waypoints = city.waypoints || [];
@@ -72,7 +73,7 @@ export class BigMap {
     const r = this.canvas.getBoundingClientRect();
     const mx = clientX - r.left - r.width / 2, my = clientY - r.top - r.height / 2;
     const wx = this.cx + mx / this.scale, wz = this.cz + my / this.scale;
-    this.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, this.scale * k));
+    this.scale = Math.max(this.minScale || MIN_SCALE, Math.min(MAX_SCALE, this.scale * k));
     this.cx = wx - mx / this.scale; this.cz = wz - my / this.scale;
   }
 
@@ -84,6 +85,12 @@ export class BigMap {
     const B = this.B;
     const fit = Math.min(innerWidth / (B.maxX - B.minX), innerHeight / (B.maxZ - B.minZ)) * 0.9;
     if (!this.zoomed) { this.scale = Math.max(fit, 0.6); this.zoomed = true; }
+    // 線路の延長 (横浜など、地図の外の駅) まで 1 画面に収まるところまで縮小できる
+    const E = this.minimap.ext;
+    if (E) {
+      const x0 = Math.min(B.minX, E.bounds.minX), x1 = Math.max(B.maxX, E.bounds.maxX), z0 = Math.min(B.minZ, E.bounds.minZ), z1 = Math.max(B.maxZ, E.bounds.maxZ);
+      this.minScale = Math.min(MIN_SCALE, Math.min(innerWidth / (x1 - x0), innerHeight / (z1 - z0)) * 0.9);
+    }
     this.cx = px; this.cz = pz;
   }
 
@@ -133,6 +140,8 @@ export class BigMap {
     c.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     c.fillStyle = '#1a2130'; c.fillRect(0, 0, W, H);
     c.imageSmoothingEnabled = this.scale < S;
+    const E = this.minimap.ext;   // 線路の延長 (地図の範囲の外。minimap.js の setExt)
+    if (E) E.draw(c, (x) => this.sx(x), (z) => this.sy(z), this.scale, [this.cx - W / 2 / this.scale, this.cz - H / 2 / this.scale, this.cx + W / 2 / this.scale, this.cz + H / 2 / this.scale]);
     c.drawImage(this.map, 0, 0, this.map.width, this.map.height,
       this.sx(B.minX), this.sy(B.minZ), this.map.width / S * this.scale, this.map.height / S * this.scale);
 
@@ -172,7 +181,7 @@ export class BigMap {
     // イベントの場所 (名前つき)
     for (const e of this.events) {
       const x = this.sx(e.x), y = this.sy(e.z);
-      drawEventMark(c, x, y, 11, e.color, e.active());
+      drawEventMark(c, x, y, 11, e.color, e.active(), e.glyph);
       c.font = 'bold 13px "Yu Gothic UI", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
       halo(c, e.name, x, y + 24, e.color);
     }

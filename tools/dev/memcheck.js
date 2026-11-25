@@ -1,11 +1,15 @@
 // メモリの内訳を出す (スマホでタブが落ちる原因の切り分け用)。
 // ゲームをヘッドレスブラウザで開き、メッシュごとの頂点データの大きさ・テクスチャの大きさ・JS のヒープを表示する。
-// 使い方: node tools/dev/memcheck.js [URL に付ける文字列。例 "?touch"]   (準備は shot.js と同じ)
+// 使い方: node tools/dev/memcheck.js [URL に付ける文字列。例 "?touch"] [--at x,z,y] [--root <public の親のフォルダ>]   (準備は shot.js と同じ)
+//   --at   プレイヤーをその場所に置いてから測る (例: 横浜駅のホーム 7987,-7151,-10)。線路の延長の区間を読み終わるまで待つ
+//   --root 別のフォルダ (git worktree で作った修正前など) の public を開く。比べるとき用
+//   最後に「線路の延長」の内訳 (rail_ext の下のメッシュ・地図の下絵の canvas) も出す
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
-const ROOT = path.resolve(__dirname, '..', '..'), PUBLIC = path.join(ROOT, 'public'), THREE_DIR = path.join(__dirname, '.cache', 'package');
+const ARGS = process.argv.slice(2), opt = (k) => { const i = ARGS.indexOf(k); return i < 0 ? null : ARGS.splice(i, 2)[1]; };
+const AT = opt('--at'), ROOT = path.resolve(opt('--root') || path.join(__dirname, '..', '..')), PUBLIC = path.join(ROOT, 'public'), THREE_DIR = path.join(__dirname, '.cache', 'package');
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json' };
 (async () => {
   const server = http.createServer((req, res) => {
@@ -24,13 +28,19 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     r.fulfill({ path: path.join(THREE_DIR, r.request().url().replace('https://cdn.jsdelivr.net/npm/three@0.170.0/', '')), contentType: 'application/javascript' }));
   await page.route('https://cdn.jsdelivr.net/npm/@pixiv/**', r => fs.existsSync(vrmLocal) ? r.fulfill({ path: vrmLocal, contentType: 'application/javascript' }) : r.abort());
   await page.route('**/src/main.js', async r => {
-    const t = (await (await r.fetch()).text()).replace('const qs = new URLSearchParams', 'window.__g = { player, cam, scene, renderer };\n  const qs = new URLSearchParams');
+    const t = (await (await r.fetch()).text()).replace('const qs = new URLSearchParams', 'window.__g = { player, cam, scene, renderer, minimap };\n  const qs = new URLSearchParams');
     r.fulfill({ body: t, contentType: 'application/javascript' });
   });
   page.on('pageerror', e => console.log('ERR', e.message));
-  await page.goto(`http://127.0.0.1:${server.address().port}/` + (process.argv[2] || ''), { timeout: 300000 });
+  await page.goto(`http://127.0.0.1:${server.address().port}/` + (ARGS[0] || ''), { timeout: 300000 });
   await page.waitForFunction(() => window.__g && document.getElementById('status').textContent === '準備完了', null, { timeout: 300000 });
   await page.evaluate(() => window.__g.player.model.ready);
+  if (AT) {
+    const [x, z, y] = AT.split(',').map(Number);
+    await page.evaluate(([x, z, y]) => { const p = window.__g.player; p.pos.set(x, y, z); if (p.vel) p.vel.set(0, 0, 0); }, [x, z, y]);
+  }
+  const frames = (n) => page.evaluate((n) => new Promise((r) => { let k = 0; const f = () => (++k >= n ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
+  for (let k = 0; k < 300; k++) { await frames(2); if (await page.evaluate(() => !window.__railext || window.__railext.stats.idle)) break; }
   await page.waitForTimeout(8000);
   await page.evaluate(() => { if (window.gc) { gc(); gc(); } });
   console.log(await page.evaluate(() => {
@@ -56,6 +66,21 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     for (const x of T.slice(0, 0)) out.push(`  ${MB(x.b).padStart(8)}  ${x.w}x${x.h}  ${x.name}`);
     out.push('== three.js: ' + JSON.stringify(g.renderer.info.memory) + '  JS ヒープ: ' + MB(performance.memory.usedJSHeapSize) + ' (全体 ' + MB(performance.memory.totalJSHeapSize) + ')');
     const c = g.renderer.domElement; out.push(`== 画面: ${c.width}x${c.height}  影: ${g.renderer.shadowMap.enabled}`);
+    // 線路の延長: rail_ext の下のメッシュの頂点データと、地図の下絵 (修正前は 1 枚の大きな canvas、修正後は全体の絵 + 区間の絵)
+    const re = g.scene.getObjectByName('rail_ext');
+    if (re) {
+      let b = 0, gpu = 0, n = 0, inst = 0; const seen = new Set();
+      re.traverse((o) => { if (o.isInstancedMesh) inst += o.count * 64; if (!o.geometry || seen.has(o.geometry)) return; seen.add(o.geometry); n++;
+        for (const k in o.geometry.attributes) { const at = o.geometry.attributes[k]; b += at.array ? at.array.byteLength : 0; gpu += at.count * at.itemSize * 4; }
+        if (o.geometry.index) { const at = o.geometry.index; b += at.array ? at.array.byteLength : 0; gpu += at.count * 4; }
+      });
+      const E = g.minimap && g.minimap.ext; let cv = 0;
+      if (E && E.canvas) cv = E.canvas.width * E.canvas.height * 4;
+      if (E && E.mem) cv = E.mem();
+      const st = window.__railext ? window.__railext.stats : null;
+      out.push(`== 線路の延長: メッシュ ${n} 個、頂点データ JS ${MB(b)} / GPU ${MB(gpu)}、インスタンス ${MB(inst)}、地図の下絵 ${MB(cv)}` + (st ? `、区間 ${st.loaded.length} 個 (読んだ計 ${MB(st.bytes)})` : ''));
+      out.push(`== 位置 ${g.player.pos.x.toFixed(0)},${g.player.pos.z.toFixed(0)}`);
+    }
     return out.join('\n');
   }));
   await browser.close(); server.close();

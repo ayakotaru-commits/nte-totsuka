@@ -16,6 +16,8 @@ import { Waypoints } from './waypoint.js';
 import { BigMap } from './bigmap.js';
 import { loadDetail } from './detail/index.js'; // detail (お試し)
 import { DoorControl } from './doors.js';
+import { Ride } from './ride.js';
+import { getBridges } from './bridges.js';
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
 import { setTerrain, setCover, setLowMemory } from './terrain.js';
@@ -53,12 +55,14 @@ async function main() {
   const coverP = getJSON('data/cover.json', !QS.has('nocover'));      // 地面の種類 (tools/lidar_cover.py。見比べ用に ?nocover で使わない)
   const wallsP = getJSON('data/walls.json', QS.has('walls'));         // 擁壁 (tools/lidar_walls.py --osm。見た目が不十分なので ?walls のときだけ)
   const propsP = getJSON('data/props.json');                          // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py)
-  const [city, terrain, cover, walls, props] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP]);
+  const extP = getJSON('data/rail_ext/index.json', !QS.has('noext')); // 線路の延長 (東京駅まで。tools/rail_ext.py。?noext で使わない)。地形・建物は区間ごとに後から読む (detail/railext.js)
+  const [city, terrain, cover, walls, props, ext] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP, extP]);
   if (terrain) setTerrain(terrain);
   if (cover) setCover(cover);
   if (walls) city.walls = walls.walls;
 
-  $('credit').textContent = '地図データ ' + city.attribution;
+  // 線路の延長 (地図の外) の出典も足す (PLATEAU 川崎市・東京都 23 区など。index.json の source)
+  $('credit').textContent = '地図データ ' + city.attribution + (ext && ext.source ? ' / 線路の延長: ' + ext.source : '');
 
   // ---- renderer / scene ----
   // 重さの切り分け用 (URL): ?pr=1 解像度の倍率, ?log 対数深度バッファを使う (標準は使わない。重いので), ?noaa アンチエイリアス無し, ?noshadow 影なし
@@ -106,7 +110,15 @@ async function main() {
   await new Promise(r => setTimeout(r, 0));
   // 外観を別に描く建物・道 (hide。神社の社殿と参道 = tools/shrine.py → shrine.js) は、街の形・当たり判定・階段から外す (ミニマップには残す)
   const shown = city.buildings.some((b) => b.hide) || city.roads.some((r) => r.hide) ? { ...city, buildings: city.buildings.filter((b) => !b.hide), roads: city.roads.filter((r) => !r.hide) } : city;
-  const world = new World(shown.buildings, city.bounds);
+  // ホームの上の屋根データ (車庫・駐輪場と同じ「屋根だけ」の建物) は、ホームの屋根を detail/station.js が作るときは描かない (city.js)。
+  // 当たり判定からも外す (残すと、見えない高さ 2 m ほどの板がホームの上のキャラを押し出す)
+  const platRings = props && props.rail ? (city.areas || []).filter((a) => a.kind === 'platform').map((a) => a.outer) : [];
+  const overPlatform = (b) => {
+    if (b.style !== 'carport' || !platRings.length) return false;
+    const cx = b.outer.reduce((t, q) => t + q[0], 0) / b.outer.length, cz = b.outer.reduce((t, q) => t + q[1], 0) / b.outer.length;
+    return platRings.some((r) => { let ins = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { if ((r[i][1] > cz) !== (r[j][1] > cz) && cx < (r[j][0] - r[i][0]) * (cz - r[i][1]) / (r[j][1] - r[i][1]) + r[i][0]) ins = !ins; } return ins; });
+  };
+  const world = new World(platRings.length ? shown.buildings.filter((b) => !overPlatform(b)) : shown.buildings, city.bounds);
   const t0 = performance.now();
   const built = buildCity(shown, world, props);
   scene.add(built.group);
@@ -117,7 +129,7 @@ async function main() {
   }
   if (props) world.addColliders({ circle: props.colliders.tree }, true); // 木の幹 (V キーに関係なく常に有効)
   const shrineG = props ? buildShrines(props.shrines, scene, world) : null; // 神社の社殿 (shrine.js。V キーに関係なく描く)
-  const detail = await loadDetail({ scene, city: shown, world, built, props }); built.windowMats.push(...detail.emissive); // detail (お試し)
+  const detail = await loadDetail({ scene, city: shown, world, built, props, ext }); built.windowMats.push(...detail.emissive); // detail (お試し)
   if (shrineG) built.windowMats.push(...(shrineG.userData.emissive || [])); // 灯籠・提灯の明かり (夜に光る。time.js)
   const doors = new DoorControl(world); // 開け閉めできる扉 (時計の棟。形は detail が作って登録する)
 
@@ -131,9 +143,18 @@ async function main() {
   let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
   const minimap = new Minimap(city, $('minimap'));
+  if (detail.railExt) minimap.setExt(detail.railExt.map);   // 線路の延長 (東戸塚など) も地図に描く (読み込んだ区間は細かく)
   const labels = new Labels(city.pois, scene);
   // マップで選んだ場所へワープ (建物の中なら一番近い屋外)。向きはそのまま
+  let ride = null;                                              // 電車の乗り降り (下で作る)
   const warpTo = (x, z) => {
+    ride?.cancel();
+    // 電車の乗り場 (改札) の印を選んだとき: 下の地面ではなく、デッキの上の改札の前に立つ
+    const gate = ride && !ride.disabled ? ride.gates.find((g) => Math.hypot(g.top.x - x, g.top.z - z) < 3) : null;
+    if (gate) { ride.place(gate.top.x, gate.top.y, gate.top.z, -Math.PI / 2); toggleMap(); return; }
+    // 延ばした先の駅 (東戸塚・保土ケ谷・横浜) の印を選んだとき: その駅のホームの上に立つ (地図の外。改札は無いのでホームへ直接)
+    const sp = ride ? ride.stationSpots().find((q) => Math.hypot(q.x - x, q.z - z) < 3) : null;
+    if (sp) { ride.place(sp.x, sp.y, sp.z, sp.face); toggleMap(); return; }
     const p = findFree(world, x, z);
     player.teleport(p.x, p.z);
     cam.update(0, player.pos, true);
@@ -150,6 +171,8 @@ async function main() {
   const traffic = new Traffic(scene, props, { low: TOUCH, cap: Q.has('traffic') ? +Q.get('traffic') : undefined });
   if (Q.has('notraffic')) traffic.setVisible(false);
   window.__traffic = traffic; // 確認用
+  // 電車に乗る (ride.js。改札・ホーム・乗り降り)。?noride で無効
+  ride = new Ride({ trains: Q.has('noride') ? null : detail.trains, props, world, player, cam, camera, bridges: getBridges(), scene, ext });
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
   const editor = new Editor({ scene, camera, renderer, world, built, cam, player, streetView });
 
@@ -159,7 +182,7 @@ async function main() {
   // city.start.face があればその地点を向く。なければ建物から離れる向き
   const spawnFacing = st.face ? Math.atan2(st.face[0] - spawn.x, st.face[1] - spawn.z)
     : Math.hypot(spawn.x - st.x, spawn.z - st.z) > 0.5 ? Math.atan2(spawn.x - st.x, spawn.z - st.z) : Math.PI / 2;
-  const respawn = () => { player.teleport(spawn.x, spawn.z); player.facing = spawnFacing; cam.yaw = spawnFacing + Math.PI; cam.update(0, player.pos, true); };
+  const respawn = () => { ride?.cancel(); player.teleport(spawn.x, spawn.z); player.facing = spawnFacing; cam.yaw = spawnFacing + Math.PI; cam.update(0, player.pos, true); };
   respawn();
   // 修正ツールで保存した後の再読み込み: 位置と視点、修正モードを復元
   const restore = Editor.takeRestore();
@@ -198,6 +221,10 @@ async function main() {
     { name: 'うな○ー大量発生クエスト', x: SWARM_SITE.center[0], z: SWARM_SITE.center[1], color: '#2f9e64', active: () => swarm.running, off: swarm.disabled },
     { name: 'リズム地獄(八坂神社)', x: RHYTHM_SITE.me[0], z: RHYTHM_SITE.me[1], color: '#d23c34', active: () => rhythm.playing, off: rhythm.disabled },
     { name: 'プロジェクトセマイ ワンルームステージ！', x: ARCADE_SITE.center[0], z: ARCADE_SITE.center[1], color: '#ff6fae', active: () => arcade.active, off: arcade.disabled },
+    // 電車の乗り場 (戸塚駅の改札 = 東口のデッキが駅舎に入る所。ride.js)。印を選んでワープすると改札の前に立つ (warpTo)
+    ...(!ride.disabled && ride.gates.length ? [{ name: '電車の乗り場（戸塚駅 改札）', x: ride.gates[0].top.x, z: ride.gates[0].top.z, color: '#1f5fae', glyph: '電', active: () => !!ride.riding }] : []),
+    // 延ばした先の駅 (rail_ext.json の stations)。印を選んでワープすると、その駅のホームの上に立つ (warpTo)
+    ...ride.stationSpots().map((q) => ({ name: `${q.name}駅（ホーム）`, x: q.x, z: q.z, color: '#1f5fae', glyph: '電', active: () => false })),
   ].filter((e) => !e.off);
   minimap.events = bigmap.events = EVENTS;
 
@@ -319,8 +346,12 @@ async function main() {
       swarm.update(dt, inp);             // イベント (受けるか聞く表示の Y / N も、押した瞬間を player より先に見る)
       rhythm.update(dt, inp);            // イベント「お札まき」(同上。曲の間のカメラもここで決めるので、cam.update の後でもう一度)
       arcade.update(dt, input);          // イベント「ゲームセンター リズムステージ」(同上)
-      for (let i = 0; i < n; i++) { player.update(dt / n, inp, cam); if (n > 1) input.endFrame(); }
-      cam.update(dt, player.pos, false, player);
+      ride.update(dt, inp);              // 電車の乗り降り (F。乗っている間はキャラを動かさない)
+      if (ride.riding) ride.view(dt);
+      else {
+        for (let i = 0; i < n; i++) { player.update(dt / n, inp, cam); if (n > 1) input.endFrame(); }
+        cam.update(dt, player.pos, false, player);
+      }
       if (!menu.open && !arcade.active && !rhythm.playing) shops.update(dt); // 洋服屋の入口
       if (rhythm.playing) rhythm.view();
     }
@@ -330,6 +361,7 @@ async function main() {
     if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, tod.cur.win);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
+    detail.railExt?.update(camera.position.x, camera.position.z); // 線路の延長: カメラの近くの区間を読み込む・遠い区間を捨てる
 
     // 影は常にプレイヤー周辺
     sun.target.position.copy(player.pos);
@@ -341,8 +373,19 @@ async function main() {
     bigmap.draw(player.pos.x, player.pos.z, player.facing);
     if ((placeTimer -= dt) <= 0) {
       placeTimer = 0.5;
-      const p = labels.nearest(player.pos.x, player.pos.z);
-      $('place').textContent = p ? p.label + ' 付近' : '戸塚';
+      const B = city.bounds, px = player.pos.x, pz = player.pos.z;
+      if (px < B.minX || px > B.maxX || pz < B.minZ || pz > B.maxZ) { // 地図の外 (線路の延長。rail_ext.json)
+        const sts = (ext && ext.stations) || [], dist = (q) => Math.hypot(px - q.center[0], pz - q.center[1]);
+        const st = sts.find((q) => dist(q) < 400);
+        const nearest = sts.reduce((a, q) => (!a || dist(q) < dist(a) ? q : a), null);
+        $('place').textContent = st ? st.name + '駅 付近' : '線路沿い';
+        // 市・区は駅ごと (rail_ext_config.json の city・ward)。駅の間は、いちばん近い駅の市だけ
+        $('area').textContent = st ? (st.city || '横浜市') + (st.ward || '') : (nearest && nearest.city) || '横浜市';
+      } else {
+        $('area').textContent = '横浜市戸塚区';
+        const p = labels.nearest(px, pz);
+        $('place').textContent = p ? p.label + ' 付近' : '戸塚';
+      }
     }
 
     if (!arcade.active) { look.render(); labelRenderer.render(scene, camera); } // ゲーム画面の間は街を描かない (画面が全部おおわれるので、軽くなる)

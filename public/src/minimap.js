@@ -56,6 +56,10 @@ export class Minimap {
     this.map = m;
   }
 
+  // 線路の延長 (data/rail_ext/) の下絵。地図の範囲の外 (東戸塚など) で自分の位置が分かるように。
+  // E = detail/railext.js の map ({ bounds, draw })。全体の粗い絵と、読み込んだ区間の細かい絵 (建物・道路・線路・ホーム) を draw が描く。大きい地図 (bigmap.js) も this.ext を使う
+  setExt(E) { this.ext = E || null; }
+
   // ワールド上の相対ベクトル (dx, dz) → ミニマップ画面上の座標 (中心基準)
   toScreen(dx, dz, yaw) {
     const c = Math.cos(yaw), s = Math.sin(yaw);
@@ -73,6 +77,8 @@ export class Minimap {
     c.fillStyle = '#d8d4cb'; c.fillRect(0, 0, W, H);
     c.translate(R, R);
     c.rotate(yaw);
+    const E = this.ext, r = R / ZOOM;
+    if (E) E.draw(c, (x) => (x - px) * ZOOM, (z) => (z - pz) * ZOOM, ZOOM, [px - r, pz - r, px + r, pz + r]);
     c.scale(ZOOM / S, ZOOM / S);
     c.drawImage(this.map, -(px - B.minX) * S, -(pz - B.minZ) * S);
     c.restore();
@@ -94,7 +100,7 @@ export class Minimap {
     for (const e of this.events) {
       const [sx, sy] = this.toScreen(e.x - px, e.z - pz, yaw);
       if (Math.hypot(sx, sy) > R - 9) continue;
-      drawEventMark(c, R + sx, R + sy, 7, e.color, e.active());
+      drawEventMark(c, R + sx, R + sy, 7, e.color, e.active(), e.glyph);
     }
 
     // ほかのプレイヤー (戦闘オンの人は赤)

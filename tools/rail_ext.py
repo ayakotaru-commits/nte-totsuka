@@ -1,0 +1,1140 @@
+"""線路を地図の端から先の駅まで延ばす (電車で東戸塚などへ行けるようにする)。延ばす先と駅は data/rail_ext_config.json。
+
+使い方: python tools/rail_ext.py            (初回は国土地理院のタイル・PLATEAU・標高タイルを取る。数分)
+        python tools/rail_ext.py --find 保土ケ谷 35.4436,139.5960   (駅の位置を調べる: 目安の緯度経度のまわり 2 km の注記と「駅部分」。設定に書く lat/lon が分かる)
+        python tools/rail_ext.py --plot out.png                    (今の data/raw/rail_ext_full.json の平面図: 道筋・ホーム・建物・道路・坑口。確かめる用)
+        python tools/rail_ext.py --routes out.json                 (道筋と駅だけを作って書き出す。地形・建物は作らない。たどり方・ホームを確かめる用、1〜2 分)
+出力:   data/raw/rail_ext_full.json (全部入り。git に入れない) → tools/rail_ext_split.py で public/data/rail_ext/ (index.json と 1 km 四方の区間ごとのファイル) に分ける。
+        下の形は全部入りのもの (区間のファイルの形は rail_ext_split.py の先頭)
+  routes:   [{route: props.json の rail.routes の番号, line, at: "end" (道筋の終わりに足す) | "start" (始めに足す),
+              p: [[x, y, z], ...] (約 5 m おき。y = レールの上面。"start" は延長の先から地図の端へ向かう順 = そのまま前につなげる順),
+              stops: [{s: 止まる位置 (先頭の、p の始点からの距離 m), name: 駅名}]}]
+  stations: [{name, kana, roman, ward, platforms: [{left, right, y} (戸塚の rail.platforms と同じ形), ...], canopies: [同じ形, ...] (ホームごと), center: [x, z]}]
+  terrain:  線路の近く (BAND m 以内) の細かい地形 {step, x0, z0, nx, nz, rows: [[j, i0, h(cm), ...], ...]}
+  coarse:   その外の粗い地形 {step, x0, z0, nx, nz, h: [cm, ...]} (地図の範囲の中も含めて全部)
+  buildings: 線路の近くの建物 [[[[x, z], ...] 輪郭, 足元の y, 高さ, 下端 (線路をまたぐ駅舎など。0 = 地面から)], ...]
+  poles:    架線柱 [[x, y, z, 向き], ...]
+  roads:    道路 [[幅 m, x0, z0, x1, z1, ...], ...] (国土地理院の道路中心線。高架は除く)
+  trees:    木 [[x, y, z, 大きさ], ...] (建物・線路・道路から離れた所に、決まりで散らす。実物の位置ではない)
+  portals:  トンネルの坑口 [[x, y (レールの下), z, 向き (トンネルの外へ), 幅], ...]
+出典: 国土地理院ベクトルタイル (鉄道中心線・軌道の中心線・道路中心線)、国土地理院 標高タイル、国土交通省 PLATEAU 横浜市 (2024)・川崎市 (2022)・東京都 23 区 (2020)
+線路の高さは標高タイル (地表) + 0.55 m を均したもの。橋・トンネルの区間 (鉄道中心線の種類) は両端を直線で結び、勾配は 2.5 % まで。
+"""
+import json
+import math
+import pathlib
+import time
+import urllib.error
+import urllib.request
+
+import numpy as np
+
+import fetch_dem
+from config import BOUNDS, ORIGIN_LAT, ORIGIN_LON, _M_LAT, _M_LON
+from fetch_gsi import URL as GSI_URL, UA, tile_xy, to_latlon
+from fetch_plateau import ZIP_URL, mesh3
+
+# PLATEAU の建物 (市ごとの CityGML の zip。中のメッシュごとのファイルだけを読む)
+PLATEAU_SRC = [
+    ("yokohama", ZIP_URL),   # 横浜市 2024
+    ("kawasaki", "https://assets.cms.plateau.reearth.io/assets/40/25bd0a-f174-4f55-a9bd-0e6868ece0ae/14130_kawasaki-shi_city_2022_citygml_4_op.zip"),   # 川崎市 2022
+    ("tokyo23", "https://assets.cms.plateau.reearth.io/assets/ec/d51c64-a47f-4a56-aa64-340d1d3c720b/13100_tokyo23-ku_2020_citygml_4_2_op.zip"),   # 東京都 23 区 2020
+]
+from mvt import decode
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+CACHE = ROOT / "data" / "raw" / "gsi_ext"
+PCACHE = ROOT / "data" / "raw" / "plateau"
+OUT = ROOT / "data" / "raw" / "rail_ext_full.json"   # 全部入り (git に入れない)。rail_ext_split.py が public/data/rail_ext/ に区間ごとに分ける
+
+CONFIG = ROOT / "data" / "rail_ext_config.json"
+MAX_LEN = 45000.0      # たどる長さの上限 (m)。東京まで約 41 km
+LOOK = 2000.0          # 分かれ道で試しにたどる長さ (m)。行き止まりの留置線を選ばないため
+MATCH_IN = 15.0        # 道筋の端から地図の内側へこの距離の点で、国土地理院の軌道と突き合わせる
+TUNNEL_D = 7.0         # 地形がレールの下面よりこれ以上高い所をトンネルとみなす (坑口を置く)
+STEP = 5.0             # 道筋の点の間隔
+RAIL_TOP = 0.55        # 地面からのレールの上面 (build_props.py と同じ)
+BLEND = 150.0          # 地図の端の道筋 (OSM) と国土地理院の線路の、位置のずれを均す長さ
+BAND = 350.0           # 細かい地形・建物を作る、線路からの距離
+T_STEP = 5.0           # 細かい地形の間隔
+C_STEP = 25.0          # 粗い地形の間隔
+C_PAD = 2500.0         # 粗い地形の、線路からの広さ (かすみで見えなくなる距離。look.js の far)
+PLAT_LEN = 310.0       # ホームの長さ (15 両)
+PLAT_Y = 1.0           # ホームの上面 (レールの上面から)
+GRADE = 0.025          # 線路の勾配の上限
+CAR, CARS = 20.0, {"tokaido": 15, "yokosuka": 15, "freight": 20}
+
+REF = json.loads((ROOT / "public" / "data" / "terrain.json").read_text())["ref"]
+
+
+def to_local(lat, lon):
+    return (lon - ORIGIN_LON) * _M_LON, (ORIGIN_LAT - lat) * _M_LAT
+
+
+def to_ll(x, z):
+    return ORIGIN_LAT - z / _M_LAT, ORIGIN_LON + x / _M_LON
+
+
+def dem(x, z):
+    v = fetch_dem.elev(*to_ll(x, z))
+    return None if v is None else v - REF
+
+
+def dem0(x, z):
+    """dem の値。標高タイルに値の無い所 (海) は海面 (標高 0 m)"""
+    v = dem(x, z)
+    return -REF if v is None else v
+
+
+def inside_map(x, z, m=0.0):
+    return BOUNDS["minX"] + m <= x <= BOUNDS["maxX"] - m and BOUNDS["minZ"] + m <= z <= BOUNDS["maxZ"] - m
+
+
+# ---------- 国土地理院ベクトルタイル: 軌道の中心線 (RailTrCL) と鉄道中心線 (RailCL) ----------
+def clip_line(pts, ext):
+    """タイルの外 (のりしろ) を除いた線の部分の列"""
+    out, cur = [], []
+    ins = lambda p: 0 <= p[0] <= ext and 0 <= p[1] <= ext
+    for i, p in enumerate(pts):
+        if ins(p):
+            if not cur and i > 0:
+                cur.append(edge_cross(pts[i - 1], p, ext))
+            cur.append(p)
+        else:
+            if cur:
+                cur.append(edge_cross(p, pts[i - 1], ext))
+                out.append(cur)
+                cur = []
+    if len(cur) >= 2:
+        out.append(cur)
+    return [c for c in out if len(c) >= 2]
+
+
+def edge_cross(a, b, ext):
+    """a (外) から b (中) へ進む線分が、タイルの枠と交わる点"""
+    t = 0.0
+    for k in (0, 1):
+        for lim in (0, ext):
+            d = b[k] - a[k]
+            if d and (a[k] - lim) * (b[k] - lim) < 0:
+                t = max(t, (lim - a[k]) / d)
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+
+
+def bbox_tiles(bbox):
+    LAT0, LON0, LAT1, LON1 = bbox
+    x0, y0 = tile_xy(LAT1, LON0, 16)
+    x1, y1 = tile_xy(LAT0, LON1, 16)
+    return {(tx, ty) for ty in range(int(y0), int(y1) + 1) for tx in range(int(x0), int(x1) + 1)}
+
+
+def load_gsi(bbox=None, tiles=None):
+    """bbox = (南, 西, 北, 東) の範囲 (または tiles = {(tx, ty)}) のタイルから、軌道の中心線・鉄道中心線・道路中心線"""
+    CACHE.mkdir(parents=True, exist_ok=True)
+    if tiles is None:
+        tiles = bbox_tiles(bbox)
+    tracks, lines, roads = [], [], []
+    for ty, tx in sorted((ty, tx) for tx, ty in tiles):
+        p = CACHE / f"16_{tx}_{ty}.pbf"
+        if not p.exists():
+            try:
+                with urllib.request.urlopen(urllib.request.Request(GSI_URL.format(z=16, x=tx, y=ty), headers=UA), timeout=60) as r:
+                    p.write_bytes(r.read())
+            except urllib.error.HTTPError as e:   # 海の上など、地物の無いタイルは 404
+                if e.code != 404:
+                    raise
+                p.write_bytes(b"")
+            time.sleep(0.05)
+        raw = p.read_bytes()
+        L = decode(raw) if raw else {}
+        for name, dst in (("RailTrCL", tracks), ("RailCL", lines), ("RdCL", roads)):
+            lay = L.get(name)
+            if not lay:
+                continue
+            ext = lay["extent"]
+            for f in lay["features"]:
+                if f["type"] != 2:
+                    continue
+                for g in f["geom"]:
+                    for part in clip_line(g, ext):
+                        pts = [to_local(*to_latlon(tx + a / ext, ty + b / ext, 16)) for a, b in part]
+                        dst.append({"props": f["props"], "pts": pts})
+    return tracks, lines, roads
+
+
+def join_tracks(tracks):
+    """線分の索引 (5 m 四方の升目)。タイルの境目では、隣のタイルの線と端点でつながらず 20 m ほど重なるので、端点ではなく線の近さでつなぐ"""
+    grid = {}
+    for i, t in enumerate(tracks):
+        P = t["pts"]
+        for k in range(len(P) - 1):
+            (ax, az), (bx, bz) = P[k], P[k + 1]
+            for gx in range(int(min(ax, bx) // 5) - 1, int(max(ax, bx) // 5) + 2):
+                for gz in range(int(min(az, bz) // 5) - 1, int(max(az, bz) // 5) + 2):
+                    grid.setdefault((gx, gz), []).append((i, k))
+    return grid
+
+
+def follow(tracks, grid, start_i, start_k, heading, look=LOOK, vias=()):
+    """軌道 start_i の点 start_k から heading の向きへたどった点の列。線の終わりでは、終わりの点から 1 m 以内を通る別の線
+    (向きのそろったもの) に乗り移る。分かれ道では、それぞれ look m 先まで試しにたどり、行き止まり (留置線など) にならない線のうち
+    いちばんまっすぐなもの (品川駅の北で、下り線が札の辻の留置線に入って止まった)"""
+    t = tracks[start_i]["pts"]
+    a, b = t[start_k], t[min(start_k + 1, len(t) - 1)]
+    fwd = (b[0] - a[0]) * heading[0] + (b[1] - a[1]) * heading[1] > 0
+    path = list(t[start_k + 1:]) if fwd else list(reversed(t[:start_k + 1]))
+    path.insert(0, a if fwd else b)
+    return extend(tracks, grid, path, {start_i}, MAX_LEN, look, vias)
+
+
+def path_len(path, i0=0):
+    return sum(math.hypot(path[i + 1][0] - path[i][0], path[i + 1][1] - path[i][1]) for i in range(i0, len(path) - 1))
+
+
+def next_tracks(tracks, grid, path, used):
+    """今の終わりから乗り移れる線の候補 [(点数, j, k, u, 向き)] (線ごとにいちばん点数の高い線分)。
+    1 m 以内に無ければ、タイルの境目のすき間を越えた先の 1 本"""
+    tail = path[-1]
+    dx, dz = tail[0] - path[-2][0], tail[1] - path[-2][1]
+    L = math.hypot(dx, dz) or 1
+    cands = {}
+    for j, k in grid.get((int(tail[0] // 5), int(tail[1] // 5)), []):
+        if j in used:
+            continue
+        P = tracks[j]["pts"]
+        (ax, az), (bx, bz) = P[k], P[k + 1]
+        ex, ez = bx - ax, bz - az
+        l2 = ex * ex + ez * ez
+        if l2 < 1e-6:
+            continue
+        u = max(0.0, min(1.0, ((tail[0] - ax) * ex + (tail[1] - az) * ez) / l2))
+        d = math.hypot(tail[0] - ax - ex * u, tail[1] - az - ez * u)
+        if d > 1.0:
+            continue
+        cos = (dx * ex + dz * ez) / L / math.sqrt(l2)
+        if abs(cos) < math.cos(math.radians(20)):
+            continue
+        score = abs(cos) - d * 0.1
+        if j not in cands or score > cands[j][0]:
+            cands[j] = (score, j, k, u, cos > 0)
+    if cands:
+        return sorted(cands.values(), key=lambda c: -c[0])
+    # タイルの境目のすき間: 60 m 先までの、今の向きの延長線から 1.5 m (+ 先へ行くほど少し広く) 以内の線
+    best = None
+    ux, uz = dx / L, dz / L
+    for gx in range(int(tail[0] // 5) - 12, int(tail[0] // 5) + 13):
+        for gz in range(int(tail[1] // 5) - 12, int(tail[1] // 5) + 13):
+            for j, k in grid.get((gx, gz), []):
+                if j in used:
+                    continue
+                P = tracks[j]["pts"]
+                for kk in (k, k + 1):
+                    qx, qz = P[kk][0] - tail[0], P[kk][1] - tail[1]
+                    along, lat = qx * ux + qz * uz, abs(-qx * uz + qz * ux)
+                    if 0.5 < along < 60 and lat < 1.5 + along * 0.02:
+                        ex, ez = P[k + 1][0] - P[k][0], P[k + 1][1] - P[k][1]
+                        el = math.hypot(ex, ez) or 1
+                        c = (ex * ux + ez * uz) / el
+                        if abs(c) > math.cos(math.radians(20)) and (best is None or lat + along * 0.01 < best[0]):
+                            best = (lat + along * 0.01, j, k, 0.0, c > 0)
+    return [best] if best else []
+
+
+def take(tracks, path, used, cand):
+    """候補 cand の線に乗り移る (path・used を書き換える)"""
+    tail = path[-1]
+    dx, dz = tail[0] - path[-2][0], tail[1] - path[-2][1]
+    L = math.hypot(dx, dz) or 1
+    _, j, k, u, f = cand
+    used.add(j)
+    P = tracks[j]["pts"]
+    nxt = P[k + 1:] if f else list(reversed(P[:k + 1]))
+    # 重なっている所は飛ばし、今の終わりより先の点だけを足す
+    for q in nxt:
+        if (q[0] - tail[0]) * dx + (q[1] - tail[1]) * dz > 0.5 * L:
+            path.append(q)
+
+
+def track_near(tracks, j, x, z, r):
+    P = tracks[j]["pts"]
+    for k in range(len(P) - 1):
+        (ax, az), (bx, bz) = P[k], P[k + 1]
+        ex, ez = bx - ax, bz - az
+        l2 = ex * ex + ez * ez or 1
+        u = max(0.0, min(1.0, ((x - ax) * ex + (z - az) * ez) / l2))
+        if math.hypot(x - ax - ex * u, z - az - ez * u) < r:
+            return True
+    return False
+
+
+def route_to(tracks, grid, path, used, target, max_d=4000.0, hop=30.0):
+    """今の終わりから、target (x, z) の 3 m 以内を通る線まで、線路のつながりをたどる最短の道 (乗り移るたびに hop m を足す)。
+    見つかれば path・used に足して True"""
+    import heapq
+    tx, tz = target
+    heap, n = [], 0
+    for c in next_tracks(tracks, grid, path, used):
+        heap.append((0.0, n, c, None)); n += 1
+    heapq.heapify(heap)
+    seen = set()
+    while heap:
+        cost, _, c, back = heapq.heappop(heap)
+        _, j, k, u, f = c
+        if (j, f) in seen or cost > max_d:
+            continue
+        seen.add((j, f))
+        chain = (c, back)
+        if track_near(tracks, j, tx, tz, 3.0):
+            seq = []
+            while chain:
+                seq.append(chain[0]); chain = chain[1]
+            for q in reversed(seq):
+                take(tracks, path, used, q)
+            return True
+        P = tracks[j]["pts"]
+        seg = P[k:] if f else P[:k + 2][::-1]
+        tail2 = [P[-2], P[-1]] if f else [P[1], P[0]]
+        u2 = used | {j}
+        for c2 in next_tracks(tracks, grid, tail2, u2):
+            heapq.heappush(heap, (cost + path_len(seg) + hop, n, c2, chain)); n += 1
+    return False
+
+
+def extend(tracks, grid, path, used, max_len, look, vias=()):
+    """vias = 通る点 [(x, z)]。終わりが 1.5 km 以内に来たら、最短のつながりでその点を通る線へ (品川駅の下り線が 12 番線を通るように)"""
+    vias = list(vias)
+    plen, counted = path_len(path), len(path) - 1
+    while plen < max_len and len(path) >= 2:
+        plen += path_len(path, counted)
+        counted = len(path) - 1
+        if vias and math.hypot(path[-1][0] - vias[0][0], path[-1][1] - vias[0][1]) < 1500:
+            v = vias.pop(0)
+            if not route_to(tracks, grid, path, used, v):
+                print(f"  通る点 ({v[0]:.0f}, {v[1]:.0f}) へ線路がつながらない")
+            continue
+        cands = next_tracks(tracks, grid, path, used)
+        if not cands:
+            break
+        best = cands[0]
+        if look and len(cands) > 1:
+            # 分かれ道: それぞれ look m 先まで (分かれ道ではいちばんまっすぐな線で) たどり、遠くまで行けるものを選ぶ (同じなら点数の高いもの)
+            def reach(c):
+                p2, u2 = path[-2:], set(used)
+                base = path_len(p2)
+                take(tracks, p2, u2, c)
+                return min(look, path_len(extend(tracks, grid, p2, u2, base + look, 0)) - base)
+            best = max(cands, key=lambda c: (reach(c), c[0]))
+        take(tracks, path, used, best)
+    return path
+
+
+def near_mask(pts, x0, z0, step, nx, nz, r):
+    """格子 (原点 x0, z0・間隔 step・nx × nz 点) の点のうち、pts のどれかとの距離が r 未満のもの (main の near_track と同じ判定)"""
+    m = np.zeros((nz, nx), dtype=bool)
+    r2 = r * r
+    for px, pz in pts:
+        i0, i1 = max(0, math.floor((px - r - x0) / step)), min(nx - 1, math.ceil((px + r - x0) / step))
+        j0, j1 = max(0, math.floor((pz - r - z0) / step)), min(nz - 1, math.ceil((pz + r - z0) / step))
+        if i0 > i1 or j0 > j1:
+            continue
+        xs = x0 + np.arange(i0, i1 + 1) * step
+        zs = z0 + np.arange(j0, j1 + 1) * step
+        m[j0:j1 + 1, i0:i1 + 1] |= ((px - xs) ** 2)[None, :] + ((pz - zs) ** 2)[:, None] < r2
+    return m
+
+
+def resample(P, step=STEP):
+    out, acc, nxt = [], 0.0, 0.0
+    for n in range(len(P) - 1):
+        (ax, az), (bx, bz) = P[n], P[n + 1]
+        d = math.hypot(bx - ax, bz - az)
+        if d <= 0:
+            continue
+        while nxt <= acc + d + 1e-9:
+            t = (nxt - acc) / d
+            out.append((ax + (bx - ax) * t, az + (bz - az) * t))
+            nxt += step
+        acc += d
+    return out
+
+
+def nearest_on(P, x, z):
+    best = (1e18, 0)
+    for i, p in enumerate(P):
+        d = (p[0] - x) ** 2 + (p[1] - z) ** 2
+        if d < best[0]:
+            best = (d, i)
+    return math.sqrt(best[0]), best[1]
+
+
+# ---------- 高さ ----------
+def profile(P, lines):
+    """点ごとのレールの上面の高さ。橋・トンネルの区間は両端を直線で結び、全体を均す"""
+    h = []
+    for x, z in P:
+        v = dem(x, z)
+        h.append(v if v is not None else (h[-1] if h else 0.0))
+    # 鉄道中心線 (JR) の種類: 点の近く (15 m 以内) の線の状態
+    seg = []
+    for ln in lines:
+        if ln["props"].get("vt_rtcode") != "JR":
+            continue
+        st = ln["props"].get("vt_railstate", "")
+        if "橋" in st or "トンネル" in st:
+            seg.append(ln["pts"])
+    sgrid = {}   # 線分の索引 (50 m 四方。線分の外接矩形 ± 15 m にかかる升目)
+    for s in seg:
+        for i in range(len(s) - 1):
+            (ax, az), (bx, bz) = s[i], s[i + 1]
+            for gx in range(int((min(ax, bx) - 15) // 50), int((max(ax, bx) + 15) // 50) + 1):
+                for gz in range(int((min(az, bz) - 15) // 50), int((max(az, bz) + 15) // 50) + 1):
+                    sgrid.setdefault((gx, gz), []).append((ax, az, bx, bz))
+    flag = []
+    for x, z in P:
+        f = False
+        for ax, az, bx, bz in sgrid.get((int(x // 50), int(z // 50)), ()):
+            ex, ez = bx - ax, bz - az
+            l2 = ex * ex + ez * ez or 1
+            t = max(0, min(1, ((x - ax) * ex + (z - az) * ez) / l2))
+            if math.hypot(x - ax - ex * t, z - az - ez * t) < 15:
+                f = True
+                break
+        flag.append(f)
+    i = 0
+    while i < len(P):
+        if flag[i]:
+            j = i
+            while j < len(P) and flag[j]:
+                j += 1
+            a, b = max(0, i - 2), min(len(P) - 1, j + 1)
+            for k in range(i, j):
+                h[k] = h[a] + (h[b] - h[a]) * (k - a) / max(1, b - a)
+            i = j
+        else:
+            i += 1
+    # 均す (中央値 7 点 → 平均 11 点 = 約 55 m)
+    med = [sorted(h[max(0, k - 3):k + 4])[len(h[max(0, k - 3):k + 4]) // 2] for k in range(len(h))]
+    sm = [sum(med[max(0, k - 5):k + 6]) / len(med[max(0, k - 5):k + 6]) for k in range(len(med))]
+    # 勾配を 2.5 % までにする (地図の端から順に)。トンネル (地形が高い所) は、線路が地形の下に入る
+    for k in range(1, len(sm)):
+        g = GRADE * math.hypot(P[k][0] - P[k - 1][0], P[k][1] - P[k - 1][1])
+        sm[k] = max(sm[k - 1] - g, min(sm[k - 1] + g, sm[k]))
+    return [v + RAIL_TOP for v in sm], flag
+
+
+# ---------- 本体 ----------
+def match_track(tracks, grid, p, at_end):
+    """道筋 p の端 (at_end なら終わり) の MATCH_IN m 内側の点を通り、向きのそろった軌道。返り値 (軌道の番号, 線分の番号, 外向きの向き) か None"""
+    q = p if at_end else p[::-1]
+    acc, k = 0.0, len(q) - 1
+    while k > 0 and acc < MATCH_IN:
+        acc += math.hypot(q[k][0] - q[k - 1][0], q[k][2] - q[k - 1][2])
+        k -= 1
+    M, E = q[k], q[-1]
+    hx, hz = E[0] - M[0], E[2] - M[2]
+    hl = math.hypot(hx, hz) or 1
+    heading = (hx / hl, hz / hl)
+    best = None
+    for i, kk in grid.get((int(M[0] // 5), int(M[2] // 5)), []):
+        (ax, az), (bx, bz) = tracks[i]["pts"][kk], tracks[i]["pts"][kk + 1]
+        ex, ez = bx - ax, bz - az
+        l2 = ex * ex + ez * ez
+        if l2 < 1e-6 or abs(ex * heading[0] + ez * heading[1]) / math.sqrt(l2) < 0.95:
+            continue
+        u = max(0.0, min(1.0, ((M[0] - ax) * ex + (M[2] - az) * ez) / l2))
+        d = math.hypot(M[0] - ax - ex * u, M[2] - az - ez * u)
+        if d < 1.5 and (best is None or d < best[0]):
+            best = (d, i, kk)
+    return (best[1], best[2], heading, E) if best else None
+
+
+def station_platforms(st):
+    """設定の駅のホームの一覧。platforms が無ければ、昔の書き方 (lines[0] の上下線の間の島式 1 面)"""
+    if st.get("platforms"):
+        return st["platforms"]
+    return [{"line": st["lines"][0], "type": st.get("platform", "island")}]
+
+
+def build_station(st, ext_routes, tracks, grid):
+    """駅 st (設定) のホーム (複数)。platforms の 1 つずつ:
+    island = 線 line の上下線の間の島式 1 面 (東戸塚・保土ケ谷・横浜の横須賀線)
+    outer  = 線 line の上下線それぞれの外側 (反対の向きの線と逆の側) の、隣の線路 (待避線など。電車は走らない) との間の島式 1 面ずつ
+             (横浜の東海道線: 本線の 6・7 番線は隣り合い、ホームは 5・6 番線の間と 7・8 番線の間)"""
+    cx, cz = to_local(st["lat"], st["lon"])
+    plats = []
+    for spec in station_platforms(st):
+        px, pz = (to_local(spec["lat"], spec["lon"]) if "lat" in spec else (cx, cz))
+        line = spec["line"]
+        yk = [er for er in ext_routes if er["line"] == line and nearest_on(er["P"], px, pz)[0] < 80]
+        if len(yk) != 2:
+            print(f"  {st['name']}: {line} の上下線が 2 本見つからない ({len(yk)} 本)。このホームを作らない")
+            continue
+        typ = spec.get("type", "island")
+        if typ == "island":
+            pf = island_between(st, spec, yk[0], yk[1], px, pz)
+            if pf:
+                plats.append(pf)
+        elif typ in ("outer", "inner"):
+            for A, O in ((yk[0], yk[1]), (yk[1], yk[0])):
+                if spec.get("only") and not side_is(spec["only"], A, O, px, pz):
+                    continue
+                pf = outer_platform(st, spec, A, O, px, pz, tracks, grid, inner=typ == "inner")
+                if pf:
+                    plats.append(pf)
+        else:
+            print(f"  {st['name']}: ホームの種類 {typ} は作れない (island / outer)")
+    if not plats:
+        print(f"  {st['name']}: ホームが 1 つもできない。駅を作らない")
+        return None
+    pc = plats[0]["center"]
+    return {"name": st["name"], "kana": st.get("kana", ""), "roman": st.get("roman", ""), "ward": st.get("ward", ""), "city": st.get("city", "横浜市"),
+            "center": [round(sum(q["center"][0] for q in plats) / len(plats), 2), round(sum(q["center"][1] for q in plats) / len(plats), 2)],
+            "platforms": [q["platform"] for q in plats], "canopies": [q["canopy"] for q in plats]}
+
+
+def make_platform(st, spec, A, ka, pairs, stop_routes):
+    """A の点 ka のまわりの、縁の点の組 pairs = [(k (A の点の番号), a, b, y)] からホーム。a → b の向きに 1.62 m ずつ内側が縁"""
+    left, right, ys = [], [], []
+    for k, a, b, y in pairs:
+        d = math.hypot(b[0] - a[0], b[1] - a[1]) or 1
+        ux, uz = (b[0] - a[0]) / d, (b[1] - a[1]) / d
+        left.append([round(a[0] + ux * 1.62, 2), round(a[1] + uz * 1.62, 2)])
+        right.append([round(b[0] - ux * 1.62, 2), round(b[1] - uz * 1.62, 2)])
+        ys.append(round(y + PLAT_Y, 2))
+    m = len(left) // 2
+    c0, c1 = max(0, m - 20), min(len(left), m + 20)
+    pc = [round((left[m][0] + right[m][0]) / 2, 2), round((left[m][1] + right[m][1]) / 2, 2)]
+    for er in stop_routes:   # 止まる位置: 編成の中央がホームの中央に来る所 (先頭の位置。P の並び = 地図の端から外へ)
+        _, k = nearest_on(er["P"], *pc)
+        er.setdefault("stops_k", []).append((k, st["name"]))
+    return {"center": pc, "platform": {"left": left, "right": right, "y": ys},
+            "canopy": {"left": left[c0:c1], "right": right[c0:c1], "y": [v + 3.4 for v in ys[c0:c1]]}}
+
+
+def island_between(st, spec, A, B, cx, cz):
+    _, ka = nearest_on(A["P"], cx, cz)
+    _, kb = nearest_on(B["P"], *A["P"][ka])
+    gap = math.hypot(A["P"][ka][0] - B["P"][kb][0], A["P"][ka][1] - B["P"][kb][1])
+    print(f"  {st['name']}駅: 中心の目安 ({cx:.0f}, {cz:.0f})、{spec['line']} の 2 本の間 {gap:.1f} m")
+    if not 7 < gap < 20:
+        print("    島式ホームにしては間が狭すぎる・広すぎる。このホームを作らない")
+        return None
+    pairs = []
+    half = int(spec.get("length", st.get("length", PLAT_LEN)) / 2 / 4)
+    for n in range(-half, half + 1):
+        k = max(0, min(len(A["P"]) - 1, ka + round(n * 4 / STEP)))
+        a = A["P"][k]
+        _, kb2 = nearest_on(B["P"], *a)
+        pairs.append((k, a, B["P"][kb2], (A["y"][k] + B["y"][kb2]) / 2))
+    return make_platform(st, spec, A, ka, pairs, [A, B])
+
+
+def side_track(tracks, grid, a, t, w, lo=5.0, hi=20.0):
+    """点 a (線路の上) から、線路の向き t に直角な向き w の側の、lo〜hi m 先にある平行な軌道の点 (いちばん近いもの)。無ければ None"""
+    best = None
+    R = int(hi // 5) + 1
+    for gx in range(int(a[0] // 5) - R, int(a[0] // 5) + R + 1):
+        for gz in range(int(a[1] // 5) - R, int(a[1] // 5) + R + 1):
+            for i, k in grid.get((gx, gz), ()):
+                (ax, az), (bx, bz) = tracks[i]["pts"][k], tracks[i]["pts"][k + 1]
+                ex, ez = bx - ax, bz - az
+                l2 = ex * ex + ez * ez
+                if l2 < 1e-6 or abs(ex * t[0] + ez * t[1]) / math.sqrt(l2) < 0.985:
+                    continue
+                u = max(0.0, min(1.0, ((a[0] - ax) * ex + (a[1] - az) * ez) / l2))
+                qx, qz = ax + ex * u, az + ez * u
+                along = (qx - a[0]) * t[0] + (qz - a[1]) * t[1]
+                lat = (qx - a[0]) * w[0] + (qz - a[1]) * w[1]
+                if abs(along) < 1.5 and lo <= lat <= hi and (best is None or lat < best[0]):
+                    best = (lat, (qx, qz))
+    return best
+
+
+def side_is(only, A, O, cx, cz):
+    """道筋 A が、もう 1 本の O より only (west / east / north / south) の側にあるか (駅の中心のそばで比べる)"""
+    a = A["P"][nearest_on(A["P"], cx, cz)[1]]
+    o = O["P"][nearest_on(O["P"], cx, cz)[1]]
+    return {"west": a[0] < o[0], "east": a[0] > o[0], "north": a[1] < o[1], "south": a[1] > o[1]}[only]
+
+
+def outer_platform(st, spec, A, O, cx, cz, tracks, grid, inner=False):
+    """A (止まる線) と、A の外側 (O と逆の側。inner なら O の側) の隣の線路との間のホーム。隣の線路は国土地理院の軌道 (道筋ではない)"""
+    _, ka = nearest_on(A["P"], cx, cz)
+    half = int(spec.get("length", st.get("length", PLAT_LEN)) / 2 / 4)
+    raw = []
+    for n in range(-half, half + 1):
+        k = max(1, min(len(A["P"]) - 2, ka + round(n * 4 / STEP)))
+        a = A["P"][k]
+        tx, tz = A["P"][k + 1][0] - A["P"][k - 1][0], A["P"][k + 1][1] - A["P"][k - 1][1]
+        tl = math.hypot(tx, tz) or 1
+        t = (tx / tl, tz / tl)
+        _, ko = nearest_on(O["P"], *a)
+        o = O["P"][ko]
+        w = (-t[1], t[0])
+        if ((o[0] - a[0]) * w[0] + (o[1] - a[1]) * w[1] > 0) != inner:   # O のある側の反対が外側 (inner なら O の側)
+            w = (t[1], -t[0])
+        raw.append((k, a, w, side_track(tracks, grid, a, t, w)))
+    gaps = sorted(r[3][0] for r in raw if r[3])
+    if len(gaps) < len(raw) * 0.6:
+        print(f"  {st['name']}駅: {spec['line']} route {A['route']} の{'内' if inner else '外'}側に隣の線路が見つからない ({len(gaps)}/{len(raw)})。このホームを作らない")
+        return None
+    g = gaps[len(gaps) // 2]
+    print(f"  {st['name']}駅: {spec['line']} route {A['route']} の{'内' if inner else '外'}側の隣の線路まで {g:.1f} m (見つかった点 {len(gaps)}/{len(raw)})")
+    if not 7 < g < 20:
+        print("    島式ホームにしては間が狭すぎる・広すぎる。このホームを作らない")
+        return None
+    pairs = []
+    for k, a, w, hit in raw:
+        lat = hit[0] if hit and abs(hit[0] - g) < 2.0 else g   # 見つからない・飛んだ所 (分かれ目) は間の中央値
+        pairs.append((k, a, (a[0] + w[0] * lat, a[1] + w[1] * lat), A["y"][k]))
+    return make_platform(st, spec, A, ka, pairs, [A])
+
+
+def main(routes_only=None):
+    fetch_dem.CACHE.mkdir(parents=True, exist_ok=True)
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    props = json.loads((ROOT / "public" / "data" / "props.json").read_text())
+    routes = props["rail"]["routes"]
+    # タイルの範囲: 地図の範囲と、地図の中心 → 駅 → 次の駅 … の 1 区間ずつの範囲 (まわり 1.5 km)。
+    # (全部の駅を囲む 1 つの範囲にすると、東京まででは 4,000 枚を超える。線路は駅と駅を結ぶ線から大きくは離れない)
+    pad = 0.014
+    box = lambda la, lo: (min(la) - pad, min(lo) - pad * 1.2, max(la) + pad, max(lo) + pad * 1.2)
+    tiles = bbox_tiles(box([to_ll(0, BOUNDS["minZ"])[0], to_ll(0, BOUNDS["maxZ"])[0]], [to_ll(BOUNDS["minX"], 0)[1], to_ll(BOUNDS["maxX"], 0)[1]]))
+    for e in cfg["extensions"]:
+        prev = to_ll(0, 0)
+        for st in e["stations"]:
+            tiles |= bbox_tiles(box([prev[0], st["lat"]], [prev[1], st["lon"]]))
+            prev = (st["lat"], st["lon"])
+    tracks, lines, roads = load_gsi(tiles=tiles)
+    print(f"gsi: タイル {len(tiles)} 枚")
+    print(f"gsi: tracks={len(tracks)} rail lines={len(lines)} roads={len(roads)}")
+    grid = join_tracks(tracks)
+
+    ext_routes, stations = [], []
+    for ext in cfg["extensions"]:
+        edge = ext["edge"]
+        near_edge = (lambda q: q[2] < BOUNDS["minZ"] + 80) if edge == "north" else (lambda q: q[2] > BOUNDS["maxZ"] - 80)
+        mine, first = [], {}
+        for ri, r in enumerate(routes):
+            p = r["p"]
+            for at_end in (True, False):
+                if not near_edge(p[-1] if at_end else p[0]):
+                    continue
+                m = match_track(tracks, grid, p, at_end)
+                if not m:
+                    print(f"  route {ri} {r['line']}: 続きの線路が見つからない")
+                    continue
+                i, k, heading, E = m
+                path = follow(tracks, grid, i, k, heading)
+                # 通る点 (設定の via): その線の上下線のうち side の側 (いったんたどった道筋どうしを、点のそばで比べる) の道筋だけ
+                vias = []
+                for v in ext.get("via", []):
+                    if v["line"] != r["line"]:
+                        continue
+                    vx, vz = to_local(v["lat"], v["lon"])
+                    vias.append((vx, vz, v["side"]))
+                if vias:
+                    first[ri] = (i, k, heading, path, vias, at_end, E)
+                    continue
+                P = resample(path)
+                _, k0 = nearest_on(P, E[0], E[2])
+                P = P[k0:]
+                ox, oz = E[0] - P[0][0], E[2] - P[0][1]
+                P = [(x + ox * max(0, 1 - n * STEP / BLEND), z + oz * max(0, 1 - n * STEP / BLEND)) for n, (x, z) in enumerate(P)][1:]
+                mine.append({"route": ri, "line": r["line"], "at": "end" if at_end else "start", "P": P, "E": E, "off": math.hypot(ox, oz)})
+        # 通る点のある線: 点のそばで、もう 1 本の同じ線の道筋と比べて side の側の道筋なら、点を通るようにたどり直す
+        for ri, (i, k, heading, path, vias, at_end, E) in first.items():
+            mine_v = []
+            for vx, vz, side in vias:
+                others = [q for rj, q in first.items() if rj != ri and routes[rj]["line"] == routes[ri]["line"]]
+                if not others:
+                    continue
+                a = path[nearest_on(path, vx, vz)[1]]
+                o = others[0][3][nearest_on(others[0][3], vx, vz)[1]]
+                if {"west": a[0] < o[0], "east": a[0] > o[0], "north": a[1] < o[1], "south": a[1] > o[1]}[side]:
+                    mine_v.append((vx, vz))
+            if mine_v:
+                path = follow(tracks, grid, i, k, heading, vias=mine_v)
+                print(f"  route {ri} {routes[ri]['line']}: 通る点 {len(mine_v)} 個でたどり直した")
+            r = routes[ri]
+            P = resample(path)
+            _, k0 = nearest_on(P, E[0], E[2])
+            P = P[k0:]
+            ox, oz = E[0] - P[0][0], E[2] - P[0][1]
+            P = [(x + ox * max(0, 1 - n * STEP / BLEND), z + oz * max(0, 1 - n * STEP / BLEND)) for n, (x, z) in enumerate(P)][1:]
+            mine.append({"route": ri, "line": r["line"], "at": "end" if at_end else "start", "P": P, "E": E, "off": math.hypot(ox, oz)})
+        mine.sort(key=lambda er: er["route"])
+        # 最後の駅の先 beyond m で切る (駅の近くを通らない線は、通る線と同じ長さ)
+        # line_end = {線名: 駅名} の線は、その駅の先 beyond m で切る (例: 横須賀線は横浜の先で東海道線と分かれ、品川の先で地下に入る)
+        last = ext["stations"][-1]
+        byname = {st["name"]: st for st in ext["stations"]}
+        cuts = []
+        for er in mine:
+            st = byname[ext.get("line_end", {}).get(er["line"], last["name"])]
+            d, k = nearest_on(er["P"], *to_local(st["lat"], st["lon"]))
+            er["cut"] = k + int(ext.get("beyond", 700) / STEP) if d < 80 else None
+            if er["cut"] is not None:
+                cuts.append(er["cut"])
+        reach = [er for er in mine if er["cut"] is not None]
+        for er in mine:
+            if er["cut"] is None and reach:
+                # 駅の近くを通らない線 (例: 東戸塚の先で横浜羽沢へ分かれる貨物線): 分かれた所から beyond m で切る
+                # (分かれた先まで建物・地形を作ると重くなるだけなので)
+                for k in range(0, len(er["P"]), 4):
+                    if min(nearest_on(o["P"][:o["cut"]], *er["P"][k])[0] for o in reach) > 40:
+                        er["cut"] = min(len(er["P"]), k + int(ext.get("beyond", 700) / STEP))
+                        break
+        for er in mine:
+            c = er["cut"] if er["cut"] is not None else (max(cuts) if cuts else len(er["P"]))
+            er["P"] = er["P"][:c]
+            print(f"  route {er['route']} {er['line']} {er['at']}: +{len(er['P']) * STEP:.0f} m (端のずれ {er['off']:.1f} m)")
+        for er in mine:
+            hs, flag = profile(er["P"], lines)
+            y0 = er["E"][1]
+            er["y"] = [y0 + (h - y0) * min(1, (n + 1) * STEP / (BLEND + 50)) for n, h in enumerate(hs)]
+        for st in ext["stations"]:
+            s_ = build_station(st, mine, tracks, grid)
+            if s_:
+                stations.append(s_)
+        ext_routes += mine
+
+    if routes_only:   # 道筋と駅だけ (確かめる用)
+        pathlib.Path(routes_only).write_text(json.dumps({"routes": [{"route": er["route"], "line": er["line"], "P": er["P"]} for er in ext_routes],
+                                                         "stations": stations}, ensure_ascii=False))
+        print(f"-> {routes_only}")
+        return
+    # 同じ軌道を 2 本の道筋が使っていないか
+    for a in ext_routes:
+        for b in ext_routes:
+            if a is not b and a["route"] < b["route"] and a["P"] and b["P"]:
+                d, _ = nearest_on(b["P"], *a["P"][len(a["P"]) // 2])
+                if d < 1.5:
+                    print(f"  注意: route {a['route']} と {b['route']} が同じ線路を通る")
+
+    # ---------- 出力する道筋 ("start" は外の端から地図の端へ向かう順) ----------
+    out_routes = []
+    for er in ext_routes:
+        pts = [[round(x, 2), round(y, 2), round(z, 2)] for (x, z), y in zip(er["P"], er["y"])]
+        n = len(pts)
+        stops = []
+        for k, name in er.get("stops_k", []):
+            kk = n - 1 - k if er["at"] == "start" else k
+            stops.append({"s": round(kk * STEP + CARS[er["line"]] * CAR / 2, 1), "name": name})
+        if er["at"] == "start":
+            pts = pts[::-1]
+        stops.sort(key=lambda q: q["s"])
+        out_routes.append({"route": er["route"], "line": er["line"], "at": er["at"], "p": pts, "stops": stops})
+
+    allP = [p for er in ext_routes for p in er["P"][::2]]
+    trackP = [p for er in ext_routes for p in er["P"]]
+    grid100 = {}
+    for x, z in allP:
+        grid100.setdefault((int(x // 100), int(z // 100)), []).append((x, z))
+
+    cand = {}   # 半径 R 升の中に線路の点のある 100 m 升目 (先にこれで外す。速くするだけで結果は同じ)
+
+    def near_track(x, z, r):
+        gx, gz = int(x // 100), int(z // 100)
+        R = int(r // 100) + 1
+        if R not in cand:
+            cand[R] = {(i + a, j + b) for i, j in grid100 for a in range(-R, R + 1) for b in range(-R, R + 1)}
+        if (gx, gz) not in cand[R]:
+            return False
+        r2 = r * r
+        for i in range(gx - R, gx + R + 1):
+            for j in range(gz - R, gz + R + 1):
+                for px, pz in grid100.get((i, j), ()):
+                    if (px - x) ** 2 + (pz - z) ** 2 < r2:
+                        return True
+        return False
+
+    # ---------- 地形 ----------
+    minx = min(p[0] for p in allP) - BAND - 20
+    maxx = max(p[0] for p in allP) + BAND + 20
+    minz = min(p[1] for p in allP) - BAND - 20
+    maxz = max(p[1] for p in allP) + BAND + 20
+    x0, z0 = math.floor(minx / T_STEP) * T_STEP, math.floor(minz / T_STEP) * T_STEP
+    nx, nz = int((maxx - x0) / T_STEP) + 1, int((maxz - z0) / T_STEP) + 1
+    near = near_mask(allP, x0, z0, T_STEP, nx, nz, BAND)
+    xs = x0 + np.arange(nx) * T_STEP
+    zs = z0 + np.arange(nz) * T_STEP
+    inmap = ((BOUNDS["minX"] + 30 <= xs)[None, :] & (xs <= BOUNDS["maxX"] - 30)[None, :]
+             & (BOUNDS["minZ"] + 30 <= zs)[:, None] & (zs <= BOUNDS["maxZ"] - 30)[:, None])
+    near &= ~inmap
+    rows, cells = [], 0
+    for j in np.nonzero(near.any(axis=1))[0]:
+        j = int(j)
+        z = z0 + j * T_STEP
+        r = near[j]
+        on = np.nonzero(r)[0]
+        # 続いている所 (span) ごと
+        brk = np.nonzero(np.diff(on) != 1)[0]
+        for s0, s1 in zip(np.r_[0, brk + 1], np.r_[brk, len(on) - 1]):
+            i0, i1 = int(on[s0]), int(on[s1])
+            span = [j, i0]
+            for i in range(i0, i1 + 1):
+                span.append(round(dem0(x0 + i * T_STEP, z) * 100))
+            rows.append(span)
+            cells += i1 - i0 + 1
+    terrain = {"step": T_STEP, "x0": x0, "z0": z0, "nx": nx, "nz": nz, "rows": rows}
+    print(f"細かい地形: {cells} 点")
+
+    # 粗い地形: 線路から C_PAD m 以内 (と、地図のまわり C_PAD m 以内) の升目の頂点だけ。それ以外は null (描かない)
+    cx0 = math.floor((min(p[0] for p in allP) - C_PAD) / C_STEP) * C_STEP
+    cz0 = math.floor((min(p[1] for p in allP) - C_PAD) / C_STEP) * C_STEP
+    cx1, cz1 = max(p[0] for p in allP) + C_PAD, max(p[1] for p in allP) + C_PAD
+    cnx, cnz = int((cx1 - cx0) / C_STEP) + 1, int((cz1 - cz0) / C_STEP) + 1
+    cm = near_mask(allP[::5], cx0, cz0, C_STEP, cnx, cnz, C_PAD + 2 * C_STEP)
+    cxs, czs = cx0 + np.arange(cnx) * C_STEP, cz0 + np.arange(cnz) * C_STEP
+    dx = np.maximum(0, np.maximum(BOUNDS["minX"] - cxs, cxs - BOUNDS["maxX"]))
+    dz = np.maximum(0, np.maximum(BOUNDS["minZ"] - czs, czs - BOUNDS["maxZ"]))
+    cm |= (dx[None, :] ** 2 + dz[:, None] ** 2) < (C_PAD + 2 * C_STEP) ** 2
+    ch = []
+    for j in range(cnz):
+        for i in range(cnx):
+            ch.append(round(dem0(cx0 + i * C_STEP, cz0 + j * C_STEP) * 100) if cm[j, i] else None)
+    coarse = {"step": C_STEP, "x0": cx0, "z0": cz0, "nx": cnx, "nz": cnz, "h": ch}
+    print(f"粗い地形: {cnx}x{cnz} (値のある点 {int(cm.sum())})")
+
+    # ---------- 建物 (PLATEAU) ----------
+    buildings = plateau_buildings(near_track, allP, ext_routes, stations)
+    print(f"建物: {len(buildings)}")
+
+    # ---------- 道路 (国土地理院の道路中心線。高架は除く。線路の近くで、地図の外だけ) ----------
+    RANK_W = {"3m未満": 2.5, "3m-5.5m未満": 4.5, "5.5m-13m未満": 8.0, "13m-19.5m未満": 15.0, "19.5m以上": 22.0}
+    out_roads = []
+    for rd in roads:
+        pr = rd["props"]
+        if pr.get("vt_lvorder", 0) != 0 or pr.get("vt_motorway") == 1:
+            continue
+        w = (pr.get("vt_width") or 0) / 100 or RANK_W.get(pr.get("vt_rnkwidth"), 4.0)
+        w = max(2.5, min(30.0, w))
+        cur = []
+        for x, z in rd["pts"]:
+            if near_track(x, z, BAND - 10) and not inside_map(x, z, -5):
+                cur += [round(x, 1), round(z, 1)]
+            else:
+                if len(cur) >= 4:
+                    out_roads.append([round(w, 1)] + cur)
+                cur = []
+        if len(cur) >= 4:
+            out_roads.append([round(w, 1)] + cur)
+    print(f"道路: {len(out_roads)}")
+
+    # ---------- 木: 建物・線路・道路から離れた所に、9 m 四方に 1 本くらい (決まりで散らす) ----------
+    bgrid = set()
+    for ring, _, _, _ in buildings:
+        xs, zs = [q[0] for q in ring], [q[1] for q in ring]
+        for i in range(int((min(xs) - 6) // 5), int((max(xs) + 6) // 5) + 1):
+            for j in range(int((min(zs) - 6) // 5), int((max(zs) + 6) // 5) + 1):
+                bgrid.add((i, j))
+    rgrid = set()
+    for rd in out_roads:
+        w = rd[0]
+        pts = list(zip(rd[1::2], rd[2::2]))
+        for (ax, az), (bx, bz) in zip(pts, pts[1:]):
+            L = math.hypot(bx - ax, bz - az)
+            for t in range(int(L / 2) + 1):
+                x, z = ax + (bx - ax) * t * 2 / max(L, 1e-6), az + (bz - az) * t * 2 / max(L, 1e-6)
+                r = w / 2 + 2
+                for i in range(int((x - r) // 5), int((x + r) // 5) + 1):
+                    for j in range(int((z - r) // 5), int((z + r) // 5) + 1):
+                        rgrid.add((i, j))
+    tgrid = set()
+    for x, z in trackP:
+        for i in range(int((x - 10) // 5), int((x + 10) // 5) + 1):
+            for j in range(int((z - 10) // 5), int((z + 10) // 5) + 1):
+                tgrid.add((i, j))
+    trees = []
+    for row in rows:
+        j, i0 = row[0], row[1]
+        if j % 2:
+            continue
+        for k in range(0, len(row) - 2, 2):
+            x, z = x0 + (i0 + k) * T_STEP, z0 + j * T_STEP
+            hsh = (int(x * 73856093) ^ int(z * 19349663)) & 0xFFFF
+            if hsh / 0xFFFF > 0.45:
+                continue
+            x += (hsh % 97) / 97 * 6 - 3
+            z += (hsh % 89) / 89 * 6 - 3
+            key = (int(x // 5), int(z // 5))
+            if key in bgrid or key in rgrid or key in tgrid or inside_map(x, z, -10):
+                continue
+            v = dem(x, z)
+            trees.append([round(x, 1), round(v or 0, 1), round(z, 1), round(0.75 + (hsh % 53) / 53 * 0.6, 2)])
+    print(f"木: {len(trees)}")
+
+    # ---------- トンネルの坑口: 地形がレールの下面より TUNNEL_D m 以上高くなる所 ----------
+    portals = []
+    for er in ext_routes:
+        P, Y = er["P"], er["y"]
+        flags = []
+        for k in range(len(P)):
+            g = dem(*P[k])
+            flags.append(g is not None and g - (Y[k] - RAIL_TOP) > TUNNEL_D)
+        # 40 m より短い「中」(陸橋・建物の跡などの、標高タイルの点の飛び) はトンネルとみなさない
+        k = 0
+        while k < len(flags):
+            if flags[k]:
+                j = k
+                while j < len(flags) and flags[j]:
+                    j += 1
+                if (j - k) * STEP < 40:
+                    for q in range(k, j):
+                        flags[q] = False
+                k = j
+            else:
+                k += 1
+        er["tunnel"] = flags
+        prev = None
+        for k in range(len(P)):
+            inside = flags[k]
+            if prev is not None and inside != prev and 0 < k < len(P) - 1:
+                dx, dz = P[k + 1][0] - P[k - 1][0], P[k + 1][1] - P[k - 1][1]
+                yaw = math.atan2(dx, dz) + (math.pi if inside else 0.0)   # 坑口の面はトンネルの外を向く
+                portals.append([P[k][0], Y[k] - RAIL_TOP, P[k][1], yaw, 5.5])
+            prev = inside
+    merged = []
+    for q in portals:   # 近い坑口 (並んだ線路) は 1 つの広い坑口にまとめる
+        for m in merged:
+            if math.hypot(m[0] - q[0], m[2] - q[2]) < 12 and abs(math.atan2(math.sin(m[3] - q[3]), math.cos(m[3] - q[3]))) < 0.5:
+                n = m[5]
+                m[0], m[1], m[2] = (m[0] * n + q[0]) / (n + 1), min(m[1], q[1]), (m[2] * n + q[2]) / (n + 1)
+                m[4] = max(m[4], 5.5 + math.hypot(m[0] - q[0], m[2] - q[2]) * 2)
+                m[5] += 1
+                break
+        else:
+            merged.append(q + [1])
+    portals = [[round(m[0], 2), round(m[1], 2), round(m[2], 2), round(m[3], 3), round(m[4], 1)] for m in merged]
+    print(f"坑口: {len(portals)}")
+
+    # ---------- 架線柱: 道筋ごとに 50 m おき、進む向きの左 2.5 m (トンネルの中は除く) ----------
+    poles = []
+    for er in ext_routes:
+        P, Y = er["P"], er["y"]
+        for k in range(4, len(P) - 1, 10):
+            if er["tunnel"][k]:
+                continue
+            dx, dz = P[k + 1][0] - P[k - 1][0], P[k + 1][1] - P[k - 1][1]
+            L = math.hypot(dx, dz) or 1
+            lx, lz = dz / L, -dx / L
+            poles.append([round(P[k][0] + lx * 2.5, 2), round(Y[k] - RAIL_TOP, 2), round(P[k][1] + lz * 2.5, 2), round(math.atan2(dx, dz), 3)])
+
+    OUT.write_text(json.dumps({
+        "source": "国土地理院ベクトルタイル・標高タイル、国土交通省 PLATEAU 横浜市 (2024)・川崎市 (2022)・東京都 23 区 (2020)",
+        "routes": out_routes, "stations": stations, "terrain": terrain, "coarse": coarse, "buildings": buildings,
+        "poles": poles, "roads": out_roads, "trees": trees, "portals": portals,
+    }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"-> {OUT} ({OUT.stat().st_size / 1e6:.2f} MB)")
+    import rail_ext_split
+    rail_ext_split.write(json.loads(OUT.read_text(encoding="utf-8")))
+
+
+def plateau_buildings(near_track, allP, ext_routes, stations=()):
+    import xml.etree.ElementTree as ET
+    from remotezip import open_remote_zip
+    from fetch_plateau import NS, ring
+    meshes = set()
+    for x, z in allP:
+        for dx in (-BAND, 0, BAND):
+            for dz in (-BAND, 0, BAND):
+                meshes.add(mesh3(*to_ll(x + dx, z + dz)))
+    PCACHE.mkdir(parents=True, exist_ok=True)
+    files = []   # 読む GML (市ごと・メッシュごと。市の境目のメッシュは、両方の市のファイルにそれぞれの市の建物が入っている)
+    for city, url in PLATEAU_SRC:
+        listing = PCACHE / f"{city}_names.json"     # zip の中のファイル名の一覧 (取り直さないように控える)
+        z = None
+        if not listing.exists():
+            z = open_remote_zip(url)
+            listing.write_text(json.dumps([n for n in z.namelist() if "/bldg/" in n and n.endswith(".gml")]))
+        names = json.loads(listing.read_text())
+        for m in sorted(meshes):
+            # 横浜市は <メッシュ>_bldg_6697_op.gml。東京都 23 区 (2020) は <メッシュ>_bldg_6697_2_op.gml、
+            # 大きいメッシュは 1/2 地域メッシュ (9 桁) に分かれていることがある
+            hit = sorted(n for n in names if n.rsplit("/", 1)[-1].startswith(m) and "_bldg_" in n
+                         and len(n.rsplit("/", 1)[-1].split("_")[0]) in (8, 9))
+            for n in hit:
+                base = n.rsplit("/", 1)[-1].split("_")[0]
+                path = PCACHE / (f"{base}_bldg.gml" if city == "yokohama" else f"{city}_{base}_bldg.gml")
+                if not path.exists():
+                    if z is None:
+                        z = open_remote_zip(url)
+                    print(f"  PLATEAU {city} {base} を取得")
+                    path.write_bytes(z.read(n))
+                files.append(path)
+    trackP = [(p, y) for er in ext_routes for p, y in zip(er["P"], er["y"])]
+    tgrid = {}
+    for (x, z), y in trackP:
+        tgrid.setdefault((int(x // 20), int(z // 20)), []).append((x, z, y))
+
+    def track_near(ring_xz, r):
+        """輪郭の近く (r m 以内) の線路の点の高さ (無ければ None)"""
+        xs, zs = [p[0] for p in ring_xz], [p[1] for p in ring_xz]
+        found = None
+        for i in range(int((min(xs) - r) // 20), int((max(xs) + r) // 20) + 1):
+            for j in range(int((min(zs) - r) // 20), int((max(zs) + r) // 20) + 1):
+                for x, z, y in tgrid.get((i, j), ()):
+                    if pip(x, z, ring_xz) or ring_dist(x, z, ring_xz) < r:
+                        found = y if found is None else max(found, y)
+        return found
+
+    out, seen = [], {}
+    for path in files:
+        for _, el in ET.iterparse(path, events=("end",)):
+            if el.tag != f"{{{NS['bldg']}}}Building":
+                continue
+            fp = el.find("bldg:lod0FootPrint", NS)
+            if fp is None:
+                fp = el.find("bldg:lod0RoofEdge", NS)
+            solid = el.find("bldg:lod1Solid", NS)
+            if fp is None or solid is None:
+                el.clear()
+                continue
+            outer = ring(fp.find(".//gml:Polygon", NS).find("gml:exterior//gml:posList", NS))
+            pts = [to_local(p[0], p[1]) for p in outer]
+            cx, cz = sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+            if inside_map(cx, cz) or not near_track(cx, cz, BAND):
+                el.clear()
+                continue
+            zs = [float(v) for pl in solid.iterfind(".//gml:posList", NS) for v in pl.text.split()[2::3]]
+            base, top = min(zs), max(zs)
+            mh = el.find("bldg:measuredHeight", NS)
+            h = float(mh.text) if mh is not None and mh.text and float(mh.text) > 0 else top - base
+            el.clear()
+            if h < 2:
+                continue
+            ring_xz = simplify([(round(x, 2), round(z, 2)) for x, z in pts])
+            if len(ring_xz) < 3:
+                continue
+            gy = min((dem(x, z) or base - REF) for x, z in ring_xz)
+            lift = 0.0
+            ty = track_near(ring_xz, 2.6)
+            if ty is not None:
+                if h < 9:
+                    continue      # 線路にかかる低い建物 (データのずれ) は使わない
+                lift = round(max(0.0, ty - RAIL_TOP + 6.5 - gy), 2)   # 線路をまたぐ駅舎など: 線路の上 6 m から
+                if lift >= h - 1:
+                    continue
+                if h < 20 and platform_cover(ring_xz, stations) >= 100:
+                    continue      # ホームに沿って 100 m 以上かかる低いもの = ホームの屋根・高架の駅の構造 (東京・新橋・品川)。屋根は station.js が描く
+                                  # (ホームを横切る橋上駅舎 (東戸塚・保土ケ谷・川崎など。かかるのは 60 m まで) は残す)
+            key = (round(cx), round(cz), round(h))   # 市の境目で 2 つのファイルに入っている建物は 1 つに
+            if seen.get(key, path) != path:
+                continue
+            seen[key] = path
+            out.append([[list(p) for p in ring_xz], round(gy, 2), round(h, 2), lift])
+    return out
+
+
+def platform_cover(ring_xz, stations):
+    """輪郭の中に入るホームの縁 (4 m おきの点) の、ホームの長さの向きの広がり (m。どのホームのどちらの縁でもいちばん長いもの)"""
+    xs, zs = [p[0] for p in ring_xz], [p[1] for p in ring_xz]
+    best = 0
+    for st in stations:
+        for pf in st["platforms"]:
+            for side in (pf["left"], pf["right"]):
+                ins = [k for k, (x, z) in enumerate(side) if min(xs) <= x <= max(xs) and min(zs) <= z <= max(zs) and pip(x, z, ring_xz)]
+                if ins:
+                    best = max(best, (max(ins) - min(ins)) * 4)
+    return best
+
+
+def simplify(r):
+    if r[0] == r[-1]:
+        r = r[:-1]
+    out = []
+    for p in r:
+        if not out or math.hypot(p[0] - out[-1][0], p[1] - out[-1][1]) > 0.3:
+            out.append(p)
+    return out
+
+
+def pip(x, z, ring):
+    ins = False
+    for i in range(len(ring)):
+        (xi, zi), (xj, zj) = ring[i], ring[i - 1]
+        if (zi > z) != (zj > z) and x < (xj - xi) * (z - zi) / (zj - zi) + xi:
+            ins = not ins
+    return ins
+
+
+def ring_dist(x, z, ring):
+    best = 1e9
+    for i in range(len(ring)):
+        (ax, az), (bx, bz) = ring[i - 1], ring[i]
+        ex, ez = bx - ax, bz - az
+        l2 = ex * ex + ez * ez or 1
+        t = max(0, min(1, ((x - ax) * ex + (z - az) * ez) / l2))
+        best = min(best, math.hypot(x - ax - ex * t, z - az - ez * t))
+    return best
+
+
+def find_station(name, lat, lon):
+    """目安の緯度経度のまわり (約 2 km) のタイルから、名前を含む注記 (駅名など) と、JR・私鉄の「駅部分」の線を探して表示する"""
+    pad = 0.012
+    tracks, lines, _ = load_gsi((lat - pad, lon - pad * 1.2, lat + pad, lon + pad * 1.2))
+    x0, y0 = tile_xy(lat + pad, lon - pad * 1.2, 16)
+    x1, y1 = tile_xy(lat - pad, lon + pad * 1.2, 16)
+    for ty in range(int(y0), int(y1) + 1):
+        for tx in range(int(x0), int(x1) + 1):
+            L = decode((CACHE / f"16_{tx}_{ty}.pbf").read_bytes())
+            lay = L.get("Anno")
+            if not lay:
+                continue
+            for f in lay["features"]:
+                t = str(f["props"].get("vt_text", ""))
+                if name in t:
+                    g = f["geom"][0][0]
+                    la, lo = to_latlon(tx + g[0] / lay["extent"], ty + g[1] / lay["extent"], 16)
+                    x, z = to_local(la, lo)
+                    print(f"注記 {t}: lat {la:.6f} lon {lo:.6f} (x {x:.0f}, z {z:.0f})")
+    for ln in lines:
+        if ln["props"].get("vt_sngldbl") == "駅部分" and ln["props"].get("vt_railstate") != "地下":
+            xs = [p[0] for p in ln["pts"]]; zs = [p[1] for p in ln["pts"]]
+            cx, cz = sum(xs) / len(xs), sum(zs) / len(zs)
+            la, lo = to_ll(cx, cz)
+            print(f"駅部分 ({ln['props'].get('vt_rtcode')}): 中央 lat {la:.6f} lon {lo:.6f} (x {cx:.0f}, z {cz:.0f})、長さ {sum(math.hypot(ln['pts'][i+1][0]-ln['pts'][i][0], ln['pts'][i+1][1]-ln['pts'][i][1]) for i in range(len(ln['pts'])-1)):.0f} m")
+
+
+def plot(path):
+    """rail_ext.json と地図の範囲の平面図 (線: 東海道 = 橙、横須賀 = 青、貨物 = 灰。ホーム = 赤。坑口 = 黒丸)"""
+    from PIL import Image, ImageDraw
+    E = json.loads(OUT.read_text())
+    pts = [(q[0], q[2]) for r in E["routes"] for q in r["p"]]
+    x0 = min(min(p[0] for p in pts), BOUNDS["minX"]) - 100; x1 = max(max(p[0] for p in pts), BOUNDS["maxX"]) + 100
+    z0 = min(min(p[1] for p in pts), BOUNDS["minZ"]) - 100; z1 = max(max(p[1] for p in pts), BOUNDS["maxZ"]) + 100
+    k = min(2000 / (x1 - x0), 2000 / (z1 - z0))
+    im = Image.new("RGB", (int((x1 - x0) * k), int((z1 - z0) * k)), "white")
+    d = ImageDraw.Draw(im)
+    T = lambda x, z: ((x - x0) * k, (z - z0) * k)
+    d.rectangle([T(BOUNDS["minX"], BOUNDS["minZ"]), T(BOUNDS["maxX"], BOUNDS["maxZ"])], outline=(160, 160, 160))
+    for rd in E.get("roads", []):
+        d.line([T(rd[i], rd[i + 1]) for i in range(1, len(rd) - 1, 2)], fill=(235, 220, 170), width=1)
+    for b in E["buildings"]:
+        d.polygon([T(*q) for q in b[0]], fill=(205, 205, 205) if not b[3] else (150, 150, 250))
+    col = {"tokaido": (240, 138, 28), "yokosuka": (31, 95, 174), "freight": (110, 110, 110)}
+    for r in E["routes"]:
+        d.line([T(q[0], q[2]) for q in r["p"]], fill=col.get(r["line"], (0, 0, 0)), width=2)
+    for st in E.get("stations", []):
+        for pf in st.get("platforms") or [st["platform"]]:
+            d.polygon([T(*q) for q in pf["left"] + pf["right"][::-1]], fill=(230, 30, 30))
+        d.text(T(*st["center"]), st["name"], fill=(0, 0, 0))
+    for q in E.get("portals", []):
+        x, z = T(q[0], q[2])
+        d.ellipse([x - 4, z - 4, x + 4, z + 4], fill=(0, 0, 0))
+    im.save(path)
+    print(f"-> {path}")
+
+
+if __name__ == "__main__":
+    import sys
+    a = sys.argv[1:]
+    if a[:1] == ["--find"]:
+        la, lo = (float(v) for v in a[2].split(","))
+        find_station(a[1], la, lo)
+    elif a[:1] == ["--plot"]:
+        plot(a[1])
+    elif a[:1] == ["--routes"]:
+        main(routes_only=a[1])
+    else:
+        main()

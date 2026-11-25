@@ -16,9 +16,14 @@ export function hasCover() { return !!C; }
 // 種類ごとの色 (cover.json の classes の名前)。none は元の地面の色
 const COVER_COLOR = { grass: '#8aa364', paved: '#6e6f73', soil: '#b39c7a', woodfloor: '#6d8552', light: '#b3b0a8' };
 
+// 地図の範囲の外の地形 (線路を東戸塚まで延ばした所。railext.js が登録する)。範囲の外で null を返さなければ、その値を使う
+let EXT = null;
+export function setTerrainExt(fn) { EXT = fn; }
+
 export function H(x, z) {
   if (!T) return 0;
   let fx = (x - T.minX) / T.step, fz = (z - T.minZ) / T.step;
+  if (EXT && (fx < 0 || fz < 0 || fx > T.nx - 1 || fz > T.nz - 1)) { const v = EXT(x, z); if (v != null) return v; }
   fx = Math.max(0, Math.min(T.nx - 1.0001, fx));
   fz = Math.max(0, Math.min(T.nz - 1.0001, fz));
   const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j;
