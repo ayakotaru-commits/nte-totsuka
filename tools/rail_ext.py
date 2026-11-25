@@ -1121,7 +1121,7 @@ def main(routes_only=None):
     print(f"粗い地形: {cnx}x{cnz} (値のある点 {int(cm.sum())})")
 
     # ---------- 建物 (PLATEAU) ----------
-    buildings = plateau_buildings(near_track, allP, ext_routes, stations)
+    buildings = plateau_buildings(near_track, allP, ext_routes, stations, cfg.get("gsi_buildings", ()))
     print(f"建物: {len(buildings)}")
 
     # ---------- 道路 (国土地理院の道路中心線。高架は除く。線路の近くで、地図の外だけ) ----------
@@ -1257,7 +1257,7 @@ def main(routes_only=None):
     rail_ext_split.write(json.loads(OUT.read_text(encoding="utf-8")))
 
 
-def plateau_buildings(near_track, allP, ext_routes, stations=()):
+def plateau_buildings(near_track, allP, ext_routes, stations=(), gsi_areas=()):
     import xml.etree.ElementTree as ET
     from remotezip import open_remote_zip
     from fetch_plateau import NS, ring
@@ -1315,6 +1315,21 @@ def plateau_buildings(near_track, allP, ext_routes, stations=()):
                         found = y if found is None else max(found, y)
         return found
 
+    def over_track(ring_xz, h, gy):
+        """線路にかかる建物の下端 (0 = 地面から)。使わない建物は None"""
+        ty = track_near(ring_xz, 2.6)
+        if ty is None:
+            return 0.0
+        if h < 9:
+            return None      # 線路にかかる低い建物 (データのずれ) は使わない
+        lift = round(max(0.0, ty - RAIL_TOP + 6.5 - gy), 2)   # 線路をまたぐ駅舎など: 線路の上 6 m から
+        if lift >= h - 1:
+            return None
+        if h < 20 and platform_cover(ring_xz, stations) >= 100:
+            return None      # ホームに沿って 100 m 以上かかる低いもの = ホームの屋根・高架の駅の構造 (東京・新橋・品川)。屋根は station.js が描く
+                             # (ホームを横切る橋上駅舎 (東戸塚・保土ケ谷・川崎など。かかるのは 60 m まで) は残す)
+        return lift
+
     out, seen = [], {}
     for path in files:
         for _, el in ET.iterparse(path, events=("end",)):
@@ -1344,22 +1359,81 @@ def plateau_buildings(near_track, allP, ext_routes, stations=()):
             if len(ring_xz) < 3:
                 continue
             gy = min((dem(x, z) or base - REF) for x, z in ring_xz)
-            lift = 0.0
-            ty = track_near(ring_xz, 2.6)
-            if ty is not None:
-                if h < 9:
-                    continue      # 線路にかかる低い建物 (データのずれ) は使わない
-                lift = round(max(0.0, ty - RAIL_TOP + 6.5 - gy), 2)   # 線路をまたぐ駅舎など: 線路の上 6 m から
-                if lift >= h - 1:
-                    continue
-                if h < 20 and platform_cover(ring_xz, stations) >= 100:
-                    continue      # ホームに沿って 100 m 以上かかる低いもの = ホームの屋根・高架の駅の構造 (東京・新橋・品川)。屋根は station.js が描く
-                                  # (ホームを横切る橋上駅舎 (東戸塚・保土ケ谷・川崎など。かかるのは 60 m まで) は残す)
+            lift = over_track(ring_xz, h, gy)
+            if lift is None:
+                continue
             key = (round(cx), round(cz), round(h))   # 市の境目で 2 つのファイルに入っている建物は 1 つに
             if seen.get(key, path) != path:
                 continue
             seen[key] = path
             out.append([[list(p) for p in ring_xz], round(gy, 2), round(h, 2), lift])
+    for area in gsi_areas:
+        out += gsi_buildings(area, near_track, ext_routes, over_track)
+    return out
+
+
+GSI_BLD_H = {3101: 7.0, 3102: 15.0}   # 国土地理院の建物の種類 → 高さ (推定): 普通建物 = 2 階建ての家、堅ろう建物 = 5 階建てくらい。無壁舎 (3111・3112) は使わない
+
+
+def gsi_buildings(area, near_track, ext_routes, over_track):
+    """PLATEAU の無い所 (浦安市など。設定の gsi_buildings) の建物: 国土地理院ベクトルタイルの建物の輪郭 (BldA) に、種類から決めた高さ (推定)。
+    area = {name, lon_min?, lon_max?, lat_min?, lat_max? (範囲), keep: {line, side: left / right} (その線の下りの道筋の、進む向きのその側だけ)}"""
+    la0, la1 = area.get("lat_min", -90), area.get("lat_max", 90)
+    lo0, lo1 = area.get("lon_min", -180), area.get("lon_max", 180)
+    keep = area.get("keep")
+    ref = None
+    if keep:
+        ref = next((er for er in ext_routes if er["line"] == keep["line"] and er.get("dir", "out") == "out"), None)
+    pts_all = [p for er in ext_routes for p in er["P"]]
+    lats = [to_ll(x, z)[0] for x, z in pts_all]
+    lons = [to_ll(x, z)[1] for x, z in pts_all]
+    pad = 0.005
+    tiles = bbox_tiles((max(la0, min(lats) - pad), max(lo0, min(lons) - pad), min(la1, max(lats) + pad), min(lo1, max(lons) + pad)))
+    load_gsi(tiles=tiles)   # タイルを取っておく (無ければ取る)
+    out = []
+    for tx, ty in sorted(tiles):
+        raw = (CACHE / f"16_{tx}_{ty}.pbf").read_bytes()
+        lay = (decode(raw) if raw else {}).get("BldA")
+        if not lay:
+            continue
+        ext = lay["extent"]
+        for f in lay["features"]:
+            h = GSI_BLD_H.get(f["props"].get("vt_code"))
+            if f["type"] != 3 or h is None:
+                continue
+            for r in f["geom"]:
+                if len(r) < 4:
+                    continue
+                a2 = sum(r[i][0] * r[i - 1][1] - r[i - 1][0] * r[i][1] for i in range(len(r)))
+                if a2 >= 0:   # 外周は時計回り (y 下向き) = この式で負。穴は使わない
+                    continue
+                gx, gy_ = sum(q[0] for q in r) / len(r), sum(q[1] for q in r) / len(r)
+                if not (0 <= gx < ext and 0 <= gy_ < ext):
+                    continue   # タイルの境目をまたぐ建物は、中心のあるタイルのものだけ
+                ll = [to_latlon(tx + a / ext, ty + b / ext, 16) for a, b in r]
+                cla, clo = sum(q[0] for q in ll) / len(ll), sum(q[1] for q in ll) / len(ll)
+                if not (la0 <= cla <= la1 and lo0 <= clo <= lo1):
+                    continue
+                pts = [to_local(*q) for q in ll]
+                cx, cz = sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+                if inside_map(cx, cz) or not near_track(cx, cz, BAND):
+                    continue
+                if ref is not None:
+                    _, k = nearest_on(ref["P"], cx, cz)
+                    k = min(k, len(ref["P"]) - 2)
+                    (ax, az), (bx, bz) = ref["P"][k], ref["P"][k + 1]
+                    left = (bx - ax) * (cz - az) - (bz - az) * (cx - ax) < 0   # 進む向きの左 (x = 東、z = 南)
+                    if left != (keep["side"] == "left"):
+                        continue
+                ring_xz = simplify([(round(x, 2), round(z, 2)) for x, z in pts])
+                if len(ring_xz) < 3:
+                    continue
+                gy = min(dem0(x, z) for x, z in ring_xz)
+                lift = over_track(ring_xz, h, gy)
+                if lift is None:
+                    continue
+                out.append([[list(p) for p in ring_xz], round(gy, 2), h, lift])
+    print(f"  {area.get('name', '国土地理院の建物')}: {len(out)} 棟 (高さは種類からの推定)")
     return out
 
 
