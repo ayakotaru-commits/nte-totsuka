@@ -133,14 +133,14 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   const SO = site.south;
   if (SO) {
     const [sx0, sx1] = [SO.gates[0], SO.gates[1]], sm = (sx0 + sx1) / 2, ds = SO.deck, [ss0, sdir, st0, st1] = SO.gstairs[SO.gstairs.length - 1], sty = (st0 + st1) / 2;
-    await page.evaluate(([s, F]) => window.__put(s, 0, F), [sm, F]);
+    await page.evaluate(([s, F]) => window.__put(s, -5.5, F), [sm, F]);
     await frames(2); await extIdle();
-    const sd = await page.evaluate((a) => window.__walk(a), [[sm, -4], [sm, -9.5], [sm, -16], [ss0 - 3, sty], [ss0 + 2, sty], [ss0 + sdir * 6, sty], [ss0 + sdir * 11, sty], [ss0 + sdir * 14, sty]]);
+    const sd = await page.evaluate((a) => window.__walk(a), [[sm, -7], [sm, -9.5], [sm, -16], [ss0 - 3, sty], [ss0 + 2, sty], [ss0 + sdir * 6, sty], [ss0 + sdir * 11, sty], [ss0 + sdir * 14, sty]]);
     console.log(JSON.stringify(sd));
     const q = sd.out || [];
     check('南の改札機の間を通って南口のデッキに出る', q[2] && q[2].ok && near(q[2].y, F), q[2]);
     check('南のデッキから地上への階段を下りてロータリーに着く', q[7] && q[7].ok && Math.abs(q[7].y - G) < 0.7, q[7]);
-    const su = await page.evaluate((a) => window.__walk(a), [[ss0 + sdir * 11, sty], [ss0 + sdir * 6, sty], [ss0 + 1, sty], [ss0 - 3, sty], [sm, -16], [sm, -4]]);
+    const su = await page.evaluate((a) => window.__walk(a), [[ss0 + sdir * 11, sty], [ss0 + sdir * 6, sty], [ss0 + 1, sty], [ss0 - 3, sty], [sm, -16], [sm, -7]]);
     const w = su.out || [];
     check('ロータリーから階段を上ってデッキに戻り、改札の中に入る', w[5] && w[5].ok && near(w[5].y, F), w[5]);
     await page.evaluate(([s, t, F]) => window.__put(s, t, F), [30, -22, F]);
