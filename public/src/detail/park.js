@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { H } from '../terrain.js';
 import { canvasTexture } from './util.js';
 import { buildAreas } from './parkareas.js';
+import { buildShow, showClock as showClockNow } from './parkshow.js';
 
 const bboxOf = (p) => {
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -162,7 +163,8 @@ export function createParkCut(cfg, ext) {
 export function buildPark(cfg, world, opts = {}) {
   const group = new THREE.Group();
   group.name = 'park';
-  const emissive = [];   // 夜に光らせる材質 (time.js)。作るのは地形が読めた後でも、材質はここで作って先に渡す
+  const emissive = [];   // 夜に光らせる材質 (time.js)。地形が読めた後に作る材質もあるので、opts.sink (time.js が見る配列) へ作った時点で直接入れる
+  if (opts.sink) { const base = emissive.push.bind(emissive); emissive.push = (...m) => { opts.sink.push(...m); return base(...m); }; }
   let built = false;
   const G = cfg.ground, gate = cfg.gate, plazaE = cfg.ellipses['サンライズ・プラザ'], lakeE = cfg.ellipses['ムーンレイク'], pg = parkGround(cfg);
   const ground = (x, z) => H(x, z);
@@ -377,18 +379,26 @@ export function buildPark(cfg, world, opts = {}) {
       api.areas = ar;
       console.info(`[park] 各エリア: 建物 ${ar.stats.buildings}・木 ${ar.stats.trees}・看板 ${ar.stats.signs}・乗り物の三角形 ${ar.rides.stats.tris}、${(performance.now() - t0).toFixed(0)} ms`);
     }
+    // ---- 段階 4: ショー (花火・パレード・水上ショー・夜の光)。public/data/park.json の show ----
+    if (cfg.show) {
+      const t0 = performance.now();
+      api.show = buildShow({ cfg, ground, std, glowMat, group, emissive, flat, stripPos });
+      console.info(`[park] ショー: 花火 ${api.show.stats.bursts} 発・山車 ${api.show.stats.floats}・踊り手 ${api.show.stats.dancers}・噴水 ${api.show.stats.jets}、パレードの道 ${api.show.stats.routeLen} m、${(performance.now() - t0).toFixed(0)} ms`);
+    }
     world.addColliders(col, true);   // V キーに関係なく有効
     console.info(`[park] ${cfg.name}: 土台を作った (柵 ${col.line.length} 本の線・当たり判定 円 ${col.circle.length}・線 ${col.line.length}・箱 ${col.box.length}、ゲートの地面 ${ground(gx, gz).toFixed(2)} m)`);
   }
   const api = {
-    group, emissive, beams: null, areas: null,
+    group, emissive, beams: null, areas: null, show: null,
     // カメラの位置。区間 (地形) を読み込めたら 1 回だけ作る (敷地の 1.5 km 以内のとき調べる)。光線は回す
-    update(x, z) {
+    update(x, z, win = 0) {
       if (!built && Math.hypot(x - gate.at[0], z - gate.at[1]) < 1500 && ready()) build();
       if (api.beams) api.beams.rotation.y = performance.now() / 1000 * 0.25;
       api.areas?.rides?.update(Date.now() / 1000, x, z);   // 観覧車・メリーゴーラウンド・コースターの動き (近くのときだけ)
+      api.show?.update(showClockNow(), x, z, win);          // 花火・パレード・水上ショー (win = 夜の度合い。time.js)
     },
     get built() { return built; },
+    cfg,
     ground: pg,
   };
   return api;

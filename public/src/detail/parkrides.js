@@ -31,7 +31,8 @@ class Geo {
 export function buildRides(ctx) {
   const { cfg, ground, std, glowMat, group, col, emissive } = ctx;
   const R = cfg.gen.rides;
-  const api = { group: new THREE.Group(), stats: {}, ferris: null, carousel: null, coaster: null, anim: [] };
+  const api = { group: new THREE.Group(), stats: {}, ferris: null, carousel: null, coaster: null, anim: [], chase: [] };
+  const chase = (mat, k, base) => { api.chase.push({ mat, k, base }); return mat; };   // 夜の光のチェイス: update が userData.glow を拍ごとに変える (time.js が毎コマ読む)
   api.group.name = 'park_rides';
   group.add(api.group);
   if (!R) return api;
@@ -75,7 +76,7 @@ export function buildRides(ctx) {
     for (let k = 0; k < N; k++) { const a = (k + 0.5) / N * TAU; for (const z of [-ZR, ZR]) spokes.box(0.1, Rr * 0.48, 0.1, Math.sin(a) * Rr * 0.26, -Math.cos(a) * Rr * 0.26, z, 0, 0, a); }
     addMesh(wheel, spokes.geometry(), spokeMat, false);
     addMesh(wheel, new THREE.CylinderGeometry(1.1, 1.1, ZR * 2 + 1.2, 16).rotateX(Math.PI / 2), steel, false);
-    const bulbs = [glowMat('#ff9ccf', 1.4), glowMat('#8fe8ff', 1.4), glowMat('#fff2a8', 1.4)];
+    const bulbs = [glowMat('#ff9ccf', 1.4), glowMat('#8fe8ff', 1.4), glowMat('#fff2a8', 1.4)].map((m, k) => chase(m, k, 1.4));
     const NB = 36, bulbGeo = new THREE.SphereGeometry(0.2, 6, 4);
     bulbs.forEach((mat, m) => {
       const im = new THREE.InstancedMesh(bulbGeo, mat, NB * 2 / 3 | 0);
@@ -158,7 +159,7 @@ export function buildRides(ctx) {
     addMesh(g, new THREE.CircleGeometry(Rc + 0.9, 32).rotateX(Math.PI / 2).translate(0, roofY, 0), std('#fff7e3', 0.8), false);
     addMesh(g, new THREE.TorusGeometry(Rc + 0.9, 0.22, 6, 40).rotateX(Math.PI / 2).translate(0, roofY, 0), std('#ffd36b', 0.4), false);
     addMesh(g, new THREE.SphereGeometry(0.5, 10, 8).translate(0, roofY + 3.2, 0), std('#ffd36b', 0.3), false);
-    const bulb = glowMat('#fff2b0', 1.5), bi = new THREE.InstancedMesh(new THREE.SphereGeometry(0.2, 6, 4), bulb, 36);
+    const bulb = chase(glowMat('#fff2b0', 1.5), 0, 1.5), bi = new THREE.InstancedMesh(new THREE.SphereGeometry(0.2, 6, 4), bulb, 36);
     for (let k = 0; k < 36; k++) { const a = k / 36 * TAU; dummy.position.set(Math.cos(a) * (Rc + 0.9), roofY - 0.1, Math.sin(a) * (Rc + 0.9)); dummy.updateMatrix(); bi.setMatrixAt(k, dummy.matrix); }
     g.add(bi);
     // 回る部分: 馬と柱 (内側 6・外側 12)
@@ -284,6 +285,18 @@ export function buildRides(ctx) {
     dummy.scale.set(1, 1, 1);
     postI.castShadow = true; postI.frustumCulled = false; g.add(postI);
     tris += (ties.length + posts.length) * 12;
+    // 夜の光: レールの外側に 4 m おきの電球 (3 色。チェイスで走る)
+    {
+      const step = Math.max(1, Math.round(4 / ds)), groups = [[], [], []];
+      for (let i = 0, n = 0; i < M; i += step, n++) for (const sd of [-0.74, 0.74]) groups[n % 3].push([P[i].x + side[i].x * sd + upv[i].x * 0.16, P[i].y + side[i].y * sd + upv[i].y * 0.16, P[i].z + side[i].z * sd + upv[i].z * 0.16]);
+      const cm = [chase(glowMat('#ff9ccf', 1.3), 0, 1.3), chase(glowMat('#8fe8ff', 1.3), 1, 1.3), chase(glowMat('#fff2a8', 1.3), 2, 1.3)], bg = new THREE.SphereGeometry(0.16, 6, 4);
+      groups.forEach((list, k) => {
+        const im = new THREE.InstancedMesh(bg, cm[k], list.length);
+        list.forEach((q, j) => { dummy.position.set(q[0], q[1], q[2]); dummy.rotation.set(0, 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); im.setMatrixAt(j, dummy.matrix); });
+        im.frustumCulled = false; g.add(im); tris += list.length * 8;
+      });
+      api.stats.coasterBulbs = groups[0].length + groups[1].length + groups[2].length;
+    }
     // 駅の看板 (のりばの上)
     {
       const sMid = Math.floor(((s0 + (s1 - s0 + M) % M / 2) % M)), c = P[sMid], t = T[sMid];
@@ -346,6 +359,7 @@ export function buildRides(ctx) {
   api.update = (nowSec, cx, cz) => {
     if (!centers.some((c) => Math.hypot(cx - c.x, cz - c.z) < 450)) return;
     for (const f of api.anim) f(nowSec);
+    for (const c of api.chase) c.mat.userData.glow = c.base * (0.25 + 1.0 * Math.max(0, Math.sin(nowSec * 4.2 - c.k * 2.094)));   // 3 色が順に明るくなって走る
   };
   return api;
 }

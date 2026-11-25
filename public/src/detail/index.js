@@ -82,7 +82,7 @@ export async function loadDetail({ scene, city, world, built, props, ext = null,
     if (ext) { // 線路の延長 (地図の北の端 → 横浜駅。data/rail_ext/)。V キーに関係なく出す (ホームの当たり判定があるので)
       railExt = buildRailExt(ext, world, city.bounds, { low: LOW_MEM, park: park ? createParkCut(park, ext) : null });
       scene.add(railExt.group);
-      if (park) { parkApi = buildPark(park, world, { low: LOW_MEM }); scene.add(parkApi.group); emissive.push(...parkApi.emissive); }
+      if (park) { parkApi = buildPark(park, world, { low: LOW_MEM, sink: built.windowMats }); scene.add(parkApi.group); }   // パークの光る材質は、地形が読めた後に作るものも time.js の配列 (built.windowMats) へ直接入れる (以前は後から作った分が夜に光らなかった)
     }
     const tr = buildTrains(props, ext); // 走る電車 (道筋は props.json の rail.routes + rail_ext.json の延長)
     trains = tr.api;               // 乗り降り (ride.js) が時刻と位置を使う
