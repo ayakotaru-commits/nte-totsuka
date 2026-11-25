@@ -149,6 +149,16 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     await page.evaluate(([s, t, G]) => window.__put(s, t, G + 0.2), [25, -30, G]);
     r = await page.evaluate(() => window.__walk([[25, -5]], { maxT: 8, keepGoing: true, walk: true }));
     check('地上から南の壁の下 (1 階) に入れない', r.out[0] && !r.out[0].ok && r.out[0].at[1] < -10 && r.out[0].y < G + 1, r.out[0]);
+    // 入園口へ歩く道 (site.promenade): ロータリーから道の点を順にたどって、最後まで着く (走らず歩き)
+    if (site.promenade) {
+      const pts = [[70, -45], ...site.promenade.flatMap((p) => p.slice(1))];
+      await page.evaluate(([s, t, G]) => window.__put(s, t, G + 0.3), [82, -30, G]);
+      const pw = await page.evaluate((a) => window.__walk(a, { maxT: 40, tol: 2.0 }), pts);
+      const last = (pw.out || [])[(pw.out || []).length - 1];
+      console.log(JSON.stringify(pw.out ? pw.out.map((o) => [o.ok, o.at, o.y]) : pw));
+      check('ロータリーから入園口へ歩く道を最後まで歩ける', last && last.ok && (pw.out || []).length === pts.length, last);
+      check('NaN なし (歩く道)', !pw.nan);
+    }
     check('NaN なし (南口)', !sd.nan && !su.nan);
     const sp = await page.evaluate((name) => {
       const e = window.__g.EVENTS.find((q) => q.name === name + '駅（南口）');
