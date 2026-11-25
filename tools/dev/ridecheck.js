@@ -90,7 +90,7 @@ function terrain() {
   const byName = {};
   for (const p of setup.plats.slice(2)) { const [n, ...rest] = p.split(' '); byName[n] = (byName[n] || '') + ' ' + rest.join(' '); }
   check('改札から戸塚の 2 面のホームへ行ける・延ばした先の駅ごとに上下 2 方向が止まる・どのホームにも電車が止まる', new Set(setup.tops.flatMap((t) => t[1])).size === 2 && setup.plats.length >= 3
-    && Object.values(byName).every((v) => /:north/.test(v) && /:south/.test(v)) && setup.plats.slice(2).every((p) => /:/.test(p)), { setup, byName });
+    && Object.values(byName).every((v) => /:(north|in)\b/.test(v) && /:(south|out)\b/.test(v)) && setup.plats.slice(2).every((p) => /:/.test(p)), { setup, byName });   // 新しい線 (京葉線) は in / out
   // 東戸塚・保土ケ谷は横須賀線だけが止まる (東海道線・貨物線は通過)
   check('東戸塚・保土ケ谷には横須賀線だけが止まる', ['東戸塚', '保土ケ谷'].every((n) => !byName[n] || !/(tokaido|freight):/.test(byName[n])), byName);
   // 時計を止める (この環境は画面を撮るのに 1〜2 分かかり、その間に電車が動いてしまうため)
@@ -115,9 +115,9 @@ function terrain() {
   // 延ばした先の駅の印: ミニマップ・大きい地図に駅ごとに出る、選んでワープするとその駅のホームの上に立つ
   const stMarks = await page.evaluate(() => {
     const g = window.__g, R = window.__ride, out = [];
-    const names = [...new Set(R.plats.slice(R.nHome).map((p) => p.name))];
-    for (const n of names) {
-      const e = g.bigmap.events.find((q) => q.name === n + '駅（ホーム）');
+    const names = [...new Set(R.plats.slice(R.nHome).map((p) => p.name + '|' + p.sub))].map((k) => k.split('|'));   // 新しい線の駅は線ごとに別の印 (東京駅（京葉線ホーム）)
+    for (const [n, sub] of names) {
+      const e = g.bigmap.events.find((q) => q.name === n + '駅（' + (sub ? sub + 'ホーム' : 'ホーム') + '）');
       if (!e) { out.push({ n, mark: false }); continue; }
       g.bigmap.show(-306, 1426); g.bigmap.onWarp(e.x, e.z);
       const pl = R.onPlatform(), p = g.player.pos;

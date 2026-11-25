@@ -1,4 +1,13 @@
 {
+  "_doc_lines": "lines = 新しい線 (地図の中の道筋の続きではなく、駅から始まる線。舞浜までの計画の段階 3a): [{id (線の名前。trains.js・ride.js の線名), name (表示の名前), band (帯の色 2 つ), cars (両数), period (発車の間隔 秒), phase (最初の駅を出る時刻の、周期の中の位置 秒), dirs: {out: 最初の駅から外へ向かう電車の行き先の表示, in: その逆}, depth (地下の区間の、地面からレールの上面までの深さ m。駅の depth が無い所), beyond (最後の駅の先の長さ m), before (最初の駅が終点でないとき、その手前の長さ m), stations: [{name, kana, roman, lat, lon (駅の中心。tools/rail_ext.py --find の「駅部分」の中央。地下の駅も出る), city, ward, length (ホームの長さ), terminal (true = 最初の駅が終点。道筋は軌道の行き止まりから始まる), spread (地下の島式ホームの駅で、上下線の間を何 m に広げるか。国土地理院の地下の軌道は 2 本が約 5 m 間隔), depth, platform / platforms (extensions と同じ)}]}]。道筋は国土地理院の軌道の中心線を、最初の駅から 2 番目の駅の向きへたどる (左側通行: その向きの左の軌道が下り = out)",
+  "lines": [
+    {"id": "keiyo", "name": "京葉線", "band": ["#b5162b", "#e8c0c4"], "cars": 10, "period": 300, "phase": 60, "dirs": {"out": "下り 蘇我方面", "in": "上り 東京方面"}, "depth": 22, "beyond": 400, "_doc": "段階 3a の試しの区間 (東京 → 八丁堀)。東京 - 潮見はトンネル (新東京トンネル、駅間は単線のシールドトンネル)。段階 3b で舞浜まで延ばす",
+      "stations": [
+        {"name": "東京", "kana": "とうきょう", "roman": "Tokyo", "lat": 35.67769, "lon": 139.76521, "city": "東京都", "ward": "千代田区", "length": 210, "terminal": true, "spread": 11, "depth": 33.4, "_doc": "京葉線のホーム (地下、鍛冶橋通りの下、深さ 33.4 m = Wikipedia 京葉線)。実物は 2 面 4 線、ここでは上下線の間の島式 1 面"},
+        {"name": "八丁堀", "kana": "はっちょうぼり", "roman": "Hatchobori", "lat": 35.674621, "lon": 139.777995, "city": "東京都", "ward": "中央区", "length": 210, "spread": 10, "depth": 22, "_doc": "島式 1 面 2 線の地下駅 (Wikipedia)。深さは推定 (日比谷線より深い、としか分からない)"}
+      ]
+    }
+  ],
   "_doc": "線路の延長の設定 (tools/rail_ext.py が読む)。edge = 地図のどちらの端から延ばすか (north / south)。stations = 途中・先の駅 (緯度経度はホームの中央の目安。lines = 止まる線、ward = 駅のある区 (画面の左上の表示)、platform = ホームの形 (island = lines[0] の上下線の間の島式 1 面。昔の書き方)、platforms = ホームを複数書くとき [{line, type: island (その線の上下線の間) | outer (その線の上下線それぞれの外側の隣の線路との間。1 つで 2 面), length?, lat?/lon? (ホームの中央。無ければ駅の位置)}]。platforms があれば platform は使わない)。beyond = 最後の駅の先に延ばす長さ (m)。line_end = {線名: 駅名} (その線だけ、その駅の先 beyond m で切る)。platforms の type には inner (outer の反対 = 反対の向きの線の側の隣の線路との間) もあり、only (west / east / north / south) でその側の 1 本だけにできる。city = 市・都 (無ければ横浜市)。via = 通る点 [{line, side (その線の上下線のうちどちらの側の道筋か: west / east / north / south), lat, lon}] (分かれ道の多い大きい駅で、正しい番線を通すため。点の 1.5 km 手前から、線路のつながりの最短の道でその点の 3 m 以内を通る線へ)。駅を足すときは README の「線路の延長」と .claude/skills/rail-extension を見る",
   "extensions": [
     {

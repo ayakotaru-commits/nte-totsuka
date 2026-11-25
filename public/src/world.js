@@ -294,9 +294,30 @@ export class World {
     return out;
   }
 
+  // 地下の空間 (線路の延長の地下の駅。detail/railext.js): 輪郭 ring の中で、高さが床 floor 〜天井 ceil のあいだにいる間は、
+  // 地面 (H = 地上の高さ) の代わりに床に立ち、カメラは床と天井のあいだに収める (地上を歩いている人は、真下に駅があっても落ちない)
+  addUnderground(v) {
+    const xs = v.ring.map((q) => q[0]), zs = v.ring.map((q) => q[1]);
+    (this.under || (this.under = [])).push({ ...v, minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs) });
+  }
+  underAt(x, z, y) {
+    if (!this.under) return null;
+    for (const v of this.under) {
+      if (x < v.minX || x > v.maxX || z < v.minZ || z > v.maxZ || y > v.ceil + 0.5 || y < v.floor - 3) continue;
+      let ins = false;
+      for (let i = 0, j = v.ring.length - 1; i < v.ring.length; j = i++) {
+        const [xi, zi] = v.ring[i], [xj, zj] = v.ring[j];
+        if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) ins = !ins;
+      }
+      if (ins) return v;
+    }
+    return null;
+  }
+
   // 足元 y から見て乗れる最も高い面 (地面は、描画されている路面・敷地の高さに合わせて H より GROUND_LIFT 高い)
   groundAt(x, z, footY) {
-    let g = H(x, z) + GROUND_LIFT;
+    const ug = this.underAt(x, z, footY);
+    let g = ug ? ug.floor : H(x, z) + GROUND_LIFT;
     const br = getBridges();
     if (br) { // 橋・歩道橋・坂の路面 (足元より高すぎる所は、下をくぐっている)
       const d = br.deckAt(x, z, 0.3, (it) => !it.rail, footY + STEP - 0.05);
@@ -312,7 +333,9 @@ export class World {
 
   // カメラ用。建物だけを見る (細い電柱や柵で視点が急に寄らないように)
   blockedAt(x, y, z) {
-    if (y < H(x, z) + 0.15) return true; // 地面の下
+    const ug = this.underAt(x, z, y);
+    if (ug) { if (y < ug.floor + 0.15 || y > ug.ceil - 0.1) return true; }   // 地下の駅の床・天井
+    else if (y < H(x, z) + 0.15) return true; // 地面の下
     for (const b of this.query(x, z, x, z)) {
       if (y >= b.minY && y <= b.topY + 0.2 && this.contains(b, x, z)) return true;
     }
