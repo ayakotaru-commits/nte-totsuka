@@ -18,6 +18,8 @@ import { loadDetail } from './detail/index.js'; // detail (お試し)
 import { DoorControl } from './doors.js';
 import { Ride } from './ride.js';
 import { ParkRide } from './parkride.js';
+import { ParkAudio } from './parkaudio.js';
+import { showClock } from './detail/parkshow.js';
 import { getBridges } from './bridges.js';
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
@@ -175,6 +177,7 @@ async function main() {
   if (Q.has('notraffic')) traffic.setVisible(false);
   window.__traffic = traffic; // 確認用
   // 電車に乗る (ride.js。改札・ホーム・乗り降り)。?noride で無効
+  const parkAudio = new ParkAudio({ park: detail.park, enabled: !QS.has('nosound') });   // フェアリー・リールパークの曲・花火の音 (?nosound で止める)
   parkRide = new ParkRide({ park: detail.park, player, cam, camera, world });   // フェアリー・リールパークの観覧車 (F。乗っている間はキャラを動かさない)
   ride = new Ride({ trains: Q.has('noride') ? null : detail.trains, props, world, player, cam, camera, bridges: getBridges(), scene, ext });
   const streetView = () => openStreetView(city, player.pos.x, player.pos.z, cam.yaw);
@@ -368,7 +371,8 @@ async function main() {
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
     detail.railExt?.update(camera.position.x, camera.position.z); // 線路の延長: カメラの近くの区間を読み込む・遠い区間を捨てる
-    detail.park?.update(camera.position.x, camera.position.z); // フェアリー・リールパーク: 地形を読めたら試作を作る
+    detail.park?.update(camera.position.x, camera.position.z, tod.cur.win);
+    parkAudio.update(camera.position.x, camera.position.z, showClock()); // フェアリー・リールパーク: 地形を読めたら試作を作る
     sky.position.copy(camera.position); // 空の箱 (一辺 10 km) をカメラに付いて動かす。原点のままだと、延長の先 (舞浜は 40 km 先) で箱の外に出て空が黒くなった
 
     // 影は常にプレイヤー周辺

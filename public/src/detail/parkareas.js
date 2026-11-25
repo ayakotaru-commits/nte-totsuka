@@ -89,7 +89,11 @@ export function buildAreas(ctx) {
     g.fillStyle = '#d8d8d4'; g.fillRect(0, 56, 64, 8);
   });
   win.wrapS = win.wrapT = THREE.RepeatWrapping;
-  const wallMat = new THREE.MeshStandardMaterial({ map: win, vertexColors: true, roughness: 0.85 });
+  // 夜は窓が暖かく光る (窓の絵と同じ位置だけ光らせる。時間帯は time.js の win)
+  const winGlow = canvasTexture(64, 64, (g) => { g.fillStyle = '#000000'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#ffd89a'; g.fillRect(16, 18, 32, 22); });
+  winGlow.wrapS = winGlow.wrapT = THREE.RepeatWrapping;
+  const wallMat = new THREE.MeshStandardMaterial({ map: win, vertexColors: true, roughness: 0.85, emissiveMap: winGlow, emissive: '#ffffff', emissiveIntensity: 0 });
+  wallMat.userData.glow = 0.55; emissive.push(wallMat);
   const trimMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide });
   const clockTex = canvasTexture(256, 256, (g) => {
     g.fillStyle = '#fff8e0'; g.beginPath(); g.arc(128, 128, 124, 0, 7); g.fill();

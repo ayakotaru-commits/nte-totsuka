@@ -511,5 +511,100 @@
   "ellipse": "ムーンレイク",
   "offset": 12,
   "width": 7
+ },
+ "show": {
+  "_doc": "ショー (段階 4)。時計 (Date.now) の cycle 秒ごとにくり返す。パレード = ネオン・アベニューの入口 → プラザを半周 → 湖へ (山車 floats を gap m おきに speed m/s で進める)、花火 = 湖の上 (start 秒から duration 秒。launch は湖の楕円の中の位置 [-1〜1, -1〜1] と見える高さ)、噴水 = 湖の中心線に jets 本 (夜だけ)。音 = tools/music の曲 (public/audio) を、プラザから radius m 以内で流す",
+  "cycle": 600,
+  "parade": {
+   "start": 20,
+   "speed": 3.4,
+   "gap": 26,
+   "avenue": "ネオン・アベニュー",
+   "plaza": "サンライズ・プラザ",
+   "ring": 0.72,
+   "toLake": "プラザから湖へ",
+   "floats": [
+    {
+     "kind": "star",
+     "name": "ほしのふね",
+     "a": "#ffd36b",
+     "b": "#ff7fb5"
+    },
+    {
+     "kind": "moon",
+     "name": "つきのゆりかご",
+     "a": "#cfc3ff",
+     "b": "#7f6ad9"
+    },
+    {
+     "kind": "heart",
+     "name": "ハートのはなぐるま",
+     "a": "#ff8fbd",
+     "b": "#ffe0ee"
+    },
+    {
+     "kind": "rainbow",
+     "name": "にじのアーチ",
+     "a": "#7fd6e8",
+     "b": "#ffd36b"
+    },
+    {
+     "kind": "rocket",
+     "name": "ロケット・パレード",
+     "a": "#ff9b6b",
+     "b": "#8fe8ff"
+    },
+    {
+     "kind": "cloud",
+     "name": "くものきゃらばん",
+     "a": "#ffffff",
+     "b": "#a9c8ff"
+    }
+   ]
+  },
+  "fireworks": {
+   "start": 330,
+   "duration": 120,
+   "seed": 20261125,
+   "height": [
+    75,
+    140
+   ],
+   "launch": [
+    [
+     -0.7,
+     0.1
+    ],
+    [
+     -0.35,
+     -0.2
+    ],
+    [
+     0,
+     0.25
+    ],
+    [
+     0.35,
+     -0.15
+    ],
+    [
+     0.7,
+     0.1
+    ],
+    [
+     0,
+     -0.35
+    ]
+   ]
+  },
+  "fountain": {
+   "jets": 9
+  },
+  "music": {
+   "theme": "audio/park_theme.mp3",
+   "parade": "audio/park_parade.mp3",
+   "radius": 340,
+   "paradeRadius": 170
+  }
  }
 }

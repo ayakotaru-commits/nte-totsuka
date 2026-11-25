@@ -28,6 +28,23 @@ const VIEWS = [
   { name: 'b5_fence', at: [30992, -25801], look: [-1, 0.05], pitch: 0.1, dist: 12 },       // 外周の柵 (西の辺)
   { name: 'b6_guide', at: [31612, -26047], look: [-0.95, -0.3], pitch: 0.08, dist: 9 },    // 駅からゲートへの案内板
   { name: 'b7_beams', at: [31470, -25760], look: [0.6, 0.8], pitch: 0.3, dist: 90 },       // 塔の光線 (夜)
+  // 段階 4: ショー・夜の光 (show = 時計を差し替える: { parade: 先頭の山車の道のり m } / { fw: 'burst:N' (N 発目の爆発の直後) | 'finale' | 'end' | 秒 } / { idle: true } = ショーの無い時刻)。--night と合わせて使う
+  { name: 'n1_plaza_lights', at: [31440, -25700], look: [0.3, 1], pitch: 0.3, dist: 30, show: { idle: true } },     // プラザの光の輪・アベニューの縁 (夜)
+  { name: 'n2_lake_jets', at: [31510, -25548], look: [0, 1], pitch: 0.12, dist: 40, show: { idle: true } },      // 湖の水上ショー (噴水の光の柱・しぶき・岸の光)
+  { name: 'n3_avenue_night', at: [31352, -25896], look: [0.66, 0.76], pitch: 0.1, dist: 16, show: { idle: true } },
+  { name: 'n4_lake_aerial', at: [31510, -25464], look: [0, 1], pitch: 1.1, dist: 480, show: { idle: true } },
+  { name: 'f1_fw_north', at: [31510, -25640], look: [0, 1], pitch: 0.02, dist: 150, show: { fw: 'burst:8' } },   // 花火 (プラザの側から湖の上を見る)
+  { name: 'f2_fw_finale', at: [31510, -25640], look: [0, 1], pitch: 0.02, dist: 150, show: { fw: 'finale' } },
+  { name: 'f3_fw_south', at: [31510, -25379], look: [0, -1], pitch: 0.03, dist: 260, show: { fw: 'finale' } },
+  { name: 'f4_fw_end', at: [31510, -25640], look: [0, 1], pitch: 0.02, dist: 150, show: { fw: 'end' } },
+  { name: 'f5_fw_lake', at: [31510, -25548], look: [0, 1], pitch: 0.2, dist: 70, show: { fw: 'burst:20' } },         // 湖のきらめき (花火の光が水に映る)
+  { name: 'q1_parade_avenue', at: [31440, -25794], look: [-0.66, -0.76], pitch: 0.12, dist: 10, show: { parade: 154 } },   // パレード (アベニューで山車が来る)
+  { name: 'q2_parade_avenue2', at: [31440, -25794], look: [-0.66, -0.76], pitch: 0.1, dist: 10, show: { parade: 190 } },
+  { name: 'q3_parade_plaza', at: [31490, -25672], look: [1, 0], pitch: 0.25, dist: 80, show: { parade: 300 } },        // プラザを半周する山車
+  { name: 'q4_parade_aerial', at: [31490, -25672], look: [0, 1], pitch: 1.0, dist: 200, show: { parade: 300 } },
+  { name: 'q5_parade_lake', at: [31510, -25560], look: [0, -1], pitch: 0.15, dist: 40, show: { parade: 560 } },
+  { name: 'q6_float_close', at: [31440, -25794], look: [-0.66, -0.76], pitch: 0.2, dist: 8, show: { parade: 160 } },
+  { name: 'q7_parade_gate', at: [31330, -25919], look: [0.5, 0.866], pitch: 0.2, dist: 16, show: { parade: 40 } },
   { name: 'a8_station_side', at: [31730, -25950], look: [-1, 0.2], pitch: 0.4, dist: 60 },      // 駅の南口のロータリー (敷地の縁。省いた所と残した所の境目)
 ];
 
@@ -82,6 +99,7 @@ try {
   const args = process.argv.slice(2);
   const flag = (name) => { const i = args.indexOf(name); return i < 0 ? null : (args.splice(i, 2)[1] || true); };
   const night = args.includes('--night'); if (night) args.splice(args.indexOf('--night'), 1);
+  const dusk = args.includes('--dusk'); if (dusk) args.splice(args.indexOf('--dusk'), 1);
   const nopark = args.includes('--nopark'); if (nopark) args.splice(args.indexOf('--nopark'), 1);
   const only = flag('--only');
   const [out] = args;
@@ -106,7 +124,7 @@ try {
   });
   page.on('pageerror', e => console.log('ERR', e.message));
   page.on('console', m => { if (/rror/.test(m.text())) console.log('LOG', m.text()); });
-  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : '') + (nopark ? '&nopark' : ''), { timeout: 300000 });
+  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : '') + (nopark ? '&nopark' : ''), { timeout: 300000 });
   await page.waitForFunction(() => window.__g && window.__ride, null, { timeout: 300000 });
   await page.addStyleTag({ content: '#help{display:none!important}' });
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });
@@ -158,6 +176,21 @@ try {
         pr.view(1 / 30);
       }, v.board);
     }
+    if (v.show) {   // ショーの時計を差し替える (その時刻のまま止める)
+      await page.evaluate((sh) => {
+        const S = window.__pride.park.show, cfg = window.__pride.park.cfg?.show; if (!cfg) return;   // ショーの無い版 (修正前) は時計を替えない
+        const F = cfg.fireworks, RISE = 1.8;
+        let phase = 100;   // ショーの無い時刻 (パレード 20 秒〜のあと、花火の前)
+        if (sh.parade !== undefined) phase = cfg.parade.start + sh.parade / cfg.parade.speed;
+        else if (sh.fw !== undefined) {
+          if (typeof sh.fw === 'number') phase = F.start + sh.fw;
+          else if (sh.fw.startsWith('burst:')) phase = F.start + S.plan[+sh.fw.slice(6)].t + RISE + 1.0;
+          else if (sh.fw === 'finale') { let best = 0, bt = 0; for (let t = F.duration * 0.74; t < F.duration; t += 0.2) { let n = 0; for (const b of S.plan) if (t >= b.t + RISE && t < b.t + RISE + 3.5) n++; if (n > best) { best = n; bt = t; } } phase = F.start + bt; }
+          else if (sh.fw === 'end') phase = F.start + F.duration - 8 + RISE + 1.6;
+        }
+        window.__showClock = () => 600 * 1000 + phase;
+      }, v.show);
+    } else await page.evaluate(() => { window.__showClock = () => 600 * 1000 + 100; });
     await frames(3); await page.waitForTimeout(2000);
     await page.screenshot({ path: path.join(out, v.name + '.png'), timeout: 300000 });
     if (v.board) await page.evaluate(() => { window.__pride.cancel(); Date.now = window.__realNow; });
