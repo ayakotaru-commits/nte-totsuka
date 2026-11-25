@@ -129,6 +129,36 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   r = await page.evaluate(() => window.__walk([[30, 20]], { maxT: 8, keepGoing: true, walk: true }));
   check('地上から北口の建物の 1 階の壁に入れない', r.out[0] && !r.out[0].ok && r.out[0].at[1] > 26.5 && r.out[0].y < G + 1, r.out[0]);
 
+  // 3b. 南口 (site.south があれば): 改札の中 → 南の改札機の間 → デッキ → 東の階段を下りてロータリー → 上って戻る、デッキの南の縁・地上から 1 階の壁
+  const SO = site.south;
+  if (SO) {
+    const [sx0, sx1] = [SO.gates[0], SO.gates[1]], sm = (sx0 + sx1) / 2, ds = SO.deck, [ss0, sdir, st0, st1] = SO.gstairs[SO.gstairs.length - 1], sty = (st0 + st1) / 2;
+    await page.evaluate(([s, F]) => window.__put(s, 0, F), [sm, F]);
+    await frames(2); await extIdle();
+    const sd = await page.evaluate((a) => window.__walk(a), [[sm, -4], [sm, -9.5], [sm, -16], [ss0 - 3, sty], [ss0 + 2, sty], [ss0 + sdir * 6, sty], [ss0 + sdir * 11, sty], [ss0 + sdir * 14, sty]]);
+    console.log(JSON.stringify(sd));
+    const q = sd.out || [];
+    check('南の改札機の間を通って南口のデッキに出る', q[2] && q[2].ok && near(q[2].y, F), q[2]);
+    check('南のデッキから地上への階段を下りてロータリーに着く', q[7] && q[7].ok && Math.abs(q[7].y - G) < 0.7, q[7]);
+    const su = await page.evaluate((a) => window.__walk(a), [[ss0 + sdir * 11, sty], [ss0 + sdir * 6, sty], [ss0 + 1, sty], [ss0 - 3, sty], [sm, -16], [sm, -4]]);
+    const w = su.out || [];
+    check('ロータリーから階段を上ってデッキに戻り、改札の中に入る', w[5] && w[5].ok && near(w[5].y, F), w[5]);
+    await page.evaluate(([s, t, F]) => window.__put(s, t, F), [30, -22, F]);
+    r = await page.evaluate(() => window.__walk([[30, -35]], { maxT: 6, keepGoing: true, walk: true }));
+    check('南のデッキの縁の手すりで止まる', r.out[0] && !r.out[0].ok && near(r.out[0].y, F) && r.out[0].at[1] > -27.6, r.out[0]);
+    await page.evaluate(([s, t, G]) => window.__put(s, t, G + 0.2), [25, -30, G]);
+    r = await page.evaluate(() => window.__walk([[25, -5]], { maxT: 8, keepGoing: true, walk: true }));
+    check('地上から南の壁の下 (1 階) に入れない', r.out[0] && !r.out[0].ok && r.out[0].at[1] < -10 && r.out[0].y < G + 1, r.out[0]);
+    check('NaN なし (南口)', !sd.nan && !su.nan);
+    const sp = await page.evaluate((name) => {
+      const e = window.__g.EVENTS.find((q) => q.name === name + '駅（南口）');
+      if (!e) return null;
+      window.__g.warpTo(e.x, e.z);
+      const p = window.__g.player.pos; return { d: Math.hypot(p.x - e.x, p.z - e.z), y: p.y, st: window.__S.st(p.x, p.z) };
+    }, stationName);
+    check('地図に「' + stationName + '駅（南口）」の印があり、選ぶとロータリーに立つ', sp && sp.d < 1 && Math.abs(sp.y - G) < 0.7, sp);
+  }
+
   // 4. 地図の印「舞浜駅（北口）」でワープすると広場に立つ
   const spot = await page.evaluate((name) => {
     const e = window.__g.EVENTS.find((q) => q.name === name + '駅（北口）');

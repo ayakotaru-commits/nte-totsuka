@@ -13,6 +13,10 @@ const VRM_DIR = path.join(__dirname, '.cache', 'vrm', 'package');
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png', '.vrm': 'model/gltf-binary', '.glb': 'model/gltf-binary', '.webp': 'image/webp' };
 
 const VIEWS = [
+  { name: 's4_deck', at: [30, -22], y: 'F', look: [0, -1], pitch: 0.08, dist: 9 },
+  { name: 's5_gates', at: [25, -3], y: 'F', look: [0, -1], pitch: 0.05, dist: 5 },
+  { name: 's6_front', at: [30, -50], y: 'G', look: [0, 1], pitch: 0.22, dist: 24 },
+  { name: 's7_stairs', at: [86, -21.5], y: 'G', look: [-1, 0], pitch: 0.2, dist: 10 },
   { name: 's1_south_aerial', at: [20, -40], y: 'G', look: [0.2, 1], pitch: 0.6, dist: 90 },
   { name: 's2_rotary', at: [10, -30], y: 'G', look: [0.3, -1], pitch: 0.12, dist: 14 },
   { name: 's3_facade', at: [30, -60], y: 'G', look: [0, 1], pitch: 0.1, dist: 14 },
