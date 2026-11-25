@@ -88,7 +88,7 @@ export class BigMap {
     // 線路の延長 (横浜など、地図の外の駅) まで 1 画面に収まるところまで縮小できる
     const E = this.minimap.ext;
     if (E) {
-      const x0 = Math.min(B.minX, E.x0), x1 = Math.max(B.maxX, E.x0 + E.canvas.width / E.s), z0 = Math.min(B.minZ, E.z0), z1 = Math.max(B.maxZ, E.z0 + E.canvas.height / E.s);
+      const x0 = Math.min(B.minX, E.bounds.minX), x1 = Math.max(B.maxX, E.bounds.maxX), z0 = Math.min(B.minZ, E.bounds.minZ), z1 = Math.max(B.maxZ, E.bounds.maxZ);
       this.minScale = Math.min(MIN_SCALE, Math.min(innerWidth / (x1 - x0), innerHeight / (z1 - z0)) * 0.9);
     }
     this.cx = px; this.cz = pz;
@@ -141,7 +141,7 @@ export class BigMap {
     c.fillStyle = '#1a2130'; c.fillRect(0, 0, W, H);
     c.imageSmoothingEnabled = this.scale < S;
     const E = this.minimap.ext;   // 線路の延長 (地図の範囲の外。minimap.js の setExt)
-    if (E) c.drawImage(E.canvas, this.sx(E.x0), this.sy(E.z0), E.canvas.width / E.s * this.scale, E.canvas.height / E.s * this.scale);
+    if (E) E.draw(c, (x) => this.sx(x), (z) => this.sy(z), this.scale, [this.cx - W / 2 / this.scale, this.cz - H / 2 / this.scale, this.cx + W / 2 / this.scale, this.cz + H / 2 / this.scale]);
     c.drawImage(this.map, 0, 0, this.map.width, this.map.height,
       this.sx(B.minX), this.sy(B.minZ), this.map.width / S * this.scale, this.map.height / S * this.scale);
 
