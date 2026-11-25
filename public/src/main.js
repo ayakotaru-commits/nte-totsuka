@@ -20,6 +20,9 @@ import { Ride } from './ride.js';
 import { ParkRide } from './parkride.js';
 import { ParkAudio } from './parkaudio.js';
 import { showClock } from './detail/parkshow.js';
+import { paradeRoute, paradeSeconds } from './detail/parkroute.js';
+import { createParkMap } from './parkmap.js';
+import { parkSchedule, viewWant, infoLine, makeViewSlots, inSite } from './parkinfo.js';
 import { getBridges } from './bridges.js';
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
@@ -147,6 +150,12 @@ async function main() {
   let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
   const minimap = new Minimap(city, $('minimap'));
+  // フェアリー・リールパーク (段階 5): 地図の下絵・印・ワープ先・ショーの案内・園内の人 (観客の場所)。?nopark で全部無し
+  const parkSpots = park && park.spots ? park.spots : [];
+  const parkInfo = park && park.show ? (() => { const route = paradeRoute(park); return { route, paradeSec: paradeSeconds(park, route.length - 1), sch: null }; })() : null;
+  if (park) minimap.setPark(createParkMap(park));
+  const parkHud = $('hud-park');
+  window.__parkInfo = parkInfo; window.__parkSpots = parkSpots; window.__minimap = minimap; // 確認用 (tools/dev/parkcheck.js・parkshot.js)
   if (detail.railExt) minimap.setExt(detail.railExt.map);   // 線路の延長 (東戸塚など) も地図に描く (読み込んだ区間は細かく)
   const labels = new Labels(city.pois, scene);
   // マップで選んだ場所へワープ (建物の中なら一番近い屋外)。向きはそのまま
@@ -160,16 +169,23 @@ async function main() {
     // 延ばした先の駅 (東戸塚・保土ケ谷・横浜) の印を選んだとき: その駅のホームの上に立つ (地図の外。改札は無いのでホームへ直接)
     const sp = ride ? ride.stationSpots().find((q) => Math.hypot(q.x - x, q.z - z) < 3) : null;
     if (sp) { ride.place(sp.x, sp.y, sp.z, sp.face); toggleMap(); return; }
+    // フェアリー・リールパークの印を選んだとき: 園内の道の上の決まった点へ (遠くから跳ぶと園内がまだ読み込まれていないので、建物の中に出ないよう、道の点にしてある。tools/park_crowd.py)
+    const ps = parkSpots.find((q) => Math.hypot(q.x - x, q.z - z) < 3);
+    if (ps) {
+      player.teleport(ps.x, ps.z); player.pos.y = park.ground.level + 0.3;   // 地形が読めるまでは仮の高さ。読めたら地面へ降りる
+      player.facing = ps.face; cam.yaw = ps.face + Math.PI; cam.update(0, player.pos, true); toggleMap(); return;
+    }
     const p = findFree(world, x, z);
     player.teleport(p.x, p.z);
     cam.update(0, player.pos, true);
     toggleMap();
   };
   const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z), touch: TOUCH });
+  window.__bigmap = bigmap; window.__warpTo = warpTo; // 確認用
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
   // 街を歩く人 (crowd.js。動きは crowdsim.js、通り道は props.json の crowd)。?nocrowd で無し、?crowd=人数 で上限を変える (確認用)
-  const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined });
+  const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined, park, viewSlots: parkInfo ? makeViewSlots(park, parkInfo.route) : null });   // 園内の人は park (フェアリー・リールパーク) があるとき
   if (Q.has('nocrowd')) crowd.setVisible(false);
   window.__crowd = crowd; // 確認用
   // 街を走る車 (traffic.js。動きは trafficsim.js、道は props.json の traffic)。?notraffic で無し、?traffic=台数 で上限を変える (確認用)
@@ -230,6 +246,9 @@ async function main() {
     { name: 'プロジェクトセマイ ワンルームステージ！', x: ARCADE_SITE.center[0], z: ARCADE_SITE.center[1], color: '#ff6fae', active: () => arcade.active, off: arcade.disabled },
     // 電車の乗り場 (戸塚駅の改札 = 東口のデッキが駅舎に入る所。ride.js)。印を選んでワープすると改札の前に立つ (warpTo)
     ...(!ride.disabled && ride.gates.length ? [{ name: '電車の乗り場（戸塚駅 改札）', x: ride.gates[0].top.x, z: ride.gates[0].top.z, color: '#1f5fae', glyph: '電', active: () => !!ride.riding }] : []),
+    // フェアリー・リールパーク (park.json の spots。tools/park_crowd.py)。印を選んでワープすると、その場所へ (warpTo)。パレード・花火の印は、始まる 40 秒前から最中まで点滅する
+    ...parkSpots.map((q) => ({ name: q.name, x: q.x, z: q.z, color: q.color, glyph: q.glyph, minScale: [0, 0.5, 0.9][q.tier] || 0,
+      active: () => !!parkInfo?.sch && (q.kind === 'parade' ? parkInfo.sch.parade.on || parkInfo.sch.parade.startsIn < 40 : q.kind === 'lake' ? parkInfo.sch.fw.on || parkInfo.sch.fw.startsIn < 40 : false) })),
     // 延ばした先の駅 (rail_ext.json の stations)。印を選んでワープすると、その駅のホームの上に立つ (warpTo)。駅舎のある駅 (舞浜) は北口の広場の印も
     ...ride.stationSpots().map((q) => ({ name: q.label || `${q.name}駅（${q.sub ? q.sub + 'ホーム' : 'ホーム'}）`, x: q.x, z: q.z, color: '#1f5fae', glyph: '電', active: () => false })),
   ].filter((e) => !e.off);
@@ -366,7 +385,16 @@ async function main() {
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
     tod.update(dt);
-    if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime);
+    let parkWant;
+    if (parkInfo) {   // ショーの案内 (画面の 1 行) と、観客の指定
+      const sch = parkSchedule(park, showClock(), parkInfo.paradeSec);
+      parkInfo.sch = sch; parkWant = viewWant(park, sch, parkInfo.paradeSec);
+      const pl = park.ellipses['サンライズ・プラザ'].center, near2 = Math.hypot(player.pos.x - pl[0], player.pos.z - pl[1]) < 900 && !arcade.active;
+      const li = infoLine(sch);
+      if (near2) { if (parkHud.textContent !== li.text) parkHud.textContent = li.text; parkHud.classList.toggle('soon', li.soon); }
+      if (parkHud.hidden === near2) parkHud.hidden = !near2;
+    }
+    if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, parkWant);
     if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, tod.cur.win);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
@@ -388,11 +416,17 @@ async function main() {
       const B = city.bounds, px = player.pos.x, pz = player.pos.z;
       if (px < B.minX || px > B.maxX || pz < B.minZ || pz > B.maxZ) { // 地図の外 (線路の延長。rail_ext.json)
         const sts = (ext && ext.stations) || [], dist = (q) => Math.hypot(px - q.center[0], pz - q.center[1]);
-        const st = sts.find((q) => dist(q) < 400);
-        const nearest = sts.reduce((a, q) => (!a || dist(q) < dist(a) ? q : a), null);
-        $('place').textContent = st ? st.name + '駅 付近' : '線路沿い';
-        // 市・区は駅ごと (rail_ext_config.json の city・ward)。駅の間は、いちばん近い駅の市だけ
-        $('area').textContent = st ? (st.city || '横浜市') + (st.ward || '') : (nearest && nearest.city) || '横浜市';
+        if (park && inSite(park, px, pz)) {   // フェアリー・リールパークの中: いちばん近い印の名前 (ゲート・エリア・プラザ…) の付近
+          const q = parkSpots.reduce((m, o) => (!m || Math.hypot(px - o.x, pz - o.z) < Math.hypot(px - m.x, pz - m.z) ? o : m), null);
+          $('place').textContent = (q ? q.name.replace(/（.*?）/, '') : park.name) + ' 付近';
+          $('area').textContent = '浦安市 ' + park.name;
+        } else {
+          const st = sts.find((q) => dist(q) < 400);
+          const nearest = sts.reduce((a, q) => (!a || dist(q) < dist(a) ? q : a), null);
+          $('place').textContent = st ? st.name + '駅 付近' : '線路沿い';
+          // 市・区は駅ごと (rail_ext_config.json の city・ward)。駅の間は、いちばん近い駅の市だけ
+          $('area').textContent = st ? (st.city || '横浜市') + (st.ward || '') : (nearest && nearest.city) || '横浜市';
+        }
       } else {
         $('area').textContent = '横浜市戸塚区';
         const p = labels.nearest(px, pz);

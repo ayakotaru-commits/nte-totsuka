@@ -56,6 +56,9 @@ const spriteTex = () => canvasTexture(64, 64, (g) => {
   g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
 });
 
+import { paradeRoute, paradeSeconds } from './parkroute.js';
+export { paradeRoute, paradeSeconds };
+
 export function buildShow(ctx) {
   const { cfg, ground, std, glowMat, group, emissive, stripPos, flat } = ctx;
   const S = cfg.show;
@@ -174,19 +177,7 @@ export function buildShow(ctx) {
 
   // ================= パレード =================
   const P = S.parade;
-  const route = (() => {
-    const pathPts = (n) => cfg.paths.find((p) => p.name === n).pts;
-    let pts = pathPts(P.avenue).map((p) => [p[0], p[1]]);
-    const [cx, cz] = plazaE.center, rx = plazaE.rx * P.ring, rz = plazaE.rz * P.ring, a0 = Math.atan2(pts[pts.length - 1][1] - cz, 0);   // 入口の側 (z の小さい側) から、東の側を通って、湖の側へ
-    const start = -Math.PI / 2;
-    for (let k = 0; k <= 22; k++) { const a = start + k / 22 * Math.PI; pts.push([cx + rx * Math.cos(a), cz + rz * Math.sin(a)]); }
-    pts = pts.concat(pathPts(P.toLake).map((p) => [p[0], p[1]]));
-    for (let it = 0; it < 3; it++) { const o = [pts[0]]; for (let i = 0; i < pts.length - 1; i++) { const a = pts[i], b = pts[i + 1]; o.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); } o.push(pts[pts.length - 1]); pts = o; }
-    const out = [pts[0]], seg = [0]; let acc = 0;
-    for (let i = 1; i < pts.length; i++) { const L = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); acc += L; seg.push(acc); }
-    for (let s = 1; s < acc; s += 1) { let j = 1; while (seg[j] < s) j++; const w = (s - seg[j - 1]) / (seg[j] - seg[j - 1] || 1); out.push([pts[j - 1][0] + (pts[j][0] - pts[j - 1][0]) * w, pts[j - 1][1] + (pts[j][1] - pts[j - 1][1]) * w]); }
-    return out;
-  })();
+  const route = paradeRoute(cfg);
   const Lr = route.length - 1;
   const at = (s, o) => { s = clamp(s, 0, Lr - 1.001); const i = Math.floor(s), w = s - i, a = route[i], b = route[i + 1]; o.x = a[0] + (b[0] - a[0]) * w; o.z = a[1] + (b[1] - a[1]) * w; o.yaw = Math.atan2(b[0] - a[0], b[1] - a[1]); return o; };
   api.stats.routeLen = Lr;

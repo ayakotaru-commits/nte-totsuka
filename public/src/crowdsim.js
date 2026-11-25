@@ -2,7 +2,7 @@
 // 通り道 (lanes) は tools/build_props.py の build_crowd() が props.json の crowd に書く。人はプレイヤーの周りだけに出し入れする
 // (街全体は動かさない)。当たり判定は持たず、プレイヤーが近づくと減速して横へよける (押しも止めもしない)。
 
-export const KIND_W = { f: 0.8, s: 1.0, r: 0.35, d: 0.9, t: 0.55 };   // 通り道の種類ごとの人の出やすさ (歩道・小道 / 幹線の歩道 / 歩道の無い道の端 / デッキ・坂 / 階段)
+export const KIND_W = { f: 0.8, s: 1.0, r: 0.35, d: 0.9, t: 0.55, p: 2.6 };   // 通り道の種類ごとの人の出やすさ (歩道・小道 / 幹線の歩道 / 歩道の無い道の端 / デッキ・坂 / 階段 / 園内 = フェアリー・リールパークの道。tools/park_crowd.py)
 const SAMPLE = 6;          // 出る場所の候補の間隔 (m)
 const CELL = 50;           // 候補を入れる区画の大きさ (m)
 const JOIN = 9;            // 通り道の端から、つながる別の通り道を探す距離 (m)
@@ -28,6 +28,9 @@ export const PRESET = {
   夕方: { level: 0.95, flow: -0.7, pub: 0.35, mix: [0.20, 0.30, 0.30, 0.06, 0.14] },
   夜: { level: 0.40, flow: -0.2, pub: 1.00, mix: [0.03, 0.30, 0.55, 0.00, 0.12] },
 };
+// 園内 (k = 'p' の通り道。フェアリー・リールパーク) の決まり: 人の多さ (時間帯ごと)・種類の割合 (スーツは少なく、私服・子ども・高齢者が多い)・ショーのときの増え方
+export const PARK_LEVEL = { 朝: 0.5, 昼: 0.9, 夕方: 1.0, 夜: 0.85 };
+export const PARK_MIX = [0.05, 0.0, 0.52, 0.27, 0.16];
 const SPEED = [1.45, 1.5, 1.25, 1.3, 0.95];   // 種類ごとの歩く速さ (m/s)
 const SCALE = [0.99, 1.0, 1.0, 0.72, 0.95];   // 背の高さ (1 = 約 1.65 m)
 const CHAT_RATE = 0.06;      // 出すときに、立ち話の 2 人組にする割合
@@ -67,6 +70,7 @@ export class CrowdSim {
     this.R = opt.radius ?? 130;
     this.rnd = rng(opt.seed ?? 1);
     this.hubs = crowd.hubs || { st: [], pub: [] };
+    this.parkHubs = (crowd.parkHubs || []);   // 園内の人の出やすさの中心 (プラザ・ゲート・湖)
     this.ground = opt.ground || (() => 0);   // 地面の高さ (描画と同じ)
     this.peds = opt.peds || [];              // props.pedSignals
     this.busStops = (opt.busStops || []).map((b, i) => ({ id: i, x: b.x, z: b.z }));
@@ -74,17 +78,19 @@ export class CrowdSim {
     this.lanes = crowd.lanes.map((l) => {
       const n = l.p.length / 2, cum = new Float32Array(n);
       for (let i = 1; i < n; i++) cum[i] = cum[i - 1] + Math.hypot(l.p[2 * i] - l.p[2 * i - 2], l.p[2 * i + 1] - l.p[2 * i - 1]);
-      return { k: l.k, w: l.w, p: Float32Array.from(l.p), y: l.y ? Float32Array.from(l.y) : null, cum, len: cum[n - 1], n, lat: Math.min(0.45, l.w * 0.25) };
+      const park = l.k === 'p';   // 園内の道は広いので、進む向きの右へ寄る幅 (lat) とばらつき (jit) を大きくする (街の歩道は 0.45 m・0.2 m)
+      return { k: l.k, w: l.w, park, p: Float32Array.from(l.p), y: l.y ? Float32Array.from(l.y) : null, cum, len: cum[n - 1], n, lat: park ? Math.min(3.2, l.w * 0.24) : Math.min(0.45, l.w * 0.25), jit: park ? Math.min(2.2, l.w * 0.16) : 0.2 };
     });
     // 出る場所の候補 (SAMPLE m おき) と、通り道の端の索引
     this.samples = []; this.cells = new Map(); this.ends = new Map();
     const stD = (x, z) => this.hubs.st.reduce((m, h) => Math.min(m, Math.hypot(x - h[0], z - h[1])), 1e9);
+    const parkD = (x, z) => this.parkHubs.reduce((m, h) => Math.min(m, Math.hypot(x - h[0], z - h[1])), 1e9);
     const pubK = (x, z) => this.hubs.pub.reduce((s, h) => s + Math.exp(-(((x - h[0]) ** 2 + (z - h[1]) ** 2) / (45 * 45))), 0);
     this.lanes.forEach((L, li) => {
       for (let s = SAMPLE / 2; s < L.len; s += SAMPLE) {
         const [x, z] = this.at(L, s);
-        const base = (KIND_W[L.k] ?? 0.5) * (0.25 + 1.5 * Math.exp(-stD(x, z) / 350));
-        const sm = { lane: li, s, x, z, w: base, pub: (KIND_W[L.k] ?? 0.5) * pubK(x, z) * 2.5 };
+        const base = L.park ? KIND_W.p * (0.35 + 0.9 * Math.exp(-parkD(x, z) / 450)) : (KIND_W[L.k] ?? 0.5) * (0.25 + 1.5 * Math.exp(-stD(x, z) / 350));
+        const sm = { lane: li, s, x, z, w: base, pub: L.park ? 0 : (KIND_W[L.k] ?? 0.5) * pubK(x, z) * 2.5, park: L.park };
         this.samples.push(sm);
         const key = Math.floor(x / CELL) + ',' + Math.floor(z / CELL);
         (this.cells.get(key) || this.cells.set(key, []).get(key)).push(sm);
@@ -99,7 +105,8 @@ export class CrowdSim {
     for (const b of this.busStops) { const key = Math.floor(b.x / 10) + ',' + Math.floor(b.z / 10); (this.stopGrid.get(key) || this.stopGrid.set(key, []).get(key)).push(b); }
     this.people = [];
     this.preset = '昼';
-    this.cand = []; this.candW = []; this.candSum = 0; this.sumW = 0;
+    this.cand = []; this.candW = []; this.candSum = 0; this.sumW = 0; this.sumPW = 0;
+    this.boost = 1;               // ショー (パレード・花火) の前後は、園内の人が増える (updateViewers が決める)
     this.lastRefresh = { x: 1e9, z: 1e9, t: -1 };
     this.time = 0;
     this.stats = { spawned: 0, removed: 0, turns: 0, joins: 0, entered: 0, waits: 0, bus: 0, phone: 0, chats: 0 };
@@ -129,7 +136,7 @@ export class CrowdSim {
     if (!force && this.time - lr.t < 0.5 && Math.hypot(cx - lr.x, cz - lr.z) < 15) return;
     this.lastRefresh = { x: cx, z: cz, t: this.time };
     const P = PRESET[this.preset] || PRESET.昼, R = this.R;
-    this.cand = []; this.candW = []; let sum = 0, sumW = 0;
+    this.cand = []; this.candW = []; let sum = 0, sumW = 0, sumPW = 0;
     for (let ix = Math.floor((cx - R) / CELL); ix <= Math.floor((cx + R) / CELL); ix++) {
       for (let iz = Math.floor((cz - R) / CELL); iz <= Math.floor((cz + R) / CELL); iz++) {
         const list = this.cells.get(ix + ',' + iz);
@@ -137,19 +144,21 @@ export class CrowdSim {
         for (const sm of list) {
           const d = Math.hypot(sm.x - cx, sm.z - cz);
           if (d > R) continue;
-          sumW += sm.w;
+          if (sm.park) sumPW += sm.w; else sumW += sm.w;
           const w = sm.w + P.pub * sm.pub;
           this.cand.push(sm); this.candW.push(w); sum += w;
         }
       }
     }
-    this.candSum = sum; this.sumW = sumW;
+    this.candSum = sum; this.sumW = sumW; this.sumPW = sumPW;
   }
 
   // 今の人数の目標。中心の周りの通り道の「人の出やすさ」の合計が、駅前の約 6 割に満たなければ、少なくする (住宅街は人が少ない)
   target() {
     const P = PRESET[this.preset] || PRESET.昼;
-    return Math.round(this.cap * P.level * clamp(this.sumW / REF_SUMW, 0.08, 1));
+    const city = this.sumW > 0 || this.sumPW === 0 ? P.level * clamp(this.sumW / REF_SUMW, 0.08, 1) : 0;
+    const park = this.sumPW > 0 ? (PARK_LEVEL[this.preset] ?? 0.9) * this.boost * clamp(this.sumPW / REF_SUMW, 0.04, 1) : 0;   // 園内 (周りに園内の道があるとき)
+    return Math.round(this.cap * Math.min(1, city + park));
   }
 
   // 重みつきで候補を 1 つ選ぶ (近すぎる所・見えている所は避ける)
@@ -170,21 +179,21 @@ export class CrowdSim {
 
   makePerson(sm) {
     const r = this.rnd, P = PRESET[this.preset] || PRESET.昼;
+    const L = this.lanes[sm.lane], mix = L.park ? PARK_MIX : P.mix;
     let u = r(), type = 0;
-    for (let i = 0; i < 5; i++) { u -= P.mix[i]; if (u <= 0) { type = i; break; } type = i; }
-    const L = this.lanes[sm.lane];
+    for (let i = 0; i < 5; i++) { u -= mix[i]; if (u <= 0) { type = i; break; } type = i; }
     // 向き: 駅へ向かう流れ (flow > 0) か、駅から来る流れ (flow < 0) に寄せる
     const a = this.at(L, sm.s), far = this.at(L, clamp(sm.s + 20, 0, L.len)), near = this.at(L, clamp(sm.s - 20, 0, L.len));
     const gain = this.stationDist(near[0], near[1]) - this.stationDist(far[0], far[1]); // + なら + 向きが駅へ近づく
     let dir = r() < 0.5 ? 1 : -1;
-    if (Math.abs(gain) > 6 && r() < Math.abs(P.flow)) dir = (gain > 0) === (P.flow > 0) ? 1 : -1;
+    if (!L.park && Math.abs(gain) > 6 && r() < Math.abs(P.flow)) dir = (gain > 0) === (P.flow > 0) ? 1 : -1;
     let sp = SPEED[type] * (0.88 + r() * 0.24);
     if (this.preset === '朝' && type === 1) sp *= 1.12;
     const o = outfit(type, r);
     return {
       id: ++this.nextId, type, lane: sm.lane, s: sm.s, dir, speed: sp, v: sp,
       x: a[0], z: a[1], y: a[4], yaw: Math.atan2(dir * a[2], dir * a[3]), phase: r() * 6.28, amp: 0.7, scale: SCALE[type] * (type === 3 ? 0.9 + r() * 0.2 : 0.95 + r() * 0.1),
-      jit: (r() - 0.5) * 0.2, ox: 0, oz: 0, ax: 0, az: 0, o,
+      jit: (r() - 0.5) * L.jit, ox: 0, oz: 0, ax: 0, az: 0, o,
       mode: MODE.walk, hold: false, holdUntil: 0, pending: null, lastStop: -1, checkAt: this.time + r() * 0.5, faceYaw: null,
     };
   }
@@ -214,7 +223,7 @@ export class CrowdSim {
         for (const c of this.ends.get(ix + ',' + iz) || []) {
           if (c.lane === p.lane || Math.hypot(c.x - ex, c.z - ez) > JOIN || Math.abs(c.y - ey) > 1.2) continue;
           const N = this.lanes[c.lane], fx = c.end ? N.p[0] : N.p[2 * N.n - 2], fz = c.end ? N.p[1] : N.p[2 * N.n - 1];
-          const prog = clamp((this.stationDist(c.x, c.z) - this.stationDist(fx, fz)) / 50, -1, 1); // + = その先は駅へ近づく
+          const prog = N.park ? 0 : clamp((this.stationDist(c.x, c.z) - this.stationDist(fx, fz)) / 50, -1, 1); // + = その先は駅へ近づく (園内は流れ無し)
           cands.push({ c, w: Math.max(0.15, (KIND_W[N.k] ?? 0.5) * (1 + P.flow * prog * 0.8)) });
         }
       }
@@ -265,6 +274,49 @@ export class CrowdSim {
     }
     return null;
   }
+
+  // ---- 観客 (園内。フェアリー・リールパークのショー) ----
+  // ショー (パレード・花火) の間だけ、決まった場所 (slots = [{ x, z, yaw, kind: 0 パレード / 1 花火, u: 0〜1 の決まった値 }]。parkcrowd.js が作る) に立つ人。
+  // 歩く人 (people) とは別に持つ (通り道を持たない)。出し入れは周り R m・近い順に cap 人まで。出る・消えるときは背を 0 ↔ 1 に変える (急に現れて見えない)
+  setViewSlots(slots, cap) { this.slots = slots; this.viewCap = cap; this.viewers = new Map(); this.viewSel = new Set(); this.viewAt = 0; }
+
+  makeViewer(i) {
+    const sl = this.slots[i], r = rng(i * 7919 + 13);
+    let u = r(), type = 0;
+    for (let k = 0; k < 5; k++) { u -= PARK_MIX[k]; if (u <= 0) { type = k; break; } type = k; }
+    const x = sl.x + (r() - 0.5) * 1.0, z = sl.z + (r() - 0.5) * 1.0;
+    return { id: 1e6 + i, type, x, z, y: this.ground(x, z), yaw: sl.yaw + (r() - 0.5) * 0.5, scale: SCALE[type] * (type === 3 ? 0.9 + r() * 0.2 : 0.95 + r() * 0.1), phase: r() * 6.28, amp: 0, mode: MODE.wait, grow: 0, o: outfit(type, r), slot: i };
+  }
+
+  // want = { parade, fw: 立つ人の多さ (0〜1。ショーの時刻から決まる)、paradeOn・fwOn: 今まさに山車が通る・花火が上がっている }。(cx, cz) = 出し入れの中心
+  updateViewers(dt, cx, cz, want) {
+    if (!this.slots) return;
+    this.boost = 1 + 0.5 * Math.max(want.parade, want.fw);
+    this.viewAt -= dt;
+    if (this.viewAt <= 0) {
+      this.viewAt = 0.5;
+      const sel = [];
+      for (let i = 0; i < this.slots.length; i++) {
+        const sl = this.slots[i], d = sl.kind ? want.fw : want.parade;
+        if (sl.u >= d * 0.6) continue;
+        const dist = Math.hypot(sl.x - cx, sl.z - cz);
+        if (dist < this.R) sel.push([dist, i]);
+      }
+      sel.sort((a, b) => a[0] - b[0]);
+      this.viewSel = new Set(sel.slice(0, this.viewCap).map((q) => q[1]));
+    }
+    for (const i of this.viewSel) if (!this.viewers.has(i)) this.viewers.set(i, this.makeViewer(i));
+    for (const [i, v] of this.viewers) {
+      const on = this.viewSel.has(i);
+      v.grow = clamp(v.grow + (on ? 1 : -1) * dt * 0.8, 0, 1);
+      if (!on && v.grow <= 0) { this.viewers.delete(i); continue; }
+      const kind = this.slots[i].kind, wave = kind ? want.fwOn : want.paradeOn;
+      v.mode = kind ? (want.fwOn ? MODE.phone : MODE.wait) : (want.paradeOn ? MODE.chat : MODE.wait);   // 花火 = スマホを掲げる / パレード = 手を振る / ショーの前 = 待つ
+      v.amp = wave && !kind ? 0.9 : 0;
+      if (wave && !kind) v.phase += dt * (4.6 + (v.id % 5) * 0.4);
+    }
+  }
+  viewerList() { return this.viewers ? [...this.viewers.values()] : []; }
 
   // dt 秒進める。(cx, cz) = 出し入れの中心 (カメラの少し先)、(fx, fz) = カメラの向き (地面での単位ベクトル)、(px, pz) = プレイヤー (よけるため)、clock = 信号の時計 (秒)
   update(dt, cx, cz, fx, fz, px, pz, preset, clock) {
@@ -351,7 +403,11 @@ export class CrowdSim {
     const L = this.lanes[p.lane], a = this.at(L, p.s);
     // 右側通行 (進む向きの右へ少しずれる)
     const t0x = a[2] * p.dir, t0z = a[3] * p.dir, lat = L.lat + p.jit;
-    let x = a[0] - t0z * lat, z = a[1] + t0x * lat;   // 進む向きの右 (x = 東・z = 南なので、東へ進むときの右 = 南 = (-dz, dx))
+    // 進む向きの右 (x = 東・z = 南なので、東へ進むときの右 = 南 = (-dz, dx))。引き返す・向きの逆の通り道へ乗り換えると右が反対側になるので、横のずれは 2.5 m/s でなだらかに移す (園内の広い道で、横へ飛ばないように)
+    const wlx = -t0z * lat, wlz = t0x * lat;
+    if (p.lx === undefined) { p.lx = wlx; p.lz = wlz; }
+    else { const dl = Math.hypot(wlx - p.lx, wlz - p.lz), k = dl > 1e-6 ? Math.min(1, 2.5 * dt / dl) : 1; p.lx += (wlx - p.lx) * k; p.lz += (wlz - p.lz) * k; }
+    let x = a[0] + p.lx, z = a[1] + p.lz;
     // 乗り換えのずれを、歩く速さで消していく
     const od = Math.hypot(p.ox, p.oz);
     if (od > 1e-4) { const k = Math.max(0, 1 - Math.max(p.v, 0.6) * dt / od); p.ox *= k; p.oz *= k; }
