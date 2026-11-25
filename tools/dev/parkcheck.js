@@ -159,6 +159,43 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   check('ゲートからネオン・アベニューを歩いて広場の中心に着く (地面の上に立つ)', third.out.length === av.length + 1 && third.out.every((q) => q.ok) && Math.abs(ty - ph) < 0.6, { y: ty, ground: +ph.toFixed(2) });
   check('NaN なし', !first.nan && !second.nan && !third.nan && !pass.nan);
 
+  // ---- 段階 1: 地面・湖・塔・柵・案内 ----
+  const lake = park.ellipses['ムーンレイク'], lc = lake.center, lv = park.ground.level;
+  const hAt = (x, z) => page.evaluate(([x, z]) => window.__groundH(x, z), [x, z]);
+  const gg = await hAt(g0[0], g0[1]), pp = await hAt(pl[0], pl[1]), lcH = await hAt(lc[0], lc[1] - 1), rimH = await hAt(lc[0], lc[1] - lake.rz - 6);
+  check('パークの地面は平ら (ゲート・広場が level の ±0.1 m)', Math.abs(gg - lv) < 0.1 && Math.abs(pp - lv) < 0.1, { gate: +gg.toFixed(2), plaza: +pp.toFixed(2), level: lv });
+  check('湖の中心が深さ分 (2.5 m) 掘れている', Math.abs((lv - lcH) - lake.lake.depth) < 0.3 && Math.abs(rimH - lv) < 0.1, { center: +lcH.toFixed(2), rim: +rimH.toFixed(2) });
+  const names = await page.evaluate(() => window.__g.scene.getObjectByName('park').children.length);
+  check('パークの部品が出ている (看板・道・広場・湖・柵・塔・街灯・案内)', names >= 12, names);
+  // 広場 → 湖へ (道) → 湖のまわりの散歩道 (北の岸)。湖の中心へ向かうと岸の手前で止まり、湖に落ちない
+  const toLake = await page.evaluate((r) => window.__walkXZ(r, { maxT: 40, tol: 2 }), [[pl[0], pl[1] + 70], [lc[0], lc[1] - lake.rz - 12]]);
+  console.log(JSON.stringify(toLake));
+  check('広場から湖の北の散歩道まで歩ける', toLake.out.length === 2 && toLake.out.every((q) => q.ok), toLake.out.map((q) => q.ok));
+  const dive = await page.evaluate((a) => window.__walkXZ(a, { maxT: 20, walk: true, keepGoing: true, tol: 0.3 }), [[lc[0], lc[1]]]);
+  console.log(JSON.stringify(dive));
+  const dd = dive.out[0], dEdge = Math.hypot((dd.at[0] - lc[0]) / lake.rx, (dd.at[1] - lc[1]) / lake.rz);
+  check('湖の中心へ向かって歩いても、岸の手前で止まる (落ちない)', dd && !dd.ok && dEdge > 1.0 && Math.abs(dd.y - lv) < 0.7, { rho: +dEdge.toFixed(3), y: dd && dd.y });
+  // 塔: 中心へ向かうと根元で止まる (塔の半径 + α)
+  const tw = park.tower, tdir = [pl[0] - tw.at[0], pl[1] - tw.at[1]], tl = Math.hypot(...tdir);
+  await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [tw.at[0] + tdir[0] / tl * 25, lv + 0.2, tw.at[1] + tdir[1] / tl * 25]);
+  await frames(page, 3);
+  const tow = await page.evaluate((a) => window.__walkXZ(a, { maxT: 15, walk: true, keepGoing: true, tol: 0.3 }), [[tw.at[0], tw.at[1]]]);
+  console.log(JSON.stringify(tow));
+  const tt = tow.out[0], tr = Math.hypot(tt.at[0] - tw.at[0], tt.at[1] - tw.at[1]);
+  check('サーチライト・タワーの根元まで歩けて、中には入れない', tt && !tt.ok && tr > 3.2 && tr < 6.5, { r: +tr.toFixed(2) });
+  // 柵: 西の辺の中ほどで、内側から外へ歩くと止まる。辺から 6 m 内側に置く
+  const S0 = park.site[park.site.length - 1], S1 = park.site[0];   // 西の辺 (最後の頂点 → 最初の頂点)
+  const em = [(S0[0] + S1[0]) / 2, (S0[1] + S1[1]) / 2], el = Math.hypot(S1[0] - S0[0], S1[1] - S0[1]), nrm = [-(S1[1] - S0[1]) / el, (S1[0] - S0[0]) / el];
+  const inw = park.site.length && (nrm[0] * (lc[0] - em[0]) + nrm[1] * (lc[1] - em[1]) > 0) ? 1 : -1;   // 内側へ向く向き
+  const ex = em[0] + nrm[0] * inw * 6, ez = em[1] + nrm[1] * inw * 6, egh = await hAt(ex, ez);
+  await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [ex, egh + 0.2, ez]);
+  await frames(page, 3);
+  const fence = await page.evaluate((a) => window.__walkXZ(a, { maxT: 12, walk: true, keepGoing: true, tol: 0.3 }), [[em[0] - nrm[0] * inw * 15, em[1] - nrm[1] * inw * 15]]);
+  console.log(JSON.stringify(fence));
+  const fo = fence.out[0], fd = Math.hypot(fo.at[0] - em[0], fo.at[1] - em[1]);
+  check("外周の柵で止まる (外へ出られない)", fo && !fo.ok && fd < 3.2, { distToEdge: +fd.toFixed(2) });
+  check('NaN なし (段階 1)', !toLake.nan && !dive.nan && !tow.nan && !fence.nan);
+
   await browser.close(); server.close();
   const bad = results.filter((r) => !r.ok);
   console.log(`\n${results.length - bad.length}/${results.length} OK`);

@@ -550,7 +550,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     wanting = want.length;
     for (const q of want) {
       if (fetching.size >= 2) break;
-      fetching.set(q.key, fetch(base + 'c_' + q.key + '.json').then((r) => r.json()).then((D) => { if (park) park.cutChunk(D); ready.push([q, D]); }).catch((e) => console.warn('[detail] rail ext chunk', q.key, e)).finally(() => fetching.delete(q.key)));
+      fetching.set(q.key, fetch(base + 'c_' + q.key + '.json').then((r) => r.json()).then((D) => { if (park) park.cutChunk(D, q.a, q.b); ready.push([q, D]); }).catch((e) => console.warn('[detail] rail ext chunk', q.key, e)).finally(() => fetching.delete(q.key)));
     }
     if (ready.length) {
       ready.sort((p, q) => dist(p[0], x, z) - dist(q[0], x, z));

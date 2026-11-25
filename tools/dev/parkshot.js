@@ -21,6 +21,13 @@ const VIEWS = [
   { name: 'a7_plaza_aerial', at: [31490, -25672], look: [0, 1], pitch: 0.9, dist: 260 },        // 広場の円を上から
   { name: 'p1_walls_probe', at: [31262, -25905], look: [0.35, 1], pitch: 0.12, dist: 60, probe: true },   // 壁の柄の確かめ: 延長の建物の材質に、街の本体と同じ柄 (matId 0〜5) を付けた箱を並べる (--probe のときだけ)
   { name: 'p2_walls_close', at: [31246, -25892], look: [0.15, 1], pitch: 0.04, dist: 15, probe: true },   // 近くから (吹き付け・サイディング・タイル・打ち放しが見える距離)
+  { name: 'b1_lake', at: [31510, -25548], look: [0, 1], pitch: 0.16, dist: 36 },             // 湖の北の散歩道から (水面・岸の縁石)
+  { name: 'b2_lake_aerial', at: [31510, -25464], look: [0, 1], pitch: 1.1, dist: 480 },    // 湖と広場・塔・道を上から
+  { name: 'b3_tower', at: [31560, -25662], look: [0.7, 0.7], pitch: 0.1, dist: 30 },        // サーチライト・タワー
+  { name: 'b4_avenue', at: [31352, -25896], look: [0.66, 0.76], pitch: 0.1, dist: 14 },    // ネオン・アベニュー (街灯・ベンチ)
+  { name: 'b5_fence', at: [30992, -25801], look: [-1, 0.05], pitch: 0.1, dist: 12 },       // 外周の柵 (西の辺)
+  { name: 'b6_guide', at: [31612, -26047], look: [-0.95, -0.3], pitch: 0.08, dist: 9 },    // 駅からゲートへの案内板
+  { name: 'b7_beams', at: [31470, -25760], look: [0.6, 0.8], pitch: 0.3, dist: 90 },       // 塔の光線 (夜)
   { name: 'a8_station_side', at: [31730, -25950], look: [-1, 0.2], pitch: 0.4, dist: 60 },      // 駅の南口のロータリー (敷地の縁。省いた所と残した所の境目)
 ];
 
