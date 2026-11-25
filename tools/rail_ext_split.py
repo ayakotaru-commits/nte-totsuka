@@ -11,9 +11,10 @@
           coarse: 粗い地形 {i0, j0, ni, nj, h: [cm...], cells: 升目の有無 (base64 のビット列。まわり 1 升を含む窓)}
                   (細かい地形の下に隠れる升目・地図の範囲の升目は rail_ext.py の元の描き方と同じく除く)
           urban:  市街地 (建物の近く) の 10 m 升目 (base64 のビット列。区間 + まわり 2 升 = 104 × 104)
-          buildings: [[輪郭, 足元の y, 高さ, 下端, 色の乱数の種], ...] (輪郭の外接矩形の中心で区間を決める)
-          roads: 道路を区間の境目で切ったもの、trees: [[x, y, z, 大きさ, 通し番号]]、poles、portals
+          buildings: [[輪郭, 足元の y, 高さ, 下端, 色の乱数の種 (位置から)], ...] (輪郭の外接矩形の中心で区間を決める)
+          roads: 道路を区間の境目で切ったもの、trees: [[x, y, z, 大きさ, 番号 (位置から)]]、poles、portals
 区間に分けても、描いた結果が分ける前と同じになるようにしてある (法線・色・乱数の種。detail/railext.js)。
+建物の色の種・木の番号は位置から決める (段階 2 で、通し番号から変えた。駅を足すと、通し番号ではほかの所の色が全部ずれたため)。
 """
 import base64
 import json
@@ -40,6 +41,13 @@ def in_main(x, z):   # railext.js の inMain と同じ (境目は含まない)
 
 def jround(v):       # JS の Math.round
     return int(math.floor(v + 0.5))
+
+
+def pos_hash(x, z):
+    """位置 (0.1 m 単位) から決まる整数 (0〜2^31)"""
+    h = (jround(x * 10) * 73856093) ^ (jround(z * 10) * 19349663)
+    h = (h ^ (h >> 13)) * 1274126177
+    return (h ^ (h >> 16)) & 0x7FFFFFFF
 
 
 def bits(flags):
@@ -112,6 +120,9 @@ def split(E):
             x, z = C["x0"] + (i + 0.5) * cs, C["z0"] + (j + 0.5) * cs
             if in_main(x, z):
                 continue
+            H = C["h"]
+            if None in (H[j * C["nx"] + i], H[j * C["nx"] + i + 1], H[(j + 1) * C["nx"] + i], H[(j + 1) * C["nx"] + i + 1]):
+                continue   # 線路から遠い所 (rail_ext.py が値を作っていない)
             if fine_at(x - cs / 2, z - cs / 2) and fine_at(x + cs / 2, z - cs / 2) and fine_at(x - cs / 2, z + cs / 2) and fine_at(x + cs / 2, z + cs / 2):
                 continue
             present[(i, j)] = True
@@ -126,7 +137,7 @@ def split(E):
             wi0, wj0 = max(0, ci0 - 1), max(0, cj0 - 1)          # 升目の窓
             wi1, wj1 = min(C["nx"] - 1, ci1 + 1), min(C["nz"] - 1, cj1 + 1)
             ni, nj = wi1 - wi0 + 1, wj1 - wj0 + 1                 # 頂点の数
-            h = [C["h"][j * C["nx"] + i] for j in range(wj0, wj1 + 1) for i in range(wi0, wi1 + 1)]
+            h = [C["h"][j * C["nx"] + i] or 0 for j in range(wj0, wj1 + 1) for i in range(wi0, wi1 + 1)]
             cells = [(i, j) in present for j in range(wj0, wj1) for i in range(wi0, wi1)]
             chunk((a, b))["coarse"] = {"i0": wi0, "j0": wj0, "ni": ni, "nj": nj, "own": [ci0, cj0, ci1, cj1], "h": h, "cells": bits(cells)}
 
@@ -144,13 +155,11 @@ def split(E):
         i0, j0 = a * N - UPAD, b * N - UPAD
         c["urban"] = bits([(i0 + i, j0 + j) in urban for j in range(N + 2 * UPAD) for i in range(N + 2 * UPAD)])
 
-    # ---------- 建物 (色の乱数の種は元の通し順: 1 棟に 3 回) ----------
-    seed = 1
+    # ---------- 建物 (色の乱数の種は輪郭の位置から決める。駅を足しても、ほかの建物の色が変わらないように) ----------
     for bd in E["buildings"]:
         xs, zs = [q[0] for q in bd[0]], [q[1] for q in bd[0]]
-        chunk(ck((min(xs) + max(xs)) / 2, (min(zs) + max(zs)) / 2))["buildings"].append(bd + [seed])
-        for _ in range(3):
-            seed = seed * 16807 % 2147483647
+        cx, cz = (min(xs) + max(xs)) / 2, (min(zs) + max(zs)) / 2
+        chunk(ck(cx, cz))["buildings"].append(bd + [pos_hash(cx, cz) % 2147483646 + 1])
 
     # ---------- 道路: 線分の中点の区間ごとに切る ----------
     for rd in E["roads"]:
@@ -166,8 +175,8 @@ def split(E):
         if cur:
             chunk(key)["roads"].append(cur)
 
-    for n, t in enumerate(E["trees"]):
-        chunk(ck(t[0], t[2]))["trees"].append(t + [n])
+    for t in E["trees"]:   # 色・形の番号も位置から (同上)
+        chunk(ck(t[0], t[2]))["trees"].append(t + [pos_hash(t[0], t[2]) % 100003])
     for p in E["poles"]:
         chunk(ck(p[0], p[2]))["poles"].append(p)
     for p in E["portals"]:

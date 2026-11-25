@@ -545,7 +545,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
   let overview = null;
   function overviewCanvas() {
     if (overview) return overview;
-    const O = ext.overview, s = Math.min(low ? 0.08 : 0.15, 2048 / Math.max(B.maxX - B.minX, B.maxZ - B.minZ));
+    const O = ext.overview, s = Math.min(low ? 0.08 : 0.15, (low ? 1024 : 2048) / Math.max(B.maxX - B.minX, B.maxZ - B.minZ));   // 東京まで (約 22 × 31 km) は大きい辺で決まる。スマホは 1024 px (2048 px だと 11 MB)
     const m = document.createElement('canvas');
     m.width = Math.ceil((B.maxX - B.minX) * s); m.height = Math.ceil((B.maxZ - B.minZ) * s);
     const g = m.getContext('2d');

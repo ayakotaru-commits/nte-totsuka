@@ -198,7 +198,7 @@ function terrain() {
   // 4. 地図の端に着くと、乗ったホームへ戻る
   await page.evaluate(() => {
     const R = window.__ride, r = R.riding.r, T = window.__trains, t = T.now() - R.riding.dep;
-    for (let d = 0; d < 1200; d += 1) { if (T.front(r, t + d) > r.len - 25) { T.hold += d; break; } }
+    for (let d = 0; d < 6000; d += 1) { if (T.front(r, t + d) > r.len - 25) { T.hold += d; break; } }
   });
   await frames(2); await page.waitForFunction(() => !window.__ride.busy); await frames(2);
   s = await st();

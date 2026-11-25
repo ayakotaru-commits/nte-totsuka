@@ -55,13 +55,14 @@ async function main() {
   const coverP = getJSON('data/cover.json', !QS.has('nocover'));      // 地面の種類 (tools/lidar_cover.py。見比べ用に ?nocover で使わない)
   const wallsP = getJSON('data/walls.json', QS.has('walls'));         // 擁壁 (tools/lidar_walls.py --osm。見た目が不十分なので ?walls のときだけ)
   const propsP = getJSON('data/props.json');                          // 木・小物・建物の飾りの配置と当たり判定 (tools/build_props.py)
-  const extP = getJSON('data/rail_ext/index.json', !QS.has('noext')); // 線路の延長 (横浜駅まで。tools/rail_ext.py。?noext で使わない)。地形・建物は区間ごとに後から読む (detail/railext.js)
+  const extP = getJSON('data/rail_ext/index.json', !QS.has('noext')); // 線路の延長 (東京駅まで。tools/rail_ext.py。?noext で使わない)。地形・建物は区間ごとに後から読む (detail/railext.js)
   const [city, terrain, cover, walls, props, ext] = await Promise.all([cityP, terrainP, coverP, wallsP, propsP, extP]);
   if (terrain) setTerrain(terrain);
   if (cover) setCover(cover);
   if (walls) city.walls = walls.walls;
 
-  $('credit').textContent = '地図データ ' + city.attribution;
+  // 線路の延長 (地図の外) の出典も足す (PLATEAU 川崎市・東京都 23 区など。index.json の source)
+  $('credit').textContent = '地図データ ' + city.attribution + (ext && ext.source ? ' / 線路の延長: ' + ext.source : '');
 
   // ---- renderer / scene ----
   // 重さの切り分け用 (URL): ?pr=1 解像度の倍率, ?log 対数深度バッファを使う (標準は使わない。重いので), ?noaa アンチエイリアス無し, ?noshadow 影なし
@@ -374,9 +375,12 @@ async function main() {
       placeTimer = 0.5;
       const B = city.bounds, px = player.pos.x, pz = player.pos.z;
       if (px < B.minX || px > B.maxX || pz < B.minZ || pz > B.maxZ) { // 地図の外 (線路の延長。rail_ext.json)
-        const st = ((ext && ext.stations) || []).find((q) => Math.hypot(px - q.center[0], pz - q.center[1]) < 400);
+        const sts = (ext && ext.stations) || [], dist = (q) => Math.hypot(px - q.center[0], pz - q.center[1]);
+        const st = sts.find((q) => dist(q) < 400);
+        const nearest = sts.reduce((a, q) => (!a || dist(q) < dist(a) ? q : a), null);
         $('place').textContent = st ? st.name + '駅 付近' : '線路沿い';
-        $('area').textContent = st && st.ward ? '横浜市' + st.ward : '横浜市';   // 区は駅ごと (rail_ext_config.json の ward)
+        // 市・区は駅ごと (rail_ext_config.json の city・ward)。駅の間は、いちばん近い駅の市だけ
+        $('area').textContent = st ? (st.city || '横浜市') + (st.ward || '') : (nearest && nearest.city) || '横浜市';
       } else {
         $('area').textContent = '横浜市戸塚区';
         const p = labels.nearest(px, pz);

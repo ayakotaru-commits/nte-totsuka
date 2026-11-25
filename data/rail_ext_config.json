@@ -1,5 +1,5 @@
 {
-  "_doc": "線路の延長の設定 (tools/rail_ext.py が読む)。edge = 地図のどちらの端から延ばすか (north / south)。stations = 途中・先の駅 (緯度経度はホームの中央の目安。lines = 止まる線、ward = 駅のある区 (画面の左上の表示)、platform = ホームの形 (island = lines[0] の上下線の間の島式 1 面。昔の書き方)、platforms = ホームを複数書くとき [{line, type: island (その線の上下線の間) | outer (その線の上下線それぞれの外側の隣の線路との間。1 つで 2 面), length?, lat?/lon? (ホームの中央。無ければ駅の位置)}]。platforms があれば platform は使わない)。beyond = 最後の駅の先に延ばす長さ (m)。駅を足すときは README の「線路の延長」と .claude/skills/rail-extension を見る",
+  "_doc": "線路の延長の設定 (tools/rail_ext.py が読む)。edge = 地図のどちらの端から延ばすか (north / south)。stations = 途中・先の駅 (緯度経度はホームの中央の目安。lines = 止まる線、ward = 駅のある区 (画面の左上の表示)、platform = ホームの形 (island = lines[0] の上下線の間の島式 1 面。昔の書き方)、platforms = ホームを複数書くとき [{line, type: island (その線の上下線の間) | outer (その線の上下線それぞれの外側の隣の線路との間。1 つで 2 面), length?, lat?/lon? (ホームの中央。無ければ駅の位置)}]。platforms があれば platform は使わない)。beyond = 最後の駅の先に延ばす長さ (m)。line_end = {線名: 駅名} (その線だけ、その駅の先 beyond m で切る)。platforms の type には inner (outer の反対 = 反対の向きの線の側の隣の線路との間) もあり、only (west / east / north / south) でその側の 1 本だけにできる。city = 市・都 (無ければ横浜市)。via = 通る点 [{line, side (その線の上下線のうちどちらの側の道筋か: west / east / north / south), lat, lon}] (分かれ道の多い大きい駅で、正しい番線を通すため。点の 1.5 km 手前から、線路のつながりの最短の道でその点の 3 m 以内を通る線へ)。駅を足すときは README の「線路の延長」と .claude/skills/rail-extension を見る",
   "extensions": [
     {
       "edge": "north",
@@ -8,7 +8,17 @@
         { "name": "東戸塚", "kana": "ひがしとつか", "roman": "Higashi-Totsuka", "lat": 35.430325, "lon": 139.556762, "lines": ["yokosuka"], "platform": "island", "length": 310, "ward": "戸塚区" },
         { "name": "保土ケ谷", "kana": "ほどがや", "roman": "Hodogaya", "lat": 35.447102, "lon": 139.600295, "lines": ["yokosuka"], "platform": "island", "length": 310, "ward": "保土ケ谷区" },
         { "name": "横浜", "kana": "よこはま", "roman": "Yokohama", "lat": 35.465623, "lon": 139.622092, "lines": ["yokosuka", "tokaido"], "length": 310, "ward": "西区",
-          "platforms": [ { "line": "yokosuka", "type": "island", "_doc": "9・10 番線" }, { "line": "tokaido", "type": "outer", "_doc": "5・6 番線 (下り) と 7・8 番線 (上り)。本線は 6・7、5・8 は待避線" } ] }
+          "platforms": [ { "line": "yokosuka", "type": "island", "_doc": "9・10 番線" }, { "line": "tokaido", "type": "outer", "_doc": "5・6 番線 (下り) と 7・8 番線 (上り)。本線は 6・7、5・8 は待避線" } ] },
+        { "name": "川崎", "kana": "かわさき", "roman": "Kawasaki", "lat": 35.5315, "lon": 139.6972, "lines": ["tokaido"], "platform": "island", "length": 310, "city": "川崎市", "ward": "川崎区", "_doc": "1・2 番線 (島式)" },
+        { "name": "品川", "kana": "しながわ", "roman": "Shinagawa", "lat": 35.6292, "lon": 139.7394, "lines": ["tokaido"], "length": 310, "city": "東京都", "ward": "港区",
+          "platforms": [ { "line": "tokaido", "type": "outer", "only": "west", "_doc": "上り 6 番線 (5・6 番線のホーム。5 は京浜東北線 南行)" }, { "line": "tokaido", "type": "inner", "only": "east", "_doc": "下り 12 番線 (11・12 番線のホーム)" } ] },
+        { "name": "新橋", "kana": "しんばし", "roman": "Shimbashi", "lat": 35.6662, "lon": 139.7582, "lines": ["tokaido"], "platform": "island", "length": 310, "city": "東京都", "ward": "港区", "_doc": "1・2 番線 (島式、高架)" },
+        { "name": "東京", "kana": "とうきょう", "roman": "Tokyo", "lat": 35.6811, "lon": 139.7671, "lines": ["tokaido"], "length": 310, "city": "東京都", "ward": "千代田区",
+          "platforms": [ { "line": "tokaido", "type": "outer", "only": "west", "_doc": "上り (上野方面) 8 番線 → 7・8 番線のホーム" }, { "line": "tokaido", "type": "inner", "only": "east", "_doc": "下り (品川方面) 10 番線 → 9・10 番線のホーム (外側は新幹線の 20 番線)" } ] }
+      ],
+      "line_end": { "yokosuka": "横浜" },
+      "via": [
+        { "line": "tokaido", "side": "east", "lat": 35.628449, "lon": 139.739484, "_doc": "品川駅の下り 12 番線 (自動でたどると 8 番線に入る)" }
       ]
     }
   ]
