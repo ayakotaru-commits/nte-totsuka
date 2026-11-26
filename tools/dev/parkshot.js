@@ -79,6 +79,9 @@ const VIEWS = [
   { name: 'w1_wall_west', at: [31318, -25470], look: [1, 0], pitch: 0.1, dist: 9 },                      // 西の岸の散歩道から土手と柵 (水際の石垣)
   { name: 'w2_wall_north_gap', at: [31545, -25541], look: [-0.7, 0.7], pitch: 0.18, dist: 20 },           // 北の堤道が岸を越える所 (土手の切れ目のふた)
   { name: 'w3_wall_aerial', at: [31420, -25520], look: [0.9, 0.4], pitch: 0.55, dist: 70 },              // 湖の北西の岸を上から (土手・散歩道・広場からの 2 本の道)
+  { name: 't1_blossom', at: [31833, -25405], look: [0, -1], pitch: 0.1, dist: 10 }, { name: 't1b_blossom', at: [31833, -25445], look: [0, 1], pitch: 0.1, dist: 10 },                    // 桜の木 (葉の板の木。trees.js)
+  { name: 't2_pine', at: [31060, -25930], look: [1, 0], pitch: 0.1, dist: 20 },                          // 松 (針葉樹)
+  { name: 't3_round', at: [31270, -25830], look: [0, 1], pitch: 0.12, dist: 20 },                         // 丸い木
   { name: 'w4_wall_south', at: [31600, -25395], look: [0, -1], pitch: 0.12, dist: 16 },                   // 南の岸 (ハーバーの側) から湖を見る
   { name: 'k17_castle_reflect_n', at: [31345, -25500], look: [1, 0.2], pitch: 0.1, dist: 14, show: { idle: true } },   // 同じ場所の夜 (--night)
   { name: 'k18_castle_garden', at: [31476, -25548], look: [0, 1], pitch: 0.25, dist: 10 },      // 湖の南の岸から、島の前の芝の花壇・噴水 (改善 3)
@@ -174,6 +177,7 @@ try {
   const morning = args.includes('--morning'); if (morning) args.splice(args.indexOf('--morning'), 1);
   const touch = args.includes('--touch'); if (touch) args.splice(args.indexOf('--touch'), 1);   // スマホの設定 (?touch。壁の柄なし・小物をまとめる・人を減らす)
   const nopark = args.includes('--nopark'); if (nopark) args.splice(args.indexOf('--nopark'), 1);
+  const simple = args.includes('--simpletrees'); if (simple) args.splice(args.indexOf('--simpletrees'), 1);   // 木を以前の簡単な形に (?simpletrees)
   const noreflect = args.includes('--noreflect'); if (noreflect) args.splice(args.indexOf('--noreflect'), 1);   // 城の水面への映り込みを出さない (改善 2 の修正前。?noreflect)
   const nocastle = args.includes('--nocastle'); if (nocastle) args.splice(args.indexOf('--nocastle'), 1);   // 城だけ出さない (段階 9 の修正前の見た目。?nocastle)
   const only = flag('--only');
@@ -199,7 +203,7 @@ try {
   });
   page.on('pageerror', e => console.log('ERR', e.message));
   page.on('console', m => { if (/rror/.test(m.text())) console.log('LOG', m.text()); });
-  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : '') + (nocastle ? '&nocastle' : '') + (noreflect ? '&noreflect' : ''), { timeout: 300000 });
+  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : '') + (nocastle ? '&nocastle' : '') + (noreflect ? '&noreflect' : '') + (simple ? '&simpletrees' : ''), { timeout: 300000 });
   await page.waitForFunction(() => window.__g && window.__ride, null, { timeout: 300000 });
   await page.addStyleTag({ content: '#help{display:none!important}' });
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });

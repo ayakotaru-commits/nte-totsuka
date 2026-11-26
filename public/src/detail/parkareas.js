@@ -10,6 +10,7 @@ import { mergeStaticMeshes } from './mergestatic.js';
 import { makeFacadeKit, facadeDetail, floorLayout } from './parkfacade.js';
 import { buildBunting, buildSmoke } from './parkfx.js';
 import { buildFurn } from './parkfurn.js';
+import { TreeLayer } from '../trees.js';
 
 const C = (s) => new THREE.Color(s);
 const mulberry = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -390,15 +391,30 @@ export function buildAreas(ctx) {
       lolli: { trunk: new THREE.CylinderGeometry(0.12, 0.16, 3.4, 8).translate(0, 1.7, 0), crown: new THREE.SphereGeometry(1.9, 14, 10).translate(0, 4.4, 0), colors: ['#ff8fbd', '#7fd6b8', '#a58bff', '#ffc65c', '#ff9d7a'] },
     };
     const rnd = mulberry(7);
+    // 丸い木・桜・松は、街の本体と同じ葉の板の木 (trees.js)。倍率は、基準の木 (半径 1.7 m・高さ 4.9 m) に対する比。
+    // やしの木・枯れ木・棒つきキャンディの木は、作り物の形のまま
+    const LEAFY = { round: { kind: 0, sc: 1.5, wr: 1.0 }, blossom: { kind: 0, sc: 1.45, wr: 1.05 }, pine: { kind: 1, sc: 2.0, wr: 0.95 } };
+    const leafy = !new URLSearchParams(location.search).has('simpletrees');
+    const spots = [];
     for (const [k, d] of Object.entries(kinds)) {
       const list = G.trees.filter((t) => t[2] === k);
       if (!list.length) continue;
+      if (leafy && LEAFY[k]) {
+        const L = LEAFY[k];
+        list.forEach((t, i) => {
+          const y = ground(t[0], t[1]);
+          spots.push([t[0], t[1], y, t[3] * L.sc, rnd(), parseInt(d.colors[(i * 7 + Math.floor(t[0])) % d.colors.length].slice(1), 16), L.kind, L.wr]);
+          col.circle.push([t[0], t[1], 0.4, y - 0.5, y + 4]);
+        });
+        continue;
+      }
       const f = (t) => M4.compose(PV.set(t[0], ground(t[0], t[1]), t[1]), Q.setFromAxisAngle(YA, rnd() * 6.28), S1.set(t[3], t[3], t[3]));
       inst(d.trunk, std(d.dead ? '#4a4048' : k === 'lolli' ? '#f4efe6' : '#6b5540', 0.9), list, f);
       inst(d.crown, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, flatShading: !d.dead && k !== 'lolli' }), list, f, (t, i) => tmpC.set(d.colors[(i * 7 + Math.floor(t[0])) % d.colors.length]));
       for (const t of list) { const y = ground(t[0], t[1]); col.circle.push([t[0], t[1], 0.4, y - 0.5, y + 4]); }
     }
     S1.set(1, 1, 1);
+    if (spots.length) { const layer = new TreeLayer(spots, 'trees_park', { gain: 1.3 }); api.group.add(layer.group); api.trees = layer; }
     api.stats.trees = G.trees.length;
   }
 

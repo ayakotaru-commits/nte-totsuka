@@ -5,6 +5,7 @@
 // 北口の建物 (改札機・窓口・券売機・案内・駅名の白い帯)、屋根付きのデッキと丸いバルコニー、地上への階段、
 // 地上の広場 (車の回る島・タクシーとバスの乗り場・時計塔・街灯・木)、東の低い建物 (1 階に店)。
 // 当たり判定は world.addColliders (床は上に乗れる多角形、壁・手すりは線、柱は円)。ホームの床の穴 (階段の口) は railext.js が siteCut で抜く。
+import { TreeLayer } from '../trees.js';
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 
@@ -644,11 +645,9 @@ export function buildStationSite(st, world) {
   lamps.forEach(([s, t, y, ls_, lt_], i) => { const [x, z] = fr.xz(s, t); lm.setMatrixAt(i, M.compose(V.set(x, y, z), Q, Sc.set(lt_, 1, ls_))); });
   lm.name = 'ext_site_lamps'; lm.computeBoundingSphere(); g.add(lm);
   // 木 (幹と葉) とタクシー
-  const trunkG = new THREE.CylinderGeometry(0.16, 0.24, 2.6, 7).translate(0, 1.3, 0), crownG = new THREE.IcosahedronGeometry(2.3, 1).translate(0, 4.0, 0);
-  const tm = new THREE.InstancedMesh(trunkG, new THREE.MeshStandardMaterial({ color: '#6b5540', roughness: 1 }), trees.length);
-  const cm = new THREE.InstancedMesh(crownG, new THREE.MeshStandardMaterial({ color: '#58783e', roughness: 1, flatShading: true }), trees.length);
-  trees.forEach(([s, t, k], i) => { const [x, z] = fr.xz(s, t); M.compose(V.set(x, PV + (i === 0 ? 0.25 : 0), z), Q, Sc.set(k, k, k)); tm.setMatrixAt(i, M); cm.setMatrixAt(i, M); postC(s, t, 0.25, G, PV + 2.5); });
-  for (const m of [tm, cm]) { m.castShadow = true; m.computeBoundingSphere(); g.add(m); }
+  const treeSpots = [];
+  trees.forEach(([s, t, k], i) => { const [x, z] = fr.xz(s, t); treeSpots.push([x, z, PV + (i === 0 ? 0.25 : 0), k * 1.3, (i * 0.37) % 1, 0x58783e, 0, 1]); postC(s, t, 0.25, G, PV + 2.5); });
+  { const layer = new TreeLayer(treeSpots, 'trees_station'); g.add(layer.group); }   // 葉の板の木 (trees.js。倍率は基準の木 = 半径 1.7 m に対する比)
   const taxiG = new THREE.Group();
   const body = new THREE.MeshStandardMaterial({ color: COL.taxi, roughness: 0.35, metalness: 0.4 }), win = new THREE.MeshStandardMaterial({ color: '#2b3a44', roughness: 0.15, metalness: 0.5 });
   const lampTop = new THREE.MeshStandardMaterial({ color: '#f2c94c', emissive: '#6b5410', roughness: 0.5 });

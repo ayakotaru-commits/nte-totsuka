@@ -3,6 +3,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildCity } from './city.js';
+import { updateTreeLayers } from './trees.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { ThirdPersonCamera } from './camera.js';
@@ -394,7 +395,7 @@ async function main() {
       if (near2) { if (parkHud.textContent !== li.text) parkHud.textContent = li.text; parkHud.classList.toggle('soon', li.soon); }
       if (parkHud.hidden === near2) parkHud.hidden = !near2;
     }
-    if (built.treeLayer) built.treeLayer.update(camera);   // 近い木だけ葉の板の形 (trees.js)
+    updateTreeLayers(camera);   // 近い木だけ葉の板の形 (trees.js。街・パーク・駅前・庭の全部)
     if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, parkWant);
     if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, tod.cur.win);
     look.update(dt, tod.cur);
