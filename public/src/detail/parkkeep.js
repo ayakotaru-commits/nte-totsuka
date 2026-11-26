@@ -162,6 +162,12 @@ export function buildKeepInterior(K) {
     const [x0, , z0] = P(10.0, a, 0), [x1, , z1] = P(12.5, a, 0), [w0x, w0z] = W(x0, z0), [w1x, w1z] = W(x1, z1);
     col.line.push([0.12, 1.0, w0x, w0z, y0 + TE, w1x, w1z, y0 + TE]);
     lamps.push([...P(10.1, a, TE + 1.25), lampWarm, 0.26], [...P(12.5, a, TE + 1.25), lampWarm, 0.26]);
+    {   // 階段の出口 (a = 0 度) の外のふちの帯 (r 11.4〜12.5)。ここから穴の側へ入り込めないようにする (階段のほうは開けておく)
+      const [x0, , z0] = P(11.4, 0, 0), [x1, , z1] = P(12.5, 0, 0), [a0x, a0z] = W(x0, z0), [a1x, a1z] = W(x1, z1);
+      col.line.push([0.12, 1.0, a0x, a0z, y0 + TE, a1x, a1z, y0 + TE]);
+      for (const r of [11.5, 12.45]) { const [x, y, z] = P(r, 0, TE + 0.5); trim.box(x, y, z, 0.16, 1.0, 0.16, 0, cream, NOUV, false); }
+      { const [x, y, z] = P(11.97, 0, TE + 1.0); gold.box(x, y, z, 0.14, 0.1, 1.1, 0, goldC); }
+    }
   }
 
   // ---------- 正面の入口 (石の枠・両開きの扉・敷居) ----------
