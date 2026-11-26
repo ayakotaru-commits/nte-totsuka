@@ -88,8 +88,68 @@ def check(cfg, protect):
         inside = [q for q in site if inpoly(q[0], q[1], pr["poly"])]
         if inside:
             warn.append(f"敷地の頂点 {inside} が駅の範囲 {pr['name']} の中 (その範囲は省かず、駅の設定どおりに残す)")
+    warn += check_castle(cfg)
     for w in warn:
         print("警告:", w)
+    return warn
+
+
+def check_castle(cfg):
+    """段階 9: 城 (castle) の設定の見落とし (島が湖の中に収まる・塔・門・壁が島の中・塔どうしの間が通れる幅・堤道が岸に届く)。警告だけ"""
+    C = cfg.get("castle")
+    if not C:
+        return []
+    warn = []
+    cx, cz, yaw = C["center"][0], C["center"][1], C["yaw"]
+    I = C["island"]
+    lake = cfg["ellipses"]["ムーンレイク"]
+    W = lambda lx, lz: (cx + lx * math.cos(yaw) + lz * math.sin(yaw), cz - lx * math.sin(yaw) + lz * math.cos(yaw))
+    rho = lambda lx, lz: math.hypot(lx / I["rx"], lz / I["rz"])
+    # 島 (shore を含めた外形) が湖の中に収まる
+    for k in range(48):
+        a = k / 48 * 2 * math.pi
+        x, z = W((I["rx"] + I["shore"]) * math.cos(a), (I["rz"] + I["shore"]) * math.sin(a))
+        r = math.hypot((x - lake["center"][0]) / lake["rx"], (z - lake["center"][1]) / lake["rz"])
+        if r > 0.97:
+            warn.append(f"城の島 (岸のなだらかさ込み) が湖の岸 {r:.2f} に近すぎる (角度 {k * 7.5:.0f}°)")
+            break
+    tw = []
+    for T in C["towers"]:
+        for sx in ([1, -1] if T.get("mirror") is not False else [1]):
+            rr = T["tiers"][0]["r"]
+            tw.append((T["id"], sx * T["x"], T["z"], rr))
+    for n, x, z, r in tw:
+        if rho(abs(x) + r + 4, z) > 1.0 and rho(x, z) > 0.8:
+            warn.append(f"塔 {n} ({x:g}, {z:g}) r {r:g} が島の縁に近い (島 rx {I['rx']} rz {I['rz']})")
+    # 塔と塔の間: 歩く隙間 (中心間の距離 − 半径の和) は、重ねる塔 (連結) でなければ 2.5 m 以上
+    for i in range(len(tw)):
+        for j in range(i + 1, len(tw)):
+            a, b = tw[i], tw[j]
+            gap = math.hypot(a[1] - b[1], a[2] - b[2]) - a[3] - b[3]
+            if 0 < gap < 2.5:
+                warn.append(f"塔 {a[0]} と {b[0]} の間が {gap:.1f} m で、歩くには狭い")
+    for g in C["gates"]:
+        if abs(g["w"]) + 4 > I["rx"] or rho(0, g["z1"] if g["face"] > 0 else g["z0"]) > 1.0:
+            warn.append(f"門 {g['id']} が島の外に出る")
+    # 堤道が、湖の岸 (南北の端) を越える長さ
+    for cw in C["causeways"]:
+        lz = abs(cw["to"])
+        x, z = W(0, cw["to"])
+        r = math.hypot((x - lake["center"][0]) / lake["rx"], (z - lake["center"][1]) / lake["rz"])
+        if r < 1.0:
+            warn.append(f"堤道 {cw['name']} の先 ({x:.0f}, {z:.0f}) がまだ湖の中 (r {r:.2f})。to を延ばす")
+    # 花火・噴水が島の上に無い
+    show = cfg.get("show", {})
+    for q in show.get("fireworks", {}).get("launchAbs", []):
+        x, z = lake["center"][0] + q[0], lake["center"][1] + q[1]
+        l2 = ((x - cx) * math.cos(yaw) - (z - cz) * math.sin(yaw), (x - cx) * math.sin(yaw) + (z - cz) * math.cos(yaw))
+        if rho(*l2) < 1.0:
+            warn.append(f"花火の発射位置 {q} が城の島の上")
+    for q in show.get("fountain", {}).get("at", []):
+        x, z = lake["center"][0] + q[0], lake["center"][1] + q[1]
+        l2 = ((x - cx) * math.cos(yaw) - (z - cz) * math.sin(yaw), (x - cx) * math.sin(yaw) + (z - cz) * math.cos(yaw))
+        if rho(*l2) < 1.0 or any(abs(l2[0]) < cw["width"] / 2 + 1 and l2[1] * cw["to"] > 0 and abs(l2[1]) > abs(cw["from"]) for cw in C["causeways"]):
+            warn.append(f"噴水 {q} が城の島か堤道の上")
     return warn
 
 

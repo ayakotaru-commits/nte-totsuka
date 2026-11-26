@@ -595,16 +595,469 @@
      0,
      -0.35
     ]
+   ],
+   "launchAbs": [
+    [
+     -132,
+     6
+    ],
+    [
+     -114,
+     -16
+    ],
+    [
+     114,
+     -14
+    ],
+    [
+     132,
+     8
+    ],
+    [
+     -72,
+     36
+    ],
+    [
+     72,
+     36
+    ],
+    [
+     -100,
+     24
+    ],
+    [
+     100,
+     24
+    ]
    ]
   },
   "fountain": {
-   "jets": 9
+   "jets": 12,
+   "at": [
+    [
+     -60,
+     -57
+    ],
+    [
+     -40,
+     -58
+    ],
+    [
+     -22,
+     -59
+    ],
+    [
+     22,
+     -59
+    ],
+    [
+     40,
+     -58
+    ],
+    [
+     60,
+     -57
+    ],
+    [
+     -60,
+     57
+    ],
+    [
+     -40,
+     58
+    ],
+    [
+     -22,
+     59
+    ],
+    [
+     22,
+     59
+    ],
+    [
+     40,
+     58
+    ],
+    [
+     60,
+     57
+    ]
+   ],
+   "_doc": "噴水の位置 (湖の中心からの [dx, dz])。城の島の前後の堀 (水面) に並べる。at が無いときは湖の中心線に jets 本"
   },
   "music": {
    "theme": "audio/park_theme.mp3",
    "parade": "audio/park_parade.mp3",
    "radius": 340,
    "paradeRadius": 170
+  }
+ },
+ "castle": {
+  "_doc": "リール・キャッスル (段階 9)。ムーンレイクの中の島に建つ、パークの象徴の城 (主塔の頂の『映写リールの冠』= 3 枚の輪が回る。高さ約 78 m)。実在の城の形・色・配置は写さず、パーク名の『リール』(映写機のフィルム) を主題にしたオリジナルの意匠。座標は城の局所座標 (lx 右・lz 前 = プラザの側 = ワールドの -z)。center・yaw で島の位置・向きを決める (yaw = π で前がワールドの -z)。island = 島の楕円 (rx・rz m、shore = 島の岸のなだらかさ m、wall = 護岸の高さ m)。causeways = 島から岸への堤道 (width m、to = 局所 z の終点)。towers = 塔 (mirror が false でなければ x を反転した塔も立つ。tiers = 下から、r = 下の半径・r1 = 上の半径・fl = 階の数・fh = 1 階の高さ m。roof = 円すいの屋根 h m)。walls = 城壁の線 (h m・t m)。gates = 門塔 (トンネルが通り抜けられる)。reel = 主塔の頂の冠。show = 城のライトアップ (時計の cycle の中の start 秒から duration 秒)。色は colors。tools/park.py が検証して public/data/park.json にそのまま写し、public/src/detail/parkcastle.js が描く。",
+  "name": "リール・キャッスル",
+  "roman": "REEL CASTLE",
+  "center": [
+   31510,
+   -25464
+  ],
+  "yaw": 3.14159265,
+  "island": {
+   "rx": 84,
+   "rz": 44,
+   "shore": 9,
+   "wall": 1.0
+  },
+  "causeways": [
+   {
+    "name": "front",
+    "width": 14,
+    "from": 40,
+    "to": 86
+   },
+   {
+    "name": "rear",
+    "width": 14,
+    "from": -40,
+    "to": -86
+   }
+  ],
+  "colors": {
+   "stone": "#f5eee8",
+   "stoneShade": "#d9d0dc",
+   "gold": "#dcab3f",
+   "cream": "#f6f0e4",
+   "teal": "#3d9aa6",
+   "blue": "#4e74c0",
+   "violet": "#7d63c4",
+   "rose": "#dc6f9d",
+   "coral": "#f08c6a",
+   "sky": "#5fb7e3",
+   "lawn": "#79b45a"
+  },
+  "towers": [
+   {
+    "id": "keep",
+    "x": 0,
+    "z": -4,
+    "mirror": false,
+    "tiers": [
+     {
+      "r": 12.5,
+      "r1": 12.0,
+      "fl": 4,
+      "fh": 5.6
+     },
+     {
+      "r": 10.0,
+      "r1": 9.2,
+      "fl": 3,
+      "fh": 5.0,
+      "ledge": true
+     },
+     {
+      "r": 7.4,
+      "r1": 6.6,
+      "fl": 3,
+      "fh": 4.4,
+      "ledge": true
+     }
+    ],
+    "roof": {
+     "h": 19,
+     "color": "teal",
+     "over": 1.5,
+     "dormers": 8,
+     "ribs": 8,
+     "crockets": true
+    },
+    "finial": {
+     "h": 18
+    },
+    "door": true
+   },
+   {
+    "id": "inner",
+    "x": 15.5,
+    "z": 3,
+    "tiers": [
+     {
+      "r": 5.2,
+      "r1": 5.0,
+      "fl": 4,
+      "fh": 5.4
+     },
+     {
+      "r": 4.4,
+      "r1": 4.0,
+      "fl": 3,
+      "fh": 4.6,
+      "ledge": true
+     }
+    ],
+    "roof": {
+     "h": 16,
+     "color": "violet",
+     "over": 1.1,
+     "dormers": 4,
+     "ribs": 8,
+     "crockets": true
+    },
+    "finial": {
+     "h": 9
+    }
+   },
+   {
+    "id": "mid",
+    "x": 33,
+    "z": -7,
+    "tiers": [
+     {
+      "r": 4.4,
+      "r1": 4.2,
+      "fl": 4,
+      "fh": 5.0
+     },
+     {
+      "r": 3.8,
+      "r1": 3.5,
+      "fl": 2,
+      "fh": 4.4,
+      "ledge": true
+     }
+    ],
+    "roof": {
+     "h": 14,
+     "color": "rose",
+     "over": 1.0,
+     "dormers": 3,
+     "ribs": 8
+    },
+    "finial": {
+     "h": 8
+    }
+   },
+   {
+    "id": "gatetower",
+    "x": 18.5,
+    "z": 29,
+    "tiers": [
+     {
+      "r": 4.6,
+      "r1": 4.4,
+      "fl": 4,
+      "fh": 5.0
+     },
+     {
+      "r": 3.9,
+      "r1": 3.6,
+      "fl": 1,
+      "fh": 4.2,
+      "ledge": true
+     }
+    ],
+    "roof": {
+     "h": 12,
+     "color": "sky",
+     "over": 1.0,
+     "dormers": 2,
+     "ribs": 8
+    },
+    "finial": {
+     "h": 7
+    }
+   },
+   {
+    "id": "outer",
+    "x": 44,
+    "z": 22,
+    "tiers": [
+     {
+      "r": 5.2,
+      "r1": 5.0,
+      "fl": 4,
+      "fh": 5.0
+     }
+    ],
+    "roof": {
+     "h": 12,
+     "color": "coral",
+     "over": 1.1,
+     "dormers": 3,
+     "ribs": 8
+    },
+    "finial": {
+     "h": 7
+    }
+   },
+   {
+    "id": "bastion",
+    "x": 63,
+    "z": 8,
+    "tiers": [
+     {
+      "r": 6.8,
+      "r1": 6.4,
+      "fl": 3,
+      "fh": 5.0,
+      "ledge": true
+     }
+    ],
+    "roof": {
+     "h": 9,
+     "color": "gold",
+     "over": 1.2,
+     "dormers": 0,
+     "ribs": 8
+    },
+    "finial": {
+     "h": 6
+    }
+   },
+   {
+    "id": "rearbastion",
+    "x": 52,
+    "z": -16,
+    "tiers": [
+     {
+      "r": 5.5,
+      "r1": 5.2,
+      "fl": 3,
+      "fh": 5.0,
+      "ledge": true
+     }
+    ],
+    "roof": {
+     "h": 10,
+     "color": "blue",
+     "over": 1.0,
+     "dormers": 2,
+     "ribs": 8
+    },
+    "finial": {
+     "h": 6
+    }
+   },
+   {
+    "id": "rearturret",
+    "x": 26,
+    "z": -24,
+    "tiers": [
+     {
+      "r": 4.6,
+      "r1": 4.4,
+      "fl": 4,
+      "fh": 5.0
+     },
+     {
+      "r": 3.9,
+      "r1": 3.6,
+      "fl": 1,
+      "fh": 4.2,
+      "ledge": true
+     }
+    ],
+    "roof": {
+     "h": 13,
+     "color": "violet",
+     "over": 1.0,
+     "dormers": 2,
+     "ribs": 8
+    },
+    "finial": {
+     "h": 7
+    }
+   }
+  ],
+  "walls": [
+   {
+    "pts": [
+     [
+      18.5,
+      29
+     ],
+     [
+      44,
+      22
+     ],
+     [
+      63,
+      8
+     ]
+    ],
+    "h": 10.5,
+    "t": 3
+   },
+   {
+    "pts": [
+     [
+      63,
+      8
+     ],
+     [
+      52,
+      -16
+     ]
+    ],
+    "h": 9,
+    "t": 3
+   },
+   {
+    "pts": [
+     [
+      52,
+      -16
+     ],
+     [
+      26,
+      -24
+     ],
+     [
+      13.5,
+      -29
+     ]
+    ],
+    "h": 9,
+    "t": 3
+   }
+  ],
+  "gates": [
+   {
+    "id": "front",
+    "z0": 21,
+    "z1": 33,
+    "hw": 3.75,
+    "w": 14.5,
+    "h": 20,
+    "gable": 9,
+    "face": 1,
+    "rose": true,
+    "bartizans": true,
+    "roof": "sky"
+   },
+   {
+    "id": "rear",
+    "z0": -33,
+    "z1": -25,
+    "hw": 3.5,
+    "w": 10.5,
+    "h": 14,
+    "gable": 7,
+    "face": -1,
+    "rose": false,
+    "bartizans": false,
+    "roof": "blue"
+   }
+  ],
+  "reel": {
+   "y": 78,
+   "R": 9.2,
+   "wheels": 3,
+   "holes": 6,
+   "spin": 0.105
+  },
+  "show": {
+   "start": 245,
+   "duration": 75
   }
  }
 }

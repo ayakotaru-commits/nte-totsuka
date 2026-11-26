@@ -297,7 +297,10 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   const toLake = await page.evaluate((r) => window.__walkXZ(r, { maxT: 40, tol: 2 }), [[pl[0], pl[1] + 70], [lc[0], lc[1] - lake.rz - 12]]);
   console.log(JSON.stringify(toLake));
   check('広場から湖の北の散歩道まで歩ける', toLake.out.length === 2 && toLake.out.every((q) => q.ok), toLake.out.map((q) => q.ok));
-  const dive = await page.evaluate((a) => window.__walkXZ(a, { maxT: 20, walk: true, keepGoing: true, tol: 0.3 }), [[lc[0], lc[1]]]);
+  // (段階 9: 湖の北南の岸の軸 = 城の堤道は歩いて入れるので、軸から 80 m 離れた所から湖の中へ向かう)
+  await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [lc[0] + 80, lv + 0.2, lc[1] - lake.rz - 12]);
+  await frames(page, 2);
+  const dive = await page.evaluate((a) => window.__walkXZ(a, { maxT: 20, walk: true, keepGoing: true, tol: 0.3 }), [[lc[0] + 80, lc[1]]]);
   console.log(JSON.stringify(dive));
   const dd = dive.out[0], dEdge = Math.hypot((dd.at[0] - lc[0]) / lake.rx, (dd.at[1] - lc[1]) / lake.rz);
   check('湖の中心へ向かって歩いても、岸の手前で止まる (落ちない)', dd && !dd.ok && dEdge > 1.0 && Math.abs(dd.y - lv) < 0.7, { rho: +dEdge.toFixed(3), y: dd && dd.y });
