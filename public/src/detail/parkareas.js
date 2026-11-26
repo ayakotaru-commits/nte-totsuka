@@ -309,7 +309,9 @@ export function buildAreas(ctx) {
   const furn = buildFurn({ gen: G, ground, group: api.group, col });   // 屋台のワゴン・案内標識・ごみ箱
   api.stats.furn = furn ? furn.counts : null;
   api.stats.bunting = bunting ? bunting.strings : 0; api.stats.chimneys = chimneys.length;
+  const spinners = [];   // 回る物 (広場の歯車。{ mesh, speed, phase })
   api.update = (t, x, z) => {
+    for (const s of spinners) s.mesh.rotation.z = s.phase + s.speed * t;
     t %= 3600;   // 秒が大きいと float の精度が足りずシェーダのゆれがぎくしゃくする (1 時間でつなぎ目が 1 回)
     bunting?.update(t); smoke?.update(t, x, z);
     if (kit) Object.values(kit.neonMats).forEach((m, i) => { const f = (t * 0.21 + i * 0.37) % 1; m.userData.glow = 1.8 * (0.92 + 0.08 * Math.sin(t * 6.3 + i * 2)) * (f < 0.016 ? 0.2 : 1); });   // ネオンのわずかなゆらぎと、ときどきの消えかけ
@@ -319,8 +321,8 @@ export function buildAreas(ctx) {
   api.stats.trisAll = bufs.reduce((n, B) => n + (B.wall.p.length + B.trim.p.length + B.sign.p.length) / 9, 0) | 0;
 
   // ---------- 内側の道・広場 ----------
-  const PATHCOL = { avenue: '#ecc4dc', town: '#a9a7ad', valley: '#c9b087', forest: '#d8c6a0', harbor: '#c8b79c', sweet: '#f6d3e4', night: '#8d8798' };
-  const PLAZACOL = { avenue: ['#f3d6e6', '#ffffff'], town: ['#b9b7bd', '#d8d4c8'], valley: ['#d6c29a', '#a98d63'], forest: ['#e8d9b8', '#cfe3b0'], harbor: ['#d2c3a6', '#9fb8c8'], sweet: ['#ffe0ee', '#fff6c9'], night: ['#9b95a8', '#6f6a80'] };
+  const PATHCOL = { avenue: '#ecc4dc', town: '#a9a7ad', valley: '#c9b087', forest: '#d8c6a0', harbor: '#c8b79c', sweet: '#f6d3e4', night: '#8d8798', station: '#c9a98c' };
+  const PLAZACOL = { avenue: ['#f3d6e6', '#ffffff'], town: ['#b9b7bd', '#d8d4c8'], valley: ['#d6c29a', '#a98d63'], forest: ['#e8d9b8', '#cfe3b0'], harbor: ['#d2c3a6', '#9fb8c8'], sweet: ['#ffe0ee', '#fff6c9'], night: ['#9b95a8', '#6f6a80'], station: ['#e3cdb0', '#a9553f'] };
   const byCol = {};
   for (const p of G.paths) (byCol[PATHCOL[AC(p.a).kind]] = byCol[PATHCOL[AC(p.a).kind]] || []).push(...ctx.stripPos(p.pts, p.w, 0.19));
   for (const [c, pos] of Object.entries(byCol)) api.group.add(ctx.flat(pos, c, 0.19));
@@ -358,7 +360,7 @@ export function buildAreas(ctx) {
   smallProps = true;
   {
     const accent = (b) => A[b[6]].kind;
-    const FL = { avenue: ['#ff7fb5', '#3fc8ff', '#ffd36b'], town: ['#e0585b', '#f2b632', '#ffffff'], valley: ['#e9803a', '#d94f6a', '#f2d24a'], forest: ['#ff9ecb', '#c7a6ff', '#ffe08a'], harbor: ['#ffffff', '#4fa0e8', '#ffd36b'], sweet: ['#ff7fb5', '#7fd6b8', '#ffd36b'], night: ['#8f6bd6', '#c0443c', '#e8e0c8'] };
+    const FL = { avenue: ['#ff7fb5', '#3fc8ff', '#ffd36b'], town: ['#e0585b', '#f2b632', '#ffffff'], valley: ['#e9803a', '#d94f6a', '#f2d24a'], forest: ['#ff9ecb', '#c7a6ff', '#ffe08a'], harbor: ['#ffffff', '#4fa0e8', '#ffd36b'], sweet: ['#ff7fb5', '#7fd6b8', '#ffd36b'], station: ['#b8472f', '#d9a441', '#2f7f7a'], night: ['#8f6bd6', '#c0443c', '#e8e0c8'] };
     inst(new THREE.BoxGeometry(3.2, 0.55, 1.4).translate(0, 0.27, 0), std('#d9d2c4', 0.8), G.beds, (b) => M4.compose(PV.set(b[0], ground(b[0], b[1]), b[1]), Q.setFromAxisAngle(YA, b[2]), S1));
     inst(new THREE.BoxGeometry(2.9, 0.3, 1.1).translate(0, 0.65, 0), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9 }), G.beds, (b) => M4.compose(PV.set(b[0], ground(b[0], b[1]), b[1]), Q.setFromAxisAngle(YA, b[2]), S1), (b) => tmpC.set(FL[accent(b)][b[5] % 3]));
     for (const b of G.beds) col.box.push([b[0], b[1], b[2] + Math.PI / 2, 0.7, 1.6, ground(b[0], b[1]) - 0.5, ground(b[0], b[1]) + 0.6]);
@@ -404,7 +406,7 @@ export function buildAreas(ctx) {
   for (const a of G.arches) {
     const gy = ground(a.x, a.z), ky = A[a.a].kind;
     const g = new THREE.Group(); g.position.set(a.x, gy, a.z); g.rotation.y = a.yaw;
-    const sg = G.signs[a.sign], pc = std(ky === 'night' ? '#4a3f5f' : ky === 'valley' ? '#8a6a45' : ky === 'town' ? '#7a8088' : '#fbf7ff', 0.6);
+    const sg = G.signs[a.sign], pc = std(ky === 'night' ? '#4a3f5f' : ky === 'valley' ? '#8a6a45' : ky === 'town' ? '#7a8088' : ky === 'station' ? '#5d4a3a' : '#fbf7ff', 0.6);
     const half = a.span / 2;
     for (const s of [-1, 1]) {
       const p = new THREE.Mesh(new THREE.BoxGeometry(1.6, a.h, 1.6), pc); p.position.set(s * half, a.h / 2, 0); p.castShadow = true; g.add(p);
@@ -487,6 +489,50 @@ export function buildAreas(ctx) {
         const wx = p.x + Math.cos(a) * rr * Math.cos(p.yaw || 0) + Math.sin(a) * rr * Math.sin(p.yaw || 0), wz = p.z - Math.cos(a) * rr * Math.sin(p.yaw || 0) + Math.sin(a) * rr * Math.cos(p.yaw || 0);
         col.circle.push([wx, wz, 0.5, gy - 1, gy + h]);
       }
+    } else if (p.k === 'locomotive') {   // 蒸気機関車の展示 (台の上。動かない。タイム・ステーション)
+      const body = std('#2f4f4b', 0.55), red = std('#b8472f', 0.55), brass = std('#d9a441', 0.4), black = std('#25282c', 0.7), L = 8.6;
+      const add = (geo, mat, x, y, z, shadow = true) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow; m.receiveShadow = true; g.add(m); return m; };
+      add(new THREE.BoxGeometry(3.8, 0.5, 2 * L), std('#8d8a86', 0.9), 0, 0.25, 0);                         // 台
+      for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.16, 0.1, 2 * L - 0.4), std('#4a4540', 0.5), s * 0.72, 0.55, 0, false);   // レール
+      add(new THREE.CylinderGeometry(1.15, 1.15, 7.6, 20).rotateX(Math.PI / 2), body, 0, 2.5, 3.0);          // ボイラー
+      for (const z of [0.6, 3.0, 5.4]) add(new THREE.CylinderGeometry(1.2, 1.2, 0.22, 20).rotateX(Math.PI / 2), brass, 0, 2.5, z, false);   // 真ちゅうの帯
+      add(new THREE.CylinderGeometry(1.2, 1.2, 1.5, 20).rotateX(Math.PI / 2), black, 0, 2.5, 6.9);           // 煙室
+      add(new THREE.CylinderGeometry(0.34, 0.5, 1.9, 12), black, 0, 4.25, 6.7);                               // 煙突
+      add(new THREE.CylinderGeometry(0.62, 0.38, 0.3, 12), brass, 0, 5.3, 6.7, false);
+      add(new THREE.SphereGeometry(0.62, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), brass, 0, 3.6, 2.4);        // 蒸気だめ
+      add(new THREE.BoxGeometry(2.9, 3.3, 3.2), red, 0, 2.55, -2.2);                                         // 運転室
+      add(new THREE.BoxGeometry(3.3, 0.22, 3.8), black, 0, 4.3, -2.2);                                       // 運転室の屋根
+      for (const s of [-1, 1]) add(new THREE.BoxGeometry(0.06, 1.0, 1.1), lampG, s * 1.46, 3.0, -2.2, false);   // 運転室の窓 (夜は光る)
+      add(new THREE.BoxGeometry(2.6, 2.2, 4.2), body, 0, 1.9, -6.5);                                          // 炭水車
+      add(new THREE.BoxGeometry(2.2, 0.5, 3.8), black, 0, 3.15, -6.5, false);                                // 石炭
+      const hl = add(new THREE.SphereGeometry(0.3, 10, 8), lampG, 0, 2.5, 7.68, false); hl.userData.headlamp = true;   // 前照灯
+      const wheelGeo = (r) => new THREE.CylinderGeometry(r, r, 0.16, 18).rotateZ(Math.PI / 2);
+      for (const s of [-1, 1]) {
+        for (const z of [0.9, 2.7, 4.5]) { add(wheelGeo(0.95), red, s * 1.28, 1.45, z, false); add(wheelGeo(0.3), brass, s * 1.38, 1.45, z, false); }
+        for (const z of [-5.6, -7.4]) add(wheelGeo(0.6), black, s * 1.2, 1.1, z, false);
+        add(new THREE.BoxGeometry(0.1, 0.18, 4.0), brass, s * 1.42, 1.45, 2.7, false);                         // ロッド
+      }
+      col.box.push([p.x, p.z, p.yaw || 0, 1.9, L, gy - 1, gy + 5.4]);
+    } else if (p.k === 'clockwork') {   // 駅前広場の大時計と回る歯車 (タイム・ステーション)
+      const brass = std('#d9a441', 0.4), dark = std('#5d4a3a', 0.6), teal = std('#2f7f7a', 0.5);
+      const add = (geo, mat, x, y, z, shadow = true) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = shadow; m.receiveShadow = true; g.add(m); return m; };
+      add(new THREE.CylinderGeometry(6.0, 6.2, 0.35, 40), std('#b99a74', 0.9), 0, 0.17, 0, false);
+      add(new THREE.CylinderGeometry(4.4, 4.4, 0.06, 40), std('#e3cdb0', 0.9), 0, 0.37, 0, false);
+      const gearGeo = (R, r, n, th) => {
+        const sh = new THREE.Shape(), step = Math.PI * 2 / n;
+        for (let k = 0; k < n; k++) for (const [a, rr] of [[0.0, r], [0.18, R], [0.5, R], [0.68, r]]) { const an = (k + a) * step, x = Math.cos(an) * rr, y = Math.sin(an) * rr; (k === 0 && a === 0 ? sh.moveTo(x, y) : sh.lineTo(x, y)); }
+        const hole = new THREE.Path(); hole.absarc(0, 0, r * 0.32, 0, Math.PI * 2, true); sh.holes.push(hole);
+        return new THREE.ExtrudeGeometry(sh, { depth: th, bevelEnabled: false, curveSegments: 6 }).translate(0, 0, -th / 2);
+      };
+      const A = add(gearGeo(3.1, 2.6, 18, 0.5), brass, -2.8, 3.4, 0.7); A.name = 'park_clockgear'; spinners.push({ mesh: A, speed: 0.22, phase: 0 });
+      const B = add(gearGeo(2.9, 2.4, 17, 0.5), std('#c0805e', 0.45), 3.0, 3.4, 0.7); B.name = 'park_clockgear'; spinners.push({ mesh: B, speed: -0.22 * 18 / 17, phase: Math.PI / 17 });
+      for (const [x, r] of [[-2.8, 0.45], [3.0, 0.4]]) add(new THREE.CylinderGeometry(r, r, 0.9, 12).rotateX(Math.PI / 2), dark, x, 3.4, 0.7, false);
+      for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.3, 0.38, 8.2, 10), teal, s * 0.9, 4.1, -0.9);   // 時計を支える 2 本の柱
+      add(new THREE.CylinderGeometry(2.6, 2.6, 0.8, 32).rotateX(Math.PI / 2), brass, 0, 8.7, -0.9);              // 時計の胴
+      const face = new THREE.CircleGeometry(2.3, 32);
+      for (const s of [-1, 1]) { const f = new THREE.Mesh(face, clockMat); f.position.set(0, 8.7, -0.9 + s * 0.43); if (s < 0) f.rotation.y = Math.PI; g.add(f); }
+      add(new THREE.ConeGeometry(1.0, 1.6, 8), teal, 0, 11.6, -0.9);
+      col.circle.push([p.x, p.z, 1.5, gy - 1, gy + 11], [p.x - 2.8 * Math.cos(p.yaw || 0), p.z + 2.8 * Math.sin(p.yaw || 0), 2.6, gy - 1, gy + 6.5], [p.x + 3.0 * Math.cos(p.yaw || 0), p.z - 3.0 * Math.sin(p.yaw || 0), 2.5, gy - 1, gy + 6.4]);
     } else if (p.k === 'pad') {   // 観覧車の台座 (輪の模様。観覧車は parkrides.js が上に置く)
       for (const [r, c] of [[p.r, '#fff6c9'], [p.r * 0.8, '#ffb3d9'], [p.r * 0.6, '#c9f0df']]) { const d = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.04, 40), std(c, 0.8)); d.position.y = 0.24 + (p.r - r) * 0.002; d.receiveShadow = true; g.add(d); }
     }
@@ -494,7 +540,7 @@ export function buildAreas(ctx) {
   }
 
   // スマホ: 動かない小物のメッシュを材質 × 区画でまとめる (描画の呼び出しを減らす。PC は今までどおり)
-  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks|facade|bunting|smoke|furn|lanterns)/.test(o.name) });
+  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks|facade|bunting|smoke|furn|lanterns|clockgear)/.test(o.name) });
 
   // ---------- 乗り物 (段階 3。観覧車・メリーゴーラウンド・コースター) ----------
   api.rides = buildRides({ cfg, ground, std, glowMat, group, col, emissive });

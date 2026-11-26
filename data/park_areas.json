@@ -108,6 +108,30 @@
       "detail": {"furn": {"signpost": true, "bin": true}, "chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "lite", "door": "#1a1520", "dormerChance": 0.4, "sconceChance": 0.7, "windows": {"frame": 3, "shutter": 2}, "shutters": ["#1a1520", "#3a2250", "#2b2b34"], "flowers": ["#8f6bd6", "#c0443c", "#e8e0c8"], "neon": {"none": 1}},
       "landmark": {"w": 26, "d": 16, "h": 22, "roof": "gablefront", "roofH": 12, "wall": 3, "color": "#3b3350", "roofColor": "#1f1a2b", "towers": 2, "name": "ミッドナイト館"},
       "features": [{"at": "side", "kind": "graves"}]
+    },
+    "タイム・ステーション": {
+      "kind": "station", "seed": 14, "fh": 4.0, "bay": 3.2, "setback": 4.5, "rows": 1, "rowGap": 6, "mainW": 11, "branchW": 7, "branchEvery": 52,
+      "_doc": "段階 10 (2026-11-26)。ネオン・アベニューとロスト・バレーの間の、時間旅行の駅の町。gradient = 建物の壁の色を、from (ネオンの側) から to (ロストの側) へ、colors の順に寄せる (パステル → 土色)。",
+      "gradient": {"from": [31400, -25900], "to": [31665, -25780], "spread": 0.35},
+      "w": [9, 15], "d": [10, 15], "h": [8, 20], "gap": [0.0, 2.0], "wall": [2, 3, 1],
+      "colors": ["#f6dce6", "#f4e6d4", "#efd9b9", "#e2c19b", "#d2a67f", "#c08f69"],
+      "roofs": {"gable": 3, "hip": 3, "flat": 1}, "roofColors": ["#4f8f84", "#5c6270", "#b0714a", "#6f9c8f"],
+      "trim": "#f6ead0", "shop": true, "door": "#3f6f6a", "awning": ["#b8472f", "#2f7f7a", "#d9a441", "#5d4a8a"], "roofSign": 0.25,
+      "signs": [["#7a2f2f", "#ffe9b8"], ["#1f5f5a", "#fff1c9"], ["#c98a2b", "#2d1f12"], ["#3b3f55", "#ffd98a"], ["#b8472f", "#fff6e0"]],
+      "names": ["{short}駅前 時計店", "TIME CAFE", "蒸気パン工房", "歯車堂", "発車ベル商店", "トランク・ストア", "ねじまき雑貨店", "懐中時計の店", "STEAM BAKERY", "ターミナル食堂", "切符売場", "ぜんまい工房", "ミルク&スチーム"],
+      "scatter": 14, "scatterW": [9, 14], "scatterD": [9, 13], "scatterH": [8, 14],
+      "trees": {"perHa": 9, "kinds": {"round": 2, "palm": 1}}, "plaza": {"r": 19}, "lamp": "warm",
+      "detail": {
+        "style": "station", "lod": "mid", "goods": 4, "bayChance": 0.4, "balconyChance": 0.3, "bladeChance": 0.6, "plantersChance": 0.3, "sconceChance": 0.7, "chimneyChance": 0.8, "dormerChance": 0.3,
+        "furn": {"wagon": 55, "signpost": true, "bin": true},
+        "bunting": {"colors": ["#b8472f", "#d9a441", "#2f7f7a", "#f6ead0"], "every": 16, "start": 18, "y": 7.4, "minH": 8},
+        "deco": {"chance": 0.45, "kinds": {"crate": 3, "barrel": 2, "pot": 1}},
+        "door": "#3f6f6a", "windows": {"frame": 4, "shutter": 2, "canopy": 2, "flower": 1}, "crowns": {"plain": 2, "stepped": 3, "pediment": 1},
+        "shutters": ["#3f6f6a", "#7a2f2f", "#5c6270", "#b0714a"], "flowers": ["#ff9ec8", "#ffd36b", "#ffffff"],
+        "neon": {"none": 3, "sign": 2}
+      },
+      "landmark": {"w": 26, "d": 14, "h": 16, "roof": "hip", "roofH": 8, "clock": true, "wall": 2, "color": "#c0805e", "roofColor": "#4f8f84", "name": "TIME STATION"},
+      "features": [{"at": "far", "kind": "clockwork"}, {"at": "side", "kind": "locomotive"}]
     }
   },
   "rides": {

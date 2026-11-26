@@ -80,6 +80,17 @@ def point_at(pts, s):
     return pts[-1], (1.0, 0.0)
 
 
+def gradient_color(th, x, z, rng):
+    """テーマの gradient (from → to) の上の位置 t に、colors の並びを割り当てる (spread = ばらつき。t を ± spread/2 ゆらす)。この関数だけが rng を 1 回使う"""
+    g = th["gradient"]
+    fx, fz = g["from"]
+    dx, dz = g["to"][0] - fx, g["to"][1] - fz
+    t = ((x - fx) * dx + (z - fz) * dz) / (dx * dx + dz * dz)
+    t = max(0.0, min(1.0, t + (rng.random() - 0.5) * g.get("spread", 0.3)))
+    cols = th["colors"]
+    return cols[min(len(cols) - 1, int(t * len(cols)))]
+
+
 def pick(rng, weights):
     tot = sum(weights.values())
     r = rng.uniform(0, tot)
@@ -323,13 +334,13 @@ def generate(cfg):
             at = f["at"]
             if at == "far" and inf["far"]:
                 kind = f["kind"]
-                r = {"volcano": 11.0, "lighthouse": 3.5, "pad": inf["plaza_r"] * 0.85}.get(kind, 6.0)
+                r = {"volcano": 11.0, "lighthouse": 3.5, "pad": inf["plaza_r"] * 0.85, "clockwork": 7.5}.get(kind, 6.0)
                 out["props"].append({"k": kind, "x": rl(inf["far"][0]), "z": rl(inf["far"][1]), "r": r, "yaw": 0.0, "a": inf["ai"]})
                 circles.append((inf["far"][0], inf["far"][1], r + 1))
             elif at == "side":
                 kind = f["kind"]
-                cnt = {"rocks": 4, "mushrooms": 4, "lollipops": 4, "graves": 1, "galleon": 1}.get(kind, 1)
-                rad = {"rocks": 7.0, "mushrooms": 7.0, "lollipops": 8.0, "graves": 17.0, "galleon": 16.0}.get(kind, 8.0)
+                cnt = {"rocks": 4, "mushrooms": 4, "lollipops": 4, "graves": 1, "galleon": 1, "locomotive": 1}.get(kind, 1)
+                rad = {"rocks": 7.0, "mushrooms": 7.0, "lollipops": 8.0, "graves": 17.0, "galleon": 16.0, "locomotive": 12.0}.get(kind, 8.0)
                 got = 0
                 for _ in range(400):
                     if got >= cnt:
@@ -412,7 +423,7 @@ def generate(cfg):
         th, rng = inf["th"], inf["rng"]
         b = {"a": inf["ai"], "x": rl(x), "z": rl(z), "yaw": rl(yaw), "w": rl(w), "d": rl(d), "h": rl(h), "fh": th["fh"], "bay": th["bay"]}
         b["wall"] = wall if wall is not None else rng.choice(th["wall"])
-        b["col"] = color or rng.choice(th["colors"])
+        b["col"] = color or (gradient_color(th, x, z, rng) if th.get("gradient") else rng.choice(th["colors"]))
         b["trim"] = th.get("trim", "#ffffff")
         rk = roof or pick(rng, th["roofs"])
         b["roof"] = rk
@@ -478,7 +489,7 @@ def generate(cfg):
                     while s < Ltot - 6:
                         w = rng.uniform(*th["w"]); d = rng.uniform(*th["d"]); h = rng.uniform(*th["h"])
                         w = round(w * 2) / 2; d = round(d * 2) / 2
-                        h = round(h / th["fh"]) * th["fh"] if th["kind"] in ("avenue", "town") else h
+                        h = round(h / th["fh"]) * th["fh"] if th["kind"] in ("avenue", "town", "station") else h
                         P, T = point_at(pts, s + w / 2)
                         nx, nz = -T[1] * side, T[0] * side
                         off = pth["w"] / 2 + th["setback"] + (row * (th["d"][1] + th.get("rowGap", 6)))
@@ -567,6 +578,26 @@ def generate(cfg):
             P, T = point_at(av, 26.0)
             sg = sign(name, th["signs"][0])
             out["arches"].append({"a": inf["ai"], "x": rl(P[0]), "z": rl(P[1]), "yaw": rl(math.atan2(T[0], T[1])), "span": rl(av_w(av, cfg) + 6), "h": 9.5, "sign": sg})
+
+    # ---- 道に "arch" (エリア名) があれば、その道がそのエリアに入る所に、そのエリアの名前の門を架ける (入口の道以外の出入口。最後に足すので、ほかの門の順番は変わらない) ----
+    for pth in cfg["paths"]:
+        an = pth.get("arch")
+        if not an:
+            continue
+        inf = info[an]
+        pts_ = pth["pts"]
+        total_ = polyline_len(pts_)
+        hit_ = None
+        for k in range(0, int(total_) + 1):
+            P, T = point_at(pts_, k)
+            if inpoly(P[0], P[1], inf["poly"]):
+                hit_ = (P, T)
+                break
+        if hit_ is None:
+            sys.exit(f"park_areas: 道 {pth['name']} は エリア {an} に入らない")
+        P, T = hit_
+        sg = sign(an, inf["th"]["signs"][0])
+        out["arches"].append({"a": inf["ai"], "x": rl(P[0]), "z": rl(P[1]), "yaw": rl(math.atan2(T[0], T[1])), "span": rl(pth["width"] + 6), "h": 7.5 if pth["width"] + 6 < 18 else 8.5, "sign": sg})
 
     # ---- 木 ----
     for name, inf in info.items():

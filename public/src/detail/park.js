@@ -265,7 +265,7 @@ export function buildPark(cfg, world, opts = {}) {
     {
       const av = cfg.gen && cfg.gen.areas.find((a) => a.detail === 'avenue' && a.terrace > 0), ap = cfg.paths.find((p) => p.name === 'ネオン・アベニュー');
       if (av && ap && !new URLSearchParams(location.search).has('nopaving')) buildAvenuePaving({ path: ap, terrace: av.terrace, ground, group });
-      if (cfg.gen && !new URLSearchParams(location.search).has('nopaving')) buildAreaPaving({ gen: cfg.gen, ground, group });   // 各エリアの内側の道 (石畳・板張り・土・敷石・市松)
+      if (cfg.gen && !new URLSearchParams(location.search).has('nopaving')) buildAreaPaving({ gen: cfg.gen, ground, group, extra: cfg.paths.filter((p) => p.pave).map((p) => ({ a: cfg.gen.areas.findIndex((q) => q.name === p.pave), w: p.width, pts: p.pts })).filter((p) => p.a >= 0) });   // 各エリアの内側の道 (石畳・板張り・土・敷石・市松)
     }
 
     // ---- サンライズ・プラザ: 放射状の模様の舗装 ----

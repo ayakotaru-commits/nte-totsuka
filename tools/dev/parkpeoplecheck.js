@@ -1,6 +1,6 @@
 // フェアリー・リールパーク 段階 5 (園内の人・地図の印とワープ・ショーの案内) を、ゲーム本体で確かめる。画面は撮らない (画面は parkshot.js の x*・m* の視点)。
 // 使い方: node tools/dev/parkpeoplecheck.js   (約 5〜10 分。three.js は tools/dev/.cache/package に要る = CLAUDE.md の手順。node 単体の数字の確認は tools/dev/parkcrowdcheck.mjs)
-// 確かめること: 地図の印 13 か所 (城の印を含む) が出ている / 大きい地図の印を選んでワープすると、その場所の道の上に立つ (建物・柵の中ではない・地面に立つ) /
+// 確かめること: 地図の印 14 か所 (城の印を含む) が出ている / 大きい地図の印を選んでワープすると、その場所の道の上に立つ (建物・柵の中ではない・地面に立つ) /
 //   縮小した大きい地図では細かい印が選べない / 園内に人が出る (敷地の中・建物の外・街の人は混ざらない) / ショーの案内 (開催前・開催中・遠くでは出ない) /
 //   パレードの印が始まる 40 秒前から点滅する / パレード・花火の観客が増える・終わると消える / 地図の下絵 (園の絵) が描かれる / NaN なし
 const { chromium } = require('playwright');
@@ -47,7 +47,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
 
   // ---- 1. 設定と地図の印 ----
   const spots = park.spots;
-  check('設定に地図の印・園内の通り道がある', spots.length === 13 && park.crowd.lanes.length >= 80, { spots: spots.length, lanes: park.crowd.lanes.length });
+  check('設定に地図の印・園内の通り道がある', spots.length === 14 && park.crowd.lanes.length >= 80, { spots: spots.length, lanes: park.crowd.lanes.length });
   const evNames = await page.evaluate(() => window.__minimap.events.map((e) => e.name));
   check('ミニマップ・大きい地図の印の一覧に園の印が全部入っている', spots.every((s) => evNames.includes(s.name)), evNames.length);
   const hud0 = await page.evaluate(() => document.getElementById('hud-park').hidden);
@@ -80,7 +80,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     check('遠くから跳んでも、地形が読めたら地面に立つ (落ちたままにならない)', !now.nan && Math.abs(now.y - (now.gh + 0.18)) < 0.6 && now.y > -20, { y: +now.y.toFixed(2), ground: +now.gh.toFixed(2) });
   }
 
-  // ---- 4. 13 か所の印を順にワープ: 印の位置に立つ・建物の中ではない・地面に立つ ----
+  // ---- 4. 14 か所の印を順にワープ: 印の位置に立つ・建物の中ではない・地面に立つ ----
   const bad = [];
   for (const s of spots) {
     const { pick, st } = await warp(s);
@@ -90,7 +90,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     const good = pick.event === s.name && err < 0.6 && !r.inside && !r.nan && Math.abs(r.y - (r.gh + 0.18)) < 1.2;
     if (!good) bad.push({ name: s.name, pick: pick.event, err: +err.toFixed(2), inside: r.inside, dy: +(r.y - r.gh).toFixed(2) });
   }
-  check('13 か所の印を選んでワープすると、どれもその場所の地面に立つ (建物の中ではない)', bad.length === 0, bad);
+  check('14 か所の印を選んでワープすると、どれもその場所の地面に立つ (建物の中ではない)', bad.length === 0, bad);
 
   // ---- 5. 園内の人 ----
   {

@@ -327,16 +327,16 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
 
   // ---- 段階 2: 各エリア (建物・内側の道・広場・木・看板・門・特別な物) ----
   const gen = park.gen;
-  check('設定に各エリアの建物がある (gen)', gen && gen.buildings.length > 300 && gen.areas.length === 7, gen && { buildings: gen.buildings.length, trees: gen.trees.length, signs: gen.signs.length });
+  check('設定に各エリアの建物がある (gen)', gen && gen.buildings.length > 300 && gen.areas.length === 8, gen && { buildings: gen.buildings.length, trees: gen.trees.length, signs: gen.signs.length });
   const parts = await page.evaluate(() => { const g = window.__g.scene.getObjectByName('park_areas'); if (!g) return null; const n = {}; g.traverse((o) => { if (o.isMesh) { const k = o.name.replace(/_\d+$/, '') || (o.isInstancedMesh ? 'inst' : 'mesh'); n[k] = (n[k] || 0) + 1; } }); return n; });
   console.log(JSON.stringify(parts));
-  check('各エリアの壁・屋根・看板の面が出ている (7 エリア分)', parts && parts.park_walls === 7 && parts.park_trim >= 6 && parts.park_signs >= 6, parts);
+  check('各エリアの壁・屋根・看板の面が出ている (8 エリア分)', parts && parts.park_walls === 8 && parts.park_trim >= 6 && parts.park_signs >= 6, parts);
   // 段階 7: 建物の細部。アベニュー以外のエリアに細部のメッシュが出ていない・三角形の数 (壁・縁取り・看板 + 店の窓・壁灯・ネオン)
   const tris = await page.evaluate(() => { const g = window.__g.scene.getObjectByName('park_areas'), r = { detail: 0, other: 0, walls: 0, facade: 0 }; g.traverse((o) => { if (!o.isMesh || o.isInstancedMesh || !o.geometry) return; const t = (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; if (/^park_facade_/.test(o.name)) { r.facade += t; r.detail++; } else if (/^park_(walls|trim|signs)_/.test(o.name)) r.walls += t; }); return r; });
   console.log(JSON.stringify({ tris }));
   check('建物の細部のメッシュがある (店の窓・壁灯・ネオン)', gen.areas.some((a) => a.detail) ? tris.detail >= 3 && tris.facade > 1000 : tris.detail === 0, tris);
   const walls = await page.evaluate(() => { let patched = 0, vis = 0, n = 0; window.__g.scene.traverse((o) => { if (o.isMesh && o.name.startsWith('park_walls_')) { n++; if (o.visible) vis++; if (o.material.onBeforeCompile && String(o.material.onBeforeCompile).length > 200) patched++; } }); return { n, vis, patched }; });
-  check('壁の柄 (街の本体と同じ) が付き、壁が見えている', walls.n === 7 && walls.vis === 7 && walls.patched === 7, walls);
+  check('壁の柄 (街の本体と同じ) が付き、壁が見えている', walls.n === 8 && walls.vis === 8 && walls.patched === 8, walls);
   const aName = gen.areas.map((q) => q.name);
   const approach = (b, d) => [b.x + Math.sin(b.yaw) * (b.d / 2 + d), b.z + Math.cos(b.yaw) * (b.d / 2 + d)];
   let allNaN = false;

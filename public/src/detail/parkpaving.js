@@ -112,6 +112,11 @@ function pathTexture(kind) {
       g.fillStyle = shade(base, -36); g.fillRect(0, 0, w, h);
       const bw = 0.5 * m, bh = 0.25 * m;
       for (let j = 0; j < TILE / 0.25; j++) for (let i = -1; i < TILE / 0.5 + 1; i++) { g.fillStyle = shade(base, Math.round((rnd() - 0.5) * 36)); g.fillRect((i + (j % 2) * 0.5) * bw + 1.2, j * bh + 1.2, bw - 2.4, bh - 2.4); }
+    } else if (kind === 'station') {   // レンガ敷き (半枚ずつずらした長方形。ネオンの淡い色とロストの土の間の色)
+      const base = '#b98a6c';
+      g.fillStyle = shade(base, -52); g.fillRect(0, 0, w, h);
+      const bw = 0.42 * m, bh = 0.2 * m;
+      for (let j = 0; j < TILE / 0.2; j++) for (let i = -1; i < TILE / 0.42 + 1; i++) { g.fillStyle = shade(base, Math.round((rnd() - 0.5) * 44)); g.fillRect((i + (j % 2) * 0.5) * bw + 1.1, j * bh + 1.1, bw - 2.2, bh - 2.2); }
     } else if (kind === 'harbor') {   // 板張り (道に直角に張った板・くぎ)
       g.fillStyle = '#6f5a44'; g.fillRect(0, 0, w, h);
       const ph = 0.24 * m;
@@ -134,9 +139,9 @@ function pathTexture(kind) {
   });
 }
 
-export function buildAreaPaving({ gen, ground, group }) {
+export function buildAreaPaving({ gen, ground, group, extra = [] }) {   // extra = 園の道 (data/park.json の paths) のうち pave (エリア名) があるものを、そのエリアの舗装で敷く: [{ a: エリアの番号, w, pts }]
   const mats = {}; let n = 0;
-  for (const p of gen.paths) {
+  for (const p of [...gen.paths, ...extra]) {
     const a = gen.areas[p.a]; if (!a || !a.detail) continue;
     const kind = a.kind;
     if (!mats[kind]) { const tex = pathTexture(kind); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; mats[kind] = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.88, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -9, polygonOffsetUnits: -9 }); }
