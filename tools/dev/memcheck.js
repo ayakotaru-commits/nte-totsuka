@@ -81,7 +81,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       out.push(`== 線路の延長: メッシュ ${n} 個、頂点データ JS ${MB(b)} / GPU ${MB(gpu)}、インスタンス ${MB(inst)}、地図の下絵 ${MB(cv)}` + (st ? `、区間 ${st.loaded.length} 個 (読んだ計 ${MB(st.bytes)})` : ''));
       out.push(`== 位置 ${g.player.pos.x.toFixed(0)},${g.player.pos.z.toFixed(0)}`);
     }
-    // フェアリー・リールパーク (group 名 'park'): 頂点・インスタンス・描画の数・テクスチャ・名前ごとの上位
+    // 千葉ドリームランド (group 名 'park'): 頂点・インスタンス・描画の数・テクスチャ・名前ごとの上位
     const pk = g.scene.getObjectByName('park');
     if (pk) {
       let gpu = 0, tri = 0, meshes = 0, inst = 0, pts = 0; const seen = new Set(), byName = {}, ptex = new Set(); let tb = 0;

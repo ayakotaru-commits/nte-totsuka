@@ -49,7 +49,7 @@ function gridNormals(ni, nj, P, has) {
 
 export function buildRailExt(ext, world, mainBounds, opts = {}) {
   const low = !!opts.low;
-  const park = opts.park || null;   // フェアリー・リールパーク (detail/park.js の createParkCut)。敷地の中の実在の道路・木・橋脚・建物・歩道を、区間を読んだ後に省く
+  const park = opts.park || null;   // 千葉ドリームランド (detail/park.js の createParkCut)。敷地の中の実在の道路・木・橋脚・建物・歩道を、区間を読んだ後に省く
   if (park && ext.overview && ext.overview.roads) ext.overview.roads = park.clipLines(ext.overview.roads);   // 全体の地図の下絵の道路も
   const base = opts.base || 'data/rail_ext/';
   const LOAD_R = opts.loadR || (low ? 2200 : 3000), UNLOAD_R = LOAD_R + 600;   // カメラから区間 (1 km 四方) までの距離

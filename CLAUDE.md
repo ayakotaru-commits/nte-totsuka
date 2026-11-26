@@ -231,6 +231,9 @@
 
 - **駐車場の前の舗装が道路にはみ出してちらつく（2026-11、持ち主の iPhone の画面で指摘）**: 舗装の長方形（奥行き 12 m）が道路に重なり、路面とほぼ同じ高さで描かれてちらついていた。`build_props.py` の `road_clipped()` で、舗装を車の通る道路の端（道路の幅の半分 + 0.2 m）で切った凸多角形にし（`lot.poly`、点は `[x, z, u, v]`）、描画は `clockhouse.js` の `polyGeometry()`。時計の棟の前の車寄せも 1 つの角が 0.8 m 道路に入っていたので同じく切った（`court.poly`）。確認したこと: 同じ場所のゲーム画面の修正前後（道路から・上から）、`build_props.py` 2 回で同じ。**未確認**: スマホの実機（ちらつきが消えたか）。
 
+- **園の名前を「千葉ドリームランド」に（2026-11、持ち主の指定）**: 旧名「フェアリー・リールパーク」。画面の文字・地図・案内は日本語の名前、看板・ゲームの物は英語 `Chiba Dreamland`（Pacifico。比べたのは Fredoka・Lilita One・Bungee Inline）。J-PlatPat はこの環境から 403 で開けず、商標の登録は未確認（持ち主が確かめる）。公開するなら「架空」の注記を入れる案を伝えてある（未対応）。確認: `park.py` 2 回で同じ・変わったのは名前と案内板だけ、`parkcrowdcheck.mjs` 67/67、ゲートと案内板の画面。**未確認**: `parkpeoplecheck.js` の再実行、スマホ実機。
+- **エリア名・店の看板・乗り物の看板を英語に、字体はエリアと店の特徴ごとに（2026-11、持ち主の指定。ミニマップ・地図・左上の表示は日本語のまま）**: 14 種の字体（Limelight・Fredoka・Lobster・Special Elite・Stardos Stencil・Rye・Bungee・Almendra・Cinzel Decorative・Creepster・Uncial Antiqua・Sail・Bangers・Chewy。すべて OFL。`public/fonts/` 約 500KB）。エリアの既定: アベニュー = Limelight（映画館）、ダウンタウン = Bungee、バレー = Uncial Antiqua、フォレスト = Almendra、ハーバー = Sail、スイート = Chewy、ミッドナイト = Creepster、ステーション = Rye。店は種類で上書き（ダイナー・パン屋 = Lobster、銀行・薬屋・時計店 = Cinzel、工房・倉庫 = Stardos Stencil、写真館・新聞・切符 = Special Elite ほか）。店名の英訳は私の判断（`data/park_areas.json`）。確認したこと: `park.py` 2 回で同じ・変わったのは看板の文字・字体とコースターの `roman` だけ（建物の位置・色は同じ）、門 7 か所と通り 2 本の画面、`parkcheck.js --quick` 59/59、`parkcrowdcheck.mjs` 67/67。**未確認**: 全店の看板を 1 枚ずつは見ていない、`parkpeoplecheck.js` の再実行、スマホ実機（読み込む字体は 14 + ロゴ = 約 400KB、組み立てが字体の読み込み待ち）、ミッドナイト・ロットの門は画面に出せていない。「REEL」の文字は店名に残している（`shortRoman`）。
+
 ## ブランチ
 ここまでの作業は `main` に入っている（プルリクエスト #1・#2 と、ローカルでマージした `feature/humanoid-character`・`feature/road-markings`・`feature/terrain-2m`）。`main` が最新。
 クラウドのセッションでは作業ブランチ名が指定される。そのブランチのプルリクエストがマージ済みなら、`main` の最新から作り直して始める。

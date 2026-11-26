@@ -1,4 +1,4 @@
-// フェアリー・リールパーク 段階 7: 旗の飾り (通りをまたぐ綱 + 三角旗。そよ風でゆれる) と煙突の煙 (近くの煙突だけ)。
+// 千葉ドリームランド 段階 7: 旗の飾り (通りをまたぐ綱 + 三角旗。そよ風でゆれる) と煙突の煙 (近くの煙突だけ)。
 // 旗の位置は tools/park_areas.py の bunting (data/park_areas.json のテーマの detail.bunting)、煙突の位置は parkfacade.js が建物ごとに知らせる。
 // ゆれ・煙は頂点シェーダ / 毎コマの行列の更新 (update)。見た目だけで当たり判定は無い。
 import * as THREE from 'three';

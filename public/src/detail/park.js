@@ -1,4 +1,4 @@
-// フェアリー・リールパーク (舞浜の北側に作る架空のテーマパーク。計画は PARK_PLAN.md、設定は data/park.json → tools/park.py → public/data/park.json)。
+// 千葉ドリームランド (舞浜の北側に作る架空のテーマパーク。計画は PARK_PLAN.md、設定は data/park.json → tools/park.py → public/data/park.json)。
 // 段階 0: 敷地の中の実在の道路・木・橋脚・建物・歩道を、線路の延長 (detail/railext.js) の区間を読んだ後に省ける (createParkCut)。
 // 段階 1 (土台): パークが敷地の地面を持つ (cutChunk が区間の地形の高さを、平らな高さ + 縁のなだらかなつなぎ + 湖の掘り込みに書き換える)、
 //   buildPark が外周の柵・園内の道・サンライズ・プラザ・ムーンレイク (水面と岸)・サーチライト・タワー (光線は夜だけ)・ネオン・アベニューの街灯とベンチ・
@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { H } from '../terrain.js';
 import { canvasTexture } from './util.js';
+import { LOGO_FONT, logoFontReady } from './parkfont.js';
 import { buildAreas } from './parkareas.js';
 import { buildAvenuePaving, buildAreaPaving } from './parkpaving.js';
 import { buildShow, showClock as showClockNow } from './parkshow.js';
@@ -230,7 +231,7 @@ export function buildPark(cfg, world, opts = {}) {
       g.strokeStyle = '#fff6c9'; g.lineWidth = h / 26; g.strokeRect(h / 22, h / 22, w - h / 11, h - h / 11);
       g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.shadowColor = 'rgba(60,20,110,0.6)'; g.shadowBlur = h / 32;
-      g.font = `bold ${h * (sub ? 0.36 : 0.42)}px sans-serif`; g.fillText(text, w / 2, h * (sub ? 0.38 : 0.5), w * 0.92);
+      g.font = `${h * (sub ? 0.4 : 0.46)}px ${LOGO_FONT}`; g.fillText(text, w / 2, h * (sub ? 0.4 : 0.5), w * 0.92);   // 名前は英語・ロゴの字体
       if (sub) { g.font = `600 ${h * 0.2}px sans-serif`; g.fillText(sub, w / 2, h * 0.78, w * 0.9); }
     });
   }
@@ -248,7 +249,7 @@ export function buildPark(cfg, world, opts = {}) {
         const px = gx + rx * s * half, pz = gz + rz * s * half, y = ground(px, pz);
         col.circle.push([px, pz, 0.65, y - 1, y + H0]);
       }
-      const tex = textTexture(1024, 256, '#ff7fb5', '#3fc8ff', cfg.name, cfg.roman || '');
+      const tex = textTexture(1024, 256, '#ff7fb5', '#3fc8ff', cfg.roman || cfg.name, '');
       const board = new THREE.Mesh(new THREE.BoxGeometry(gate.span + 1.6, 3.6, 0.5), [post, post, post, post, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }), std('#7f6ad9', 0.6)]);
       board.position.set(0, H0 - 0.6, 0); board.castShadow = true; sg.add(board);
       group.add(sg);
@@ -494,7 +495,7 @@ export function buildPark(cfg, world, opts = {}) {
     group, emissive, beams: null, areas: null, show: null,
     // カメラの位置。区間 (地形) を読み込めたら 1 回だけ作る (敷地の 1.5 km 以内のとき調べる)。光線は回す
     update(x, z, win = 0) {
-      if (!built && Math.hypot(x - gate.at[0], z - gate.at[1]) < 1500 && ready()) build();
+      if (!built && logoFontReady && Math.hypot(x - gate.at[0], z - gate.at[1]) < 1500 && ready()) build();
       if (api.beams) api.beams.rotation.y = performance.now() / 1000 * 0.25;
       api.areas?.update?.(Date.now() / 1000, x, z);   // 旗のゆれ・煙突の煙・ネオンのまたたき (段階 7)
       api.areas?.rides?.update(Date.now() / 1000, x, z);   // 観覧車・メリーゴーラウンド・コースターの動き (近くのときだけ)

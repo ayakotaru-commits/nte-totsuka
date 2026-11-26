@@ -143,7 +143,7 @@ export class BigMap {
     c.imageSmoothingEnabled = this.scale < S;
     const E = this.minimap.ext;   // 線路の延長 (地図の範囲の外。minimap.js の setExt)
     if (E) E.draw(c, (x) => this.sx(x), (z) => this.sy(z), this.scale, [this.cx - W / 2 / this.scale, this.cz - H / 2 / this.scale, this.cx + W / 2 / this.scale, this.cz + H / 2 / this.scale]);
-    const PK = this.minimap.park;   // フェアリー・リールパーク (parkmap.js)
+    const PK = this.minimap.park;   // 千葉ドリームランド (parkmap.js)
     if (PK) PK.draw(c, (x) => this.sx(x), (z) => this.sy(z), this.scale, [this.cx - W / 2 / this.scale, this.cz - H / 2 / this.scale, this.cx + W / 2 / this.scale, this.cz + H / 2 / this.scale]);
     c.drawImage(this.map, 0, 0, this.map.width, this.map.height,
       this.sx(B.minX), this.sy(B.minZ), this.map.width / S * this.scale, this.map.height / S * this.scale);
