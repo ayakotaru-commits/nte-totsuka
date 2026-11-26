@@ -282,6 +282,28 @@ export function buildPark(cfg, world, opts = {}) {
       group.add(ellipseMesh(plazaE.center, plazaE.rx, plazaE.rz, 0.22, mat));
     }
 
+    // ---- 城への導き (改善 4): アベニューの出口から広場を北へ、城の軸 (プラザから湖への道) へまっすぐ続く桃色の帯と、両側の旗ざお ----
+    // アベニューは北東向きに終わるが、城は広場の真北にある。出口で左へ向きを変えさせる目印。見た目だけ (配置の乱数・当たり判定の少ない旗ざおの根元だけ)
+    if (cfg.castle && !new URLSearchParams(location.search).has('noaxis')) {
+      const av = cfg.paths.find((p) => p.name === 'ネオン・アベニュー'), to = cfg.paths.find((p) => p.name === 'プラザから湖へ');
+      if (av && to) {
+        const A = av.pts[av.pts.length - 1], B = to.pts[0], axis = [A, [A[0] + (B[0] - A[0]) * 0.5, (A[1] + B[1]) / 2], B];
+        group.add(flat(stripPos(axis, 11, 0.25), '#f6c6dc', 0.25));
+        for (const sd of [-1, 1]) group.add(flat(stripPos(axis.map(([x, z]) => [x + sd * 5.4, z]), 0.5, 0.27), '#e9c26a', 0.27));
+        const len = Math.hypot(B[0] - A[0], B[1] - A[1]), n = Math.max(4, Math.round(len / 13)), poleG = new THREE.CylinderGeometry(0.09, 0.13, 4.6, 6).translate(0, 2.3, 0), flagG = new THREE.PlaneGeometry(1.15, 0.65).translate(0.575, 0, 0);
+        const poleM = new THREE.InstancedMesh(poleG, std('#d6b25e', 0.4), n * 2), flagM = new THREE.InstancedMesh(flagG, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7, side: THREE.DoubleSide }), n * 2);
+        const dd = new THREE.Object3D(), cc = new THREE.Color(), flagC = ['#3fb8b0', '#8a6bd6', '#f08cb4', '#ff9a7a', '#e9c26a'];
+        let k = 0;
+        for (let i = 0; i < n; i++) for (const sd of [-1, 1]) {
+          const t = (i + 0.5) / n, x = A[0] + (B[0] - A[0]) * t + sd * 7.6, z = A[1] + (B[1] - A[1]) * t, y = ground(x, z);
+          dd.position.set(x, y + 0.2, z); dd.rotation.set(0, 0, 0); dd.scale.set(1, 1, 1); dd.updateMatrix(); poleM.setMatrixAt(k, dd.matrix);
+          dd.position.set(x, y + 4.2, z); dd.rotation.set(0, sd > 0 ? 0 : Math.PI, 0); dd.updateMatrix(); flagM.setMatrixAt(k, dd.matrix); flagM.setColorAt(k, cc.set(flagC[k % flagC.length]));
+          col.circle.push([x, z, 0.2, y - 0.5, y + 4.8]); k++;
+        }
+        flagM.instanceColor.needsUpdate = true; poleM.castShadow = true; group.add(poleM, flagM);
+      }
+    }
+
     // ---- ムーンレイク: 水面と岸の縁石、湖に入れないよう岸の外に見えない柵 ----
     {
       const lk = lakeE.lake, wy = G.level + lk.water;
