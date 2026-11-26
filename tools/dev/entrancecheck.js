@@ -70,7 +70,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     };
   });
   // 局所座標で置く・歩く
-  const place = async (u, v) => { const [x, z] = W(u, v), y = await hAt(x, z); await page.evaluate(([x, y, z]) => window.__ride.place(x, y + 0.12, z, 0), [x, y, z]); await frames(page, 2); await frames(2); };
+  const place = async (u, v) => { const [x, z] = W(u, v), y = await hAt(x, z); await page.evaluate(([x, y, z]) => window.__ride.place(x, y + 0.12, z, 0), [x, y, z]); await frames(4); };
   const walk = (pts, opt = {}) => page.evaluate(([p, o]) => window.__walkXZ(p, o), [pts.map(([u, v]) => W(u, v)), opt]);
   const dist = (o, u, v) => { const [x, z] = W(u, v); return Math.hypot(o.at[0] - x, o.at[1] - z); };
   const lv = (o) => F.L(o.at[0], o.at[1]);   // 止まった所の局所座標
