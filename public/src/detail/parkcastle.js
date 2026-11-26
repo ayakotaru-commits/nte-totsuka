@@ -862,8 +862,8 @@ export function buildCastle(ctx) {
       const nS = spots.length, rg = mulberry(11), nF = low ? 12 : 34;
       const basinG = new THREE.CylinderGeometry(1.9, 2.0, 0.6, low ? 14 : 24).translate(0, 0.3, 0), waterG = new THREE.CircleGeometry(1.7, low ? 14 : 24).rotateX(-Math.PI / 2).translate(0, 0.56, 0);
       const spoutG = new THREE.CylinderGeometry(0.12, 0.3, 1.5, 8).translate(0, 1.1, 0), capG = new THREE.SphereGeometry(0.3, 8, 6).translate(0, 1.95, 0);
-      const basinM = new THREE.InstancedMesh(basinG, trimMat, nS), waterM = new THREE.InstancedMesh(waterG, new THREE.MeshStandardMaterial({ color: '#7fcfe6', roughness: 0.08, metalness: 0.1 }), nS);
-      const spoutM = new THREE.InstancedMesh(spoutG, goldMat, nS), capM = new THREE.InstancedMesh(capG, goldMat, nS);
+      const basinM = new THREE.InstancedMesh(basinG, new THREE.MeshStandardMaterial({ color: '#efe6d6', roughness: 0.6 }), nS), waterM = new THREE.InstancedMesh(waterG, new THREE.MeshStandardMaterial({ color: '#7fcfe6', roughness: 0.08, metalness: 0.1 }), nS);
+      const gm2 = new THREE.MeshStandardMaterial({ color: '#d6b25e', roughness: 0.35, metalness: 0.3 }), spoutM = new THREE.InstancedMesh(spoutG, gm2, nS), capM = new THREE.InstancedMesh(capG, gm2, nS);
       const fl2 = new THREE.InstancedMesh(new THREE.SphereGeometry(0.28, 5, 3), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), nS * nF);
       const dd = new THREE.Object3D(), cc2 = new THREE.Color(); let fj = 0;
       const fcols = ['#ff86b8', '#ffd36b', '#9a7ae6', '#ffffff', '#59c8e6', '#ff9a7a'];
