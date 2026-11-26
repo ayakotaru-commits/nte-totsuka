@@ -6,6 +6,7 @@
 // 当たり判定は col (park.js が world.addColliders)。門塔のトンネルは通り抜けられる。堤道 (島と岸の間の石の道) は地形を持ち上げて作る (castleLakeMask)。
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
+import { buildKeepInterior, KEEP } from './parkkeep.js';
 
 const TAU = Math.PI * 2;
 const C = (s) => new THREE.Color(s);
@@ -274,7 +275,7 @@ export function buildCastle(ctx) {
   const lampWarm = glowMat('#ffe2a0', 1.5), lampPink = glowMat('#ff9ccf', 1.3), lampCyan = glowMat('#8fe8ff', 1.3);
   lampWarm.color.set('#eadcb8'); lampPink.color.set('#ecc0d6'); lampCyan.color.set('#bfe0ea');   // 昼は色つきのガラスに見える (夜は emissive で光る)
 
-  const wall = new Buf(), roof = new Buf(), trim = new Buf(), gold = new Buf();
+  const wall = new Buf(), roof = new Buf(), trim = new Buf(), gold = new Buf(), hall = new Buf();   // hall = 主塔の大広間の床・天井・階段 (昼も中が暗くならないよう、色の分だけ自分で光る材質)
   const stone = C(Cs.stone), cream = C(Cs.cream), goldC = C(Cs.gold), shade = C(Cs.stoneShade);
   const flags = [];       // 旗 { x, y, z, len, h, color, ph }
   const lamps = [];       // 灯 [x, y, z, 種類]
@@ -284,8 +285,8 @@ export function buildCastle(ctx) {
 
   // ---------- 円筒の壁 (窓の区画の四角を、階 × 区画で並べる) ----------
   // y 0 〜 fl * fh、半径 r0 → r1。cell = 模様の区画。bayW = 区画の幅。skip(a) が true の区画は作らない
-  function cylWall(cx, cz, yb, r0, r1, fl, fh, cell, bayW, base, phase = 0, rowCells = null) {
-    const Hh = fl * fh, nb = Math.max(4, Math.round(TAU * (r0 + r1) / 2 / bayW)), sub2 = low ? 1 : 2, rect = cellRect(cell), tl = Math.atan2(r0 - r1, Hh);
+  function cylWall(cx, cz, yb, r0, r1, fl, fh, cell, bayW, base, phase = 0, rowCells = null, skip = null) {
+    const Hh = fl * fh, nb = Math.max(4, Math.round(TAU * (r0 + r1) / 2 / bayW)), sub2 = (low && !skip) ? 1 : 2, rect = cellRect(cell), tl = Math.atan2(r0 - r1, Hh);
     const rAt = (y) => r0 + (r1 - r0) * (y / Hh);
     for (let f = 0; f < fl; f++) {
       const ya = f * fh, yb2 = (f + 1) * fh, rc = rowCells ? cellRect(rowCells(f)) : rect, kA = 0.9 + 0.1 * (f / Math.max(1, fl - 1)), kB = kA + 0.04;
@@ -293,6 +294,7 @@ export function buildCastle(ctx) {
         const jit = 0.96 + rngC() * 0.07;
         for (let s = 0; s < sub2; s++) {
           const a0 = phase + (b + s / sub2) / nb * TAU, a1 = phase + (b + (s + 1) / sub2) / nb * TAU;
+          if (skip && skip(f, a0, a1)) continue;
           const u0 = rc[0] + (rc[2] - rc[0]) * s / sub2, u1 = rc[0] + (rc[2] - rc[0]) * (s + 1) / sub2;
           const P = (a, y) => [cx + Math.sin(a) * rAt(y), yb + y, cz + Math.cos(a) * rAt(y)];
           const Nn = (a) => [Math.sin(a) * Math.cos(tl), Math.sin(tl), Math.cos(a) * Math.cos(tl)];
@@ -308,8 +310,11 @@ export function buildCastle(ctx) {
       buf.quad([cx + Math.sin(a0) * r, ya, cz + Math.cos(a0) * r], [cx + Math.sin(a1) * r, ya, cz + Math.cos(a1) * r], [cx + Math.sin(a1) * r, yb2, cz + Math.cos(a1) * r], [cx + Math.sin(a0) * r, yb2, cz + Math.cos(a0) * r], [n0, n1, n1, n0], NOUV, color);
     }
   }
-  function ringFlat(buf, cx, cz, rin, rout, y, N, color) {
+  // 上向きの輪。skipK = [k0, k1) の扇形は作らない、onlyK = [k0, k1) の扇形だけ作る (N 分割のうちの番号)
+  function ringFlat(buf, cx, cz, rin, rout, y, N, color, skipK = null, onlyK = null) {
     for (let k = 0; k < N; k++) {
+      if (skipK && k >= skipK[0] && k < skipK[1]) continue;
+      if (onlyK && !(k >= onlyK[0] && k < onlyK[1])) continue;
       const a0 = k / N * TAU, a1 = (k + 1) / N * TAU;
       buf.quad([cx + Math.sin(a0) * rin, y, cz + Math.cos(a0) * rin], [cx + Math.sin(a1) * rin, y, cz + Math.cos(a1) * rin], [cx + Math.sin(a1) * rout, y, cz + Math.cos(a1) * rout], [cx + Math.sin(a0) * rout, y, cz + Math.cos(a0) * rout], [0, 1, 0], NOUV, color);
     }
@@ -440,14 +445,19 @@ export function buildCastle(ctx) {
     T.tiers.forEach((tr, i) => {
       const r0 = tr.r, r1 = tr.r1 || tr.r * 0.97, hh = tr.fl * tr.fh, bayW = 4.4;
       const cell = (T.id === 'keep' || i === 0) ? CELL.WIN : CELL.WIN;
-      cylWall(cx, cz, y, r0, r1, tr.fl, tr.fh, cell, bayW, baseTint, T.phase || 0, tr.fl >= 3 && i === 0 && T.id !== 'keep' ? (f) => (f === 0 ? CELL.SLIT : CELL.WIN) : null);
+      const doorSkip = (T.door && i === 0) ? (f, a0, a1) => f === 0 && (a1 <= 0.19 || a0 >= TAU - 0.19) : null;   // 主塔の正面の入口 (扉の幅)
+      cylWall(cx, cz, y, r0, r1, tr.fl, tr.fh, cell, bayW, baseTint, T.phase || 0, tr.fl >= 3 && i === 0 && T.id !== 'keep' ? (f) => (f === 0 ? CELL.SLIT : CELL.WIN) : null, doorSkip);
       y += hh; topR = r1;
       cornice(cx, cz, r1, y, N);
       if (tr.ledge) { // 次の段との間にテラス
         const nxt = T.tiers[i + 1];
         const rin = nxt ? nxt.r : topR - 1.2, rout = topR + 0.6;
         if (nxt) {
-          ringFlat(trim, cx, cz, rin, rout, y + 0.3, N, tint(cream, 0.96)); balustrade(cx, cz, rout - 0.25, y + 0.3, N);
+          if (T.door && i === 0) {   // 主塔のテラス: 階段の抜け口の扇形だけ、内側 (rin〜内壁の外) の床を開ける
+            ringFlat(trim, cx, cz, rin, rout, y + 0.3, N, tint(cream, 0.96), KEEP.HOLE);
+            ringFlat(trim, cx, cz, KEEP.RI, rout, y + 0.3, N, tint(cream, 0.96), null, KEEP.HOLE);
+          } else ringFlat(trim, cx, cz, rin, rout, y + 0.3, N, tint(cream, 0.96));
+          balustrade(cx, cz, rout - 0.25, y + 0.3, N);
           if (!low) { const nL = Math.max(4, Math.round(TAU * rout / 7)); for (let k = 0; k < nL; k++) { const a = (k + 0.5) / nL * TAU; gold.box(cx + Math.sin(a) * (rout - 0.25), y + 1.2, cz + Math.cos(a) * (rout - 0.25), 0.14, 1.8, 0.14, 0, goldC); lamps.push([cx + Math.sin(a) * (rout - 0.25), y + 2.2, cz + Math.cos(a) * (rout - 0.25), lampWarm, 0.26]); } }
         }
       }
@@ -460,16 +470,16 @@ export function buildCastle(ctx) {
     maxTop = Math.max(maxTop, top);
     if (T.id === 'inner' || T.id === 'mid') spires.push([cx, top, cz]);
     // 当たり判定 (円)
-    const [wx, wz] = W(cx, cz); col.circle.push([wx, wz, R0 + 0.7, y0 - 1, y0 + top]);
-    // 扉
-    if (T.door) grandDoor(cx, cz + R0 - 0.2);
+    const [wx, wz] = W(cx, cz);
+    if (T.door) {   // 主塔: 1 段目は中に入れる (外壁の輪 = 扉のところだけ開ける。buildKeepInterior)。2 段目より上は円 (テラスの床より上)
+      col.circle.push([wx, wz, 10.7, y0 + KEEP.CEIL, y0 + top]);
+      grandDoor(cx, cz + R0 - 0.2);
+      buildKeepInterior({ Buf, NOUV, CELL, cellRect, tint, wall, trim, hall, gold, col, W, y0, lamps, lampWarm, goldC, cream, stone, Cs, low, group: api.group, cx, cz, yaw: Cf.yaw });
+    } else col.circle.push([wx, wz, R0 + 0.7, y0 - 1, y0 + top]);
     return rc;
   }
   // 主塔の正面の大きな扉 (アーチ 3 重 + 階段 + 灯り)
   function grandDoor(x, z) {
-    const w = 4.4, h = 7.4, rect = cellRect(CELL.DOOR);
-    wall.quad([x - w / 2, 0.4, z], [x + w / 2, 0.4, z], [x + w / 2, 0.4 + h, z], [x - w / 2, 0.4 + h, z], [0, 0, 1], rect, stone);
-    archBands(x, z + 0.02, 1.9, 3.4, 3, 0.45, 0.38, 1, 0.4);
     for (let s = 0; s < 4; s++) trim.box(x, 0.1 + s * 0.12, z + 1.3 - s * 0.32 + 0.4, 8.4 - s * 0.9, 0.2, 2.2 + s * 0.6 - 0.6, 0, tint(cream, 0.94 - s * 0.01));
     for (const sd of [-1, 1]) { trim.box(x + sd * 4.6, 1.2, z + 1.0, 0.7, 2.4, 0.7, 0, cream); ball2(x + sd * 4.6, 2.9, z + 1.0, 0.5, lampWarm); }
   }
@@ -845,9 +855,11 @@ export function buildCastle(ctx) {
   }
 
   // ---------- 形を仕上げる ----------
-  const geoms = { wall: wall.geometry(), roof: roof.geometry(), trim: trim.geometry(), gold: gold.geometry() };
-  const meshes = [[geoms.wall, wallMat], [geoms.roof, roofMat], [geoms.trim, trimMat], [geoms.gold, goldMat]].map(([g, m]) => { const mesh = new THREE.Mesh(g, m); mesh.castShadow = true; mesh.receiveShadow = true; api.group.add(mesh); return mesh; });
-  api.stats.tris = Math.round(wall.tris + roof.tris + trim.tris + gold.tris);
+  const hallMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, side: THREE.DoubleSide, emissive: '#ffffff', emissiveIntensity: 0.34 });   // 大広間: 自分の色で一定に光る (夜も同じ)
+  hallMat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= diffuseColor.rgb;'); };
+  const geoms = { wall: wall.geometry(), roof: roof.geometry(), trim: trim.geometry(), gold: gold.geometry(), hall: hall.geometry() };
+  const meshes = [[geoms.wall, wallMat], [geoms.roof, roofMat], [geoms.trim, trimMat], [geoms.gold, goldMat], [geoms.hall, hallMat]].map(([g, m]) => { const mesh = new THREE.Mesh(g, m); mesh.castShadow = true; mesh.receiveShadow = true; api.group.add(mesh); return mesh; });
+  api.stats.tris = Math.round(wall.tris + roof.tris + trim.tris + gold.tris + hall.tris);
   api.stats.top = Math.round(keepTop + 0) + (Cf.reel.y - 4) * 0;
   api.stats.towers = towerList.length;
   // 旗 (そよ風でゆれる。近いときだけ更新)

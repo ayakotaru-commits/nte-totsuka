@@ -160,7 +160,46 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   const dd = dive.out[0], dEdge = Math.hypot((dd.at[0] - lc[0]) / lake.rx, (dd.at[1] - lc[1]) / lake.rz);
   check('堤道から離れた所から湖へ歩いても、岸の手前で止まる (落ちない)', dd && !dd.ok && dEdge > 1.0 && Math.abs(dd.y - lv) < 0.7, { rho: +dEdge.toFixed(3), y: dd && dd.y });
 
-  // ---- 7. 動き・NaN ----
+  // ---- 7. 主塔の中 (改善 1): 扉 → 大広間 → らせん階段 → 屋上のテラス ----
+  const KP = (aDeg, r) => [Math.sin(aDeg * Math.PI / 180) * r, -4 + Math.cos(aDeg * Math.PI / 180) * r];   // 主塔の極座標 → 城の局所
+  {
+    await place(0, 16); await frames(page, 3);
+    const closed = await walkL([[0, 0]], { maxT: 10, walk: true, keepGoing: true, tol: 0.3 });
+    const lq = closed.out[0] && L(...closed.out[0].at);
+    check('扉が閉まっている間は、主塔の中へ入れない (扉の手前で止まる)', lq && !closed.out[0].ok && lq[1] > 7.9, lq && lq.map((v) => +v.toFixed(1)));
+    await place(0, 9.8); await frames(page, 3);
+    const hint = await page.evaluate(() => { const h = document.getElementById('door-hint'); return h && !h.hidden ? h.textContent : null; });
+    check('扉の前で「扉を開ける」の案内が出る', hint && /扉を開ける/.test(hint), hint);
+    await page.keyboard.press('KeyF'); await frames(page, 14);
+    const open = await page.evaluate(async () => { const { DOORS } = await import('/src/doors.js'); return DOORS.map((d) => ({ amt: +d.amt.toFixed(2), open: d.rec && d.rec.door.open, y: d.y })); });
+    check('F で主塔の扉が開く', open.some((d) => d.open && d.amt > 0.9), open);
+    const inside = await walkL([[0, 4], [0, -4]], { maxT: 12, walk: true, tol: 0.6 });
+    console.log(JSON.stringify(inside));
+    check('扉から大広間の中心まで歩いて入れる', inside.out && inside.out.length === 2 && inside.out.every((q) => q.ok), inside.out && inside.out.map((q) => [q.ok, q.y]));
+    check('大広間の床の高さに立つ (床 0.4 m の上。地面にめり込まない)', inside.out && Math.abs(inside.out[1].y - (lv + 0.4)) < 0.15, inside.out && inside.out[1].y);
+    // らせん階段: 1.5 周。内壁ぞい r = 10.4 を、36 度から 216 + 360 度まで 9 度ずつたどる
+    const spiral = [KP(24, 10.4)]; for (let k = 0; k <= 60; k++) spiral.push(KP(36 + k * 9 + 4.5, 10.4));
+    await place(...KP(12, 9.0)); await frames(page, 3);
+    const climb = await walkL(spiral, { maxT: 8, tol: 0.7, keepGoing: true });
+    const lastQ = climb.out && climb.out[climb.out.length - 1], okN = climb.out ? climb.out.filter((q) => q.ok).length : 0;
+    check('らせん階段を 1.5 周のぼって、屋上のテラスの高さ (22.7 m) に着く', lastQ && okN >= 60 && Math.abs(lastQ.y - (lv + 22.7)) < 0.8, lastQ && { 着いた点: okN, y: lastQ.y, 期待: +(lv + 22.7).toFixed(2) });
+    check('階段の途中で足元が飛ばない (1 点ごとの上り下りが 1.2 m 以内)', climb.out && climb.out.every((q) => q.hmax - q.hmin < 1.2), climb.out && climb.out.map((q) => q.hmax - q.hmin).sort((a, b) => b - a).slice(0, 3));
+    // テラス: 階段の出口からふちを回り、抜け口の柵 (144 度) の手前で止まる
+    const rim = []; for (let a = 225; a <= 495; a += 15) rim.push(KP(a, 11.6)); rim.push(KP(512, 11.6));
+    const ter = await walkL(rim, { maxT: 8, tol: 0.8, keepGoing: false });
+    const t0 = ter.out;
+    const tq = t0 && t0[t0.length - 1];
+    check('テラスのふちを歩ける (高さ 22.7 m のまま。抜け口の柵の手前で止まる)', t0 && t0.length >= rim.length - 2 && t0.slice(0, -1).every((q) => q.ok && Math.abs(q.y - (lv + 22.7)) < 0.5) && !tq.ok, t0 && { 点: t0.length, 最後: tq && tq.at, y: tq && tq.y });
+    const tl = tq && L(...tq.at), ang = tl && Math.atan2(tl[0], tl[1] + 4) * 180 / Math.PI;
+    check('柵の手前 (a = 144 度の外側) で止まる = 穴に落ちない', tl && (((ang % 360) + 360) % 360) > 140 && (((ang % 360) + 360) % 360) < 150, tl && { 角度: +(((ang % 360) + 360) % 360).toFixed(1) });
+    // 外から: 壁ぞいは歩けない (壁の厚みで止まる)。主塔の裏へ向かう
+    await place(0, -26); await frames(page, 2);
+    const back = await walkL([[0, -4]], { maxT: 12, walk: true, keepGoing: true, tol: 0.3 });
+    const lb = back.out[0] && L(...back.out[0].at);
+    check('主塔の裏側 (扉の無い面) へ向かうと外壁で止まる', lb && !back.out[0].ok && Math.hypot(lb[0], lb[1] + 4) > 11.5, lb && lb.map((v) => +v.toFixed(1)));
+  }
+
+  // ---- 8. 動き・NaN ----
   const st = await page.evaluate(() => { const g = window.__g.scene.getObjectByName('park_castle'); const c = g.getObjectByName('castle_crown'); return { crown: !!c, rot: c ? c.rotation.y : null }; });
   check('冠 (castle_crown) が回る設定で出ている', st.crown, st);
   check('ページのエラーが無い', page.errs.length === 0, page.errs.slice(0, 3));
