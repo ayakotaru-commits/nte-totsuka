@@ -83,6 +83,19 @@ const ICO = (() => {
   return { v, f };
 })();
 
+// 階ごとの底の高さと高さ (段階 8: 強制遠近法)。b.taper があれば、1 階 (店) は fh のまま、上の階を「下の階の taper 倍」ずつ低くする
+// (建物の高さの合計は変えない = 当たり判定はそのまま)。窓・帯・出窓・バルコニーはこの階の高さに合わせる。b.taper が無ければ従来どおり (どの階も fh)。
+export function floorLayout(b, y0, y1) {
+  const fh = b.fh, F = b.floors || Math.max(1, Math.round(b.h / fh)), base = [y0], hs = [fh];
+  if (b.taper && F >= 2) {
+    const R = (y1 - y0) - fh, q = F >= 3 ? b.taper : 1, w = [];
+    let sum = 0, y = y0 + fh;
+    for (let k = 1; k < F; k++) { const x = Math.pow(q, k - 1); w.push(x); sum += x; }
+    for (let k = 1; k < F; k++) { base.push(y); const hk = R * w[k - 1] / sum; hs.push(hk); y += hk; }
+  } else for (let k = 1; k < F; k++) { base.push(y0 + k * fh); hs.push(fh); }
+  return { F, base: (k) => base[k], h: (k) => hs[k] };
+}
+
 export function makeFacadeKit({ glowMat, emissive, signs }) {
   const atlas = makeShopAtlas();
   const shopMat = new THREE.MeshStandardMaterial({ map: atlas.tex, emissiveMap: atlas.tex, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.32, metalness: 0.05 });
@@ -102,7 +115,7 @@ export function facadeDetail(env) {
   // 細かさ (テーマの detail.lod): full = アベニュー (全部)、mid = 町・港・お菓子の丘 (横の面は枠だけ・線や花の立方体は省く)、lite = 谷・森・夜の館 (前の面の窓のまぐさと窓台・鎧戸・玄関だけ)。スマホは full だけ窓を残し、ほかは窓の飾りを省く
   const lod = low && env.lod !== 'full' ? 'none' : (env.lod || 'full'), rich = lod === 'full', lite = lod === 'lite', none = lod === 'none', lowish = low || !rich;
   const fancyShop = rich || (lod === 'mid' && !low);
-  const det = b.det, hx = b.w / 2, hz = b.d / 2, fh = b.fh, bay = b.bay, F = Math.max(1, Math.round(b.h / fh));
+  const det = b.det, hx = b.w / 2, hz = b.d / 2, fh = b.fh, bay = b.bay, FL = floorLayout(b, y0, y1), F = FL.F;
   const tc = C(b.trim), wc = C(b.col), rc = C(b.rcol), white = C('#ffffff'), dark = C('#4b4561');
   const awn = (b.awn && b.awn.length ? b.awn : ['#ff7fb5', '#ffffff']).map(C);
   const accent = awn[0], signBg = kit.signs[b.sign] ? kit.signs[b.sign].bg : '#ff4f9a';
@@ -179,7 +192,7 @@ export function facadeDetail(env) {
   for (const fi of (rich || lod === 'mid') && !none ? sideFaces : []) {
     const f = faces[fi];
     for (let fl = 1; fl < F; fl++) {
-      const yy = y0 + fl * fh + (fl === 1 && shop && fi === 0 ? -0.12 : -0.1);
+      const yy = FL.base(fl) + (fl === 1 && shop && fi === 0 ? -0.12 : -0.1);
       fbox(f, 0.4, f.L - 0.4, 0, 0.13, yy, yy + 0.24, tc);
     }
   }
@@ -189,7 +202,7 @@ export function facadeDetail(env) {
   for (const fi of sideFaces) {
     const f = faces[fi], nu = f.L / bay, kmax = Math.floor(nu - WX1 + 1e-6);
     for (let fl = (fi === 0 && shop ? 1 : 0); fl < F; fl++) for (let kk = 0; kk <= kmax; kk++) {
-      const base = y0 + fl * fh, ya = base + WY0 * fh, yb = base + WY1 * fh, s0 = kk * bay + WX0 * bay, s1 = kk * bay + WX1 * bay;
+      const base = FL.base(fl), hF = FL.h(fl), ya = base + WY0 * hF, yb = base + WY1 * hF, s0 = kk * bay + WX0 * bay, s1 = kk * bay + WX1 * bay;
       if (s0 - 0.62 < 0.25 || s1 + 0.62 > f.L - 0.25) continue;   // 角に近すぎる窓は飾らない (柱型・飾りが角からはみ出さない)
       if (fi === 0 && kk === bayCol && fl >= 1 && fl < 1 + bayFl) continue;   // 出窓の後ろ
       if (fi === 0 && fl === 0 && !shop && s1 + 0.6 > f.L / 2 - 1.5 && s0 - 0.6 < f.L / 2 + 1.5) continue;   // 玄関の前
@@ -226,15 +239,15 @@ export function facadeDetail(env) {
 
   // ---------- 出窓 (前の面の 2 階から) ----------
   if (det.bay) {
-    const f = front, kc = det.bay[0] * bay + 0.5 * bay, nf = det.bay[1], base1 = y0 + fh, ya = base1 + 0.5, yb = y0 + (1 + nf - 1) * fh + fh * WY1 + 0.28, ow = 0.95, hw = 1.1;
+    const f = front, kc = det.bay[0] * bay + 0.5 * bay, nf = det.bay[1], base1 = FL.base(1), ya = base1 + 0.5, yb = FL.base(nf) + FL.h(nf) * WY1 + 0.28, ow = 0.95, hw = 1.1;
     fbox(f, kc - 0.8, kc + 0.8, 0, ow - 0.1, ya - 0.4, ya, tc);   // 持ち送り (下のくさび)
     fbox(f, kc - hw, kc + hw, 0, ow, ya, yb, wc);
     for (let q = 0; q < nf; q++) {
-      const wy0 = y0 + (1 + q) * fh + fh * WY0 - 0.04, wy1 = y0 + (1 + q) * fh + fh * WY1 + 0.04;
+      const wy0 = FL.base(1 + q) + FL.h(1 + q) * WY0 - 0.04, wy1 = FL.base(1 + q) + FL.h(1 + q) * WY1 + 0.04;
       fquad(W, f, ow + 0.012, kc - hw + 0.22, kc + hw - 0.22, wy0, wy1, G4);
       fbox(f, kc - hw + 0.1, kc - hw + 0.22, ow, ow + 0.06, wy0 - 0.06, wy1 + 0.06, tc); fbox(f, kc + hw - 0.22, kc + hw - 0.1, ow, ow + 0.06, wy0 - 0.06, wy1 + 0.06, tc);
       fbox(f, kc - hw + 0.1, kc + hw - 0.1, ow, ow + 0.06, wy0 - 0.12, wy0 - 0.04, tc); fbox(f, kc - hw + 0.1, kc + hw - 0.1, ow, ow + 0.06, wy1 + 0.04, wy1 + 0.12, tc);
-      if (q > 0) fbox(f, kc - hw, kc + hw, 0, ow + 0.05, y0 + (1 + q) * fh - 0.1, y0 + (1 + q) * fh + 0.1, tc);
+      if (q > 0) fbox(f, kc - hw, kc + hw, 0, ow + 0.05, FL.base(1 + q) - 0.1, FL.base(1 + q) + 0.1, tc);
     }
     fbox(f, kc - hw - 0.12, kc + hw + 0.12, 0, ow + 0.12, yb, yb + 0.14, tc);
     const ap = [PF(f, kc - hw - 0.1, 0.0, yb + 0.14), PF(f, kc + hw + 0.1, 0.0, yb + 0.14), PF(f, kc + hw + 0.1, ow + 0.1, yb + 0.14), PF(f, kc - hw - 0.1, ow + 0.1, yb + 0.14)];
@@ -244,7 +257,7 @@ export function facadeDetail(env) {
 
   // ---------- バルコニー (前の面の 2 階) ----------
   if (det.balc !== undefined && det.balc >= 0) {
-    const f = front, kc = det.balc * bay + 0.5 * bay, base = y0 + fh, od = 1.05, hw = 1.2, rail = dark;
+    const f = front, kc = det.balc * bay + 0.5 * bay, base = FL.base(1), od = 1.05, hw = 1.2, rail = dark;
     if (kc - hw > 0.3 && kc + hw < f.L - 0.3) {
       fbox(f, kc - hw, kc + hw, 0, od, base - 0.02, base + 0.16, tc);
       const top = base + 0.95;
