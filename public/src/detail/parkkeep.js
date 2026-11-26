@@ -16,8 +16,8 @@ export const KEEP = {
   DOOR_W: 4.2, DOOR_H: 5.0,
   STAIR_IN: 9.5,     // 階段の内側の半径 (外側は内壁)
   STEPS: 60, STEP_ANG: 9,  // 段の数と 1 段の角度 (度)。1.5 周
-  START: 36,         // 階段の始まりの角度 (度)。終わりは 36 + 540 = 216 度
-  HOLE: [16, 24],    // 屋上のテラスの床を抜く扇形 (40 分割のうちの k = 16 〜 24 = 144〜216 度)
+  START: 180,        // 階段の始まりの角度 (度 = 裏側)。終わりは 180 + 540 = 720 = 0 度 (正面。扉の上のテラスへ出る)
+  HOLE: [32, 40],    // 屋上のテラスの床を抜く扇形 (40 分割のうちの k = 32 〜 40 = 288〜360 度)
 };
 
 // 大広間の中を作る。K = parkcastle.js が渡す道具
@@ -112,7 +112,7 @@ export function buildKeepInterior(K) {
   const topAt = (j) => FL + (j + 1) * rise;     // j 番目の段の上面
   const railPts = [];
   for (let j = 0; j < NSTEP; j++) {
-    const a0 = A0 + j * da, a1 = a0 + da, top = topAt(j), prev = j ? topAt(j - 1) : FL, bot = Math.max(top - 4, FL);
+    const a0 = A0 + j * da, a1 = a0 + da, top = topAt(j), prev = j ? topAt(j - 1) : FL, bot = Math.max(top - 2, FL);
     const c = (j & 1) ? tint(cream, 0.97) : tint(cream, 0.93);
     hl.quad(P(rIn, a0, top), P(rIn, a1, top), P(rOut, a1, top), P(rOut, a0, top), up, NOUV, c);                       // 踏み面
     hl.quad(P(rIn, a0, prev), P(rOut, a0, prev), P(rOut, a0, top), P(rIn, a0, top), tangent(a0).map((v) => -v), NOUV, tint(lav, 0.98));   // 蹴上げ
@@ -129,7 +129,7 @@ export function buildKeepInterior(K) {
       gold.box(px, py + 0.25, pz, 0.14, 0.5, 0.14, am, goldC);
       lamps.push([px, py + 0.62, pz, lampWarm, 0.22]);
     }
-    // 当たり判定: 段 = 扇形の箱 (下は、段の 4 m 下までふさぐ)
+    // 当たり判定: 段 = 扇形の箱 (下は、段の 2 m 下までふさぐ。扉の上を通る段も、扉 5.4 m より上)
     const ring = [P(rIn, a0, 0), P(rOut, a0, 0), P(rOut, a1, 0), P(rIn, a1, 0)].map(([x, , z]) => W(x, z));
     col.poly.push([ring, y0 + bot, y0 + top]);
     const [lx, , lz] = P(rIn - 0.02, a0, 0); railPts.push([lx, lz, y0 + prev]);
@@ -154,7 +154,7 @@ export function buildKeepInterior(K) {
     const ln = [0.18, 1.0], M = 48;
     for (let k = 0; k <= M; k++) { const a = k / M * TAU, [x, , z] = P(12.35, a, 0), [wx, wz] = W(x, z); ln.push(wx, wz, y0 + TE); }
     col.line.push(ln);
-    // 抜け口の端の柵 (a = 144 度。テラスを歩いてきた人が穴へ落ちない)
+    // 抜け口の端の柵 (a = 288 度。テラスを歩いてきた人が穴へ落ちない)
     const a = h0 / N * TAU;
     for (const r of [10.1, 11.3, 12.5]) { const [x, y, z] = P(r, a, TE + 0.5); trim.box(x, y, z, 0.16, 1.0, 0.16, a, cream, NOUV, false); }
     { const [x, y, z] = P(11.3, a, TE + 1.0); gold.box(x, y, z, 0.14, 0.1, 2.5, a, goldC); }

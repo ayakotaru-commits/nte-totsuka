@@ -178,20 +178,20 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     check('扉から大広間の中心まで歩いて入れる', inside.out && inside.out.length === 2 && inside.out.every((q) => q.ok), inside.out && inside.out.map((q) => [q.ok, q.y]));
     check('大広間の床の高さに立つ (床 0.4 m の上。地面にめり込まない)', inside.out && Math.abs(inside.out[1].y - (lv + 0.4)) < 0.15, inside.out && inside.out[1].y);
     // らせん階段: 1.5 周。内壁ぞい r = 10.4 を、36 度から 216 + 360 度まで 9 度ずつたどる
-    const spiral = [KP(24, 10.4)]; for (let k = 0; k <= 60; k++) spiral.push(KP(36 + k * 9 + 4.5, 10.4));
-    await place(...KP(12, 9.0)); await frames(page, 3);
+    const spiral = [KP(168, 10.4)]; for (let k = 0; k <= 60; k++) spiral.push(KP(180 + k * 9 + 4.5, 10.4));
+    await place(...KP(165, 9.0)); await frames(page, 3);
     const climb = await walkL(spiral, { maxT: 8, tol: 0.7, keepGoing: true });
     const lastQ = climb.out && climb.out[climb.out.length - 1], okN = climb.out ? climb.out.filter((q) => q.ok).length : 0;
     check('らせん階段を 1.5 周のぼって、屋上のテラスの高さ (22.7 m) に着く', lastQ && okN >= 60 && Math.abs(lastQ.y - (lv + 22.7)) < 0.8, lastQ && { 着いた点: okN, y: lastQ.y, 期待: +(lv + 22.7).toFixed(2) });
     check('階段の途中で足元が飛ばない (1 点ごとの上り下りが 1.2 m 以内)', climb.out && climb.out.every((q) => q.hmax - q.hmin < 1.2), climb.out && climb.out.map((q) => q.hmax - q.hmin).sort((a, b) => b - a).slice(0, 3));
-    // テラス: 階段の出口からふちを回り、抜け口の柵 (144 度) の手前で止まる
-    const rim = []; for (let a = 225; a <= 495; a += 15) rim.push(KP(a, 11.6)); rim.push(KP(512, 11.6));
-    const ter = await walkL(rim, { maxT: 8, tol: 0.8, keepGoing: false, walk: true });   // 走ると柵を飛び越える (パルクール)
+    // テラス: 階段の出口 (正面 0 度) から右へ歩ける。出口の左 (0 度より手前) は階段の抜け口で、入れない (落ちない)
+    const rim = []; for (let a = 9; a <= 63; a += 9) rim.push(KP(a, 11.6));
+    const ter = await walkL(rim, { maxT: 8, tol: 0.8, keepGoing: true, walk: true });   // 走ると柵を飛び越える (パルクール)
     const t0 = ter.out;
-    const tq = t0 && t0[t0.length - 1];
-    check('テラスのふちを歩ける (高さ 22.7 m のまま。抜け口の柵の手前で止まる)', t0 && t0.length >= rim.length - 2 && t0.slice(0, -1).every((q) => q.ok && Math.abs(q.y - (lv + 22.7)) < 0.5) && !tq.ok, t0 && { 点: t0.length, 最後: tq && tq.at, y: tq && tq.y });
-    const tl = tq && L(...tq.at), ang = tl && Math.atan2(tl[0], tl[1] + 4) * 180 / Math.PI;
-    check('柵の手前 (a = 144 度の外側) で止まる = 穴に落ちない', tl && (((ang % 360) + 360) % 360) > 140 && (((ang % 360) + 360) % 360) < 150, tl && { 角度: +(((ang % 360) + 360) % 360).toFixed(1) });
+    check('テラスの出口から右のふちを歩ける (高さ 22.7 m のまま)', t0 && t0.every((q) => q.ok && Math.abs(q.y - (lv + 22.7)) < 0.5), t0 && t0.map((q) => [q.ok, q.y]));
+    const hole = await walkL([KP(-40, 11.6)], { maxT: 10, tol: 0.8, keepGoing: true, walk: true });
+    const hq = hole.out && hole.out[0], hl = hq && L(...hq.at), hang = hl && Math.atan2(hl[0], hl[1] + 4) * 180 / Math.PI;
+    check('抜け口 (出口の左) へは入れない = 穴に落ちない', hq && !hq.ok && hang > -20 && Math.abs(hq.y - (lv + 22.7)) < 0.5, hq && { 角度: +hang.toFixed(1), y: hq.y });
     // 外から: 壁ぞいは歩けない (壁の厚みで止まる)。主塔の裏へ向かう
     await place(0, -26); await frames(page, 2);
     const back = await walkL([[0, -4]], { maxT: 12, walk: true, keepGoing: true, tol: 0.3 });
