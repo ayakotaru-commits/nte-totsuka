@@ -189,9 +189,9 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     const ter = await walkL(rim, { maxT: 8, tol: 0.8, keepGoing: true, walk: true });   // 走ると柵を飛び越える (パルクール)
     const t0 = ter.out;
     check('テラスの出口から右のふちを歩ける (高さ 22.7 m のまま)', t0 && t0.every((q) => q.ok && Math.abs(q.y - (lv + 22.7)) < 0.5), t0 && t0.map((q) => [q.ok, q.y]));
-    const hole = await walkL([KP(-40, 11.6)], { maxT: 10, tol: 0.8, keepGoing: true, walk: true });
-    const hq = hole.out && hole.out[0], hl = hq && L(...hq.at), hang = hl && Math.atan2(hl[0], hl[1] + 4) * 180 / Math.PI;
-    check('抜け口 (出口の左) へは入れない = 穴に落ちない', hq && !hq.ok && hang > -20 && Math.abs(hq.y - (lv + 22.7)) < 0.5, hq && { 角度: +hang.toFixed(1), y: hq.y });
+    const hole = await walkL([KP(6, 12.0), KP(-40, 12.0)], { maxT: 10, tol: 0.8, keepGoing: true, walk: true });   // 外のふちの帯に沿って (内側へ曲がると、階段を下りるだけ)
+    const hq = hole.out && hole.out[1], hl = hq && L(...hq.at), hang = hl && Math.atan2(hl[0], hl[1] + 4) * 180 / Math.PI;
+    check('外のふちの帯から抜け口 (出口の左) へは入れない = 穴に落ちない', hq && !hq.ok && hang > -20 && Math.abs(hq.y - (lv + 22.7)) < 0.5, hq && { 角度: +hang.toFixed(1), y: hq.y });
     // 外から: 壁ぞいは歩けない (壁の厚みで止まる)。主塔の裏へ向かう
     await place(0, -26); await frames(page, 2);
     const back = await walkL([[0, -4]], { maxT: 12, walk: true, keepGoing: true, tol: 0.3 });

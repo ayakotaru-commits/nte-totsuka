@@ -255,7 +255,8 @@ python tools/lidar_cover.py --undo   # 足した建物を消し、cover.json と
   - **当たり判定**: 塔は円（`col.circle`）、城壁は線、門塔の袖は箱（トンネルの幅 7.5 m は空く）、島の縁と堤道の手すりは線（水に入らない）。
   - **夜と動き**（`api.update`。時計は `showClock`）: 窓・電飾・灯が光る（`userData.glow`）、屋根は自分の色で光る（床からの照明のつもり）、冠の電球がまわる、旗がゆれる（近く 900 m 以内）、塔の先から光線 4 本が回る。**ショーの時刻（`castle.show` = 時計の 245 秒から 75 秒）に、主塔の中段と前の門塔の左右の壁へ「映写」の光の幕**（フィルムの 1 コマずつ色が流れる）。花火は湖の水面（島をよけた 8 か所 = `fireworks.launchAbs`）から、噴水は島の前後の堀（`fountain.at` の 12 本）。
   - 園内の人は堤道・門・中庭・裏庭を歩く（`park_crowd.py` の `castle` の道）。地図の印「リール・キャッスル」（前の堤道の入口にワープ。ライトアップの 40 秒前から点滅）と、地図の下絵（島・堤道・城壁・屋根の色の塔 = `parkmap.js`）、画面の左の 1 行に「城のライトアップ中！（あと m:ss）」（始まる 90 秒前から「城のライトアップまで」。`parkinfo.js`）。
-  - 確認: `node tools/dev/castlecheck.js [--touch]`（歩いて確かめる）、`node tools/dev/charshot.js <出力フォルダ> "cam=0,35,170&look=0,28,0" --page castleview --novrm`（城だけを数秒で撮る確認ページ `tools/dev/castleview.html`。`night=1`・`show=1`・`low=1`）、`parkshot.js` の視点 `k1`〜`k12`。
+  - **主塔の中（改善 1）**: 正面の扉（`doors.js`。F で開閉）→ 大広間（半径 11.4 m・高さ 22 m。床・絨毯・天井・シャンデリア）→ 壁ぞいのらせん階段（60 段・1.5 周。歩いて上れる）→ 屋上のテラス（高さ 22.7 m）。`public/src/detail/parkkeep.js`（数字は `KEEP`）。階段は裏から始まり正面の扉の上に出る。テラスは出口から右へ約 45 度ぶん歩ける（隣の塔でふさがる）。外壁・階段・テラスの当たり判定は `col` の輪・扇形の箱。広間の床・天井・階段は `hallMat`（自分の色で一定に光る）。
+  - 確認: `node tools/dev/castlecheck.js [--touch]`（歩いて確かめる）、`node tools/dev/charshot.js <出力フォルダ> "cam=0,35,170&look=0,28,0" --page castleview --novrm`（城だけを数秒で撮る確認ページ `tools/dev/castleview.html`。`night=1`・`show=1`・`low=1`）、`parkshot.js` の視点 `k1`〜`k15`（k13〜k15 = 主塔の中・テラス）。
 - 確認: `node tools/dev/parkcheck.js [--quick] [--rides]`（歩いて確かめる。段階 1 は 19 項目。段階 2 で各エリアの通り・建物・特別な物を足した。段階 3 = `--rides` だけなら約 5 分で、乗り物の設定・動き・当たり判定・観覧車に乗って降りる）、`node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--night] [--only ..] [--probe]`（画面。`--nopark` が修正前）。
 
 ### 敷地（工業用地・学校・墓地・寺社・病院）
