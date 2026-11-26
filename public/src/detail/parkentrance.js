@@ -188,10 +188,10 @@ export function buildEntrance({ cfg, ground, std, glowMat, group, col, emissive,
     LY.dividers.forEach((u, i) => {
       ped.push({ u, y: 0, v: vc, c: i % 2 ? '#fffaf0' : '#e6d9f7' });
       glassL.push({ u, y: 1.05, v: vc }); reader.push({ u, y: 1.05, v: vc + 0.75 });
-      worldBox(u, vc, 0.17, 1.3, -1, 2.0);
+      worldBox(u, vc, 0.17, 1.3, -1, 2.6);   // 手が届く高さ (2.3 m) より高く = 走っても飛び越え・よじ登りをしない
     });
     inst(loc, new THREE.BoxGeometry(0.34, 1.05, 2.6).translate(0, 0.525, 0), mat('#ffffff', 0.5), ped, { shadow: true });
-    inst(loc, new THREE.BoxGeometry(0.05, 0.95, 2.6).translate(0, 0.475, 0), glass, glassL);
+    inst(loc, new THREE.BoxGeometry(0.05, 1.2, 2.6).translate(0, 0.6, 0), glass, glassL);
     inst(loc, new THREE.BoxGeometry(0.28, 0.1, 0.7).translate(0, 0.05, 0), greenG, reader);
     // レーンの番号の札 (屋根からつるす。表側) と、床の矢印 (園の内側へ)
     const atlas = tex(1024, 384, (g, w, h) => {

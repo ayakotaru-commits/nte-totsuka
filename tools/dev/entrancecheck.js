@@ -123,7 +123,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   r = await walk([[H.towerU, vc(H)]], { maxT: 12, keepGoing: true, tol: 0.3, walk: true });
   check('塔の根元で止まる (中に入れない)', !r.nan && !r.out[0].ok && dist(r.out[0], H.towerU, H.v) > H.towerR - 0.3 && dist(r.out[0], H.towerU, H.v) < H.towerR + 1.5, r.out[0]);
   // 端の小屋
-  await place(H.half - 3, 40);
+  await place(H.half - 8, 32);   // 右の壁の前庭の側 (壁は外へ行くほど内側へ寄る)
   r = await walk([[H.half - 3, 12]], { maxT: 12, keepGoing: true, tol: 0.3, walk: true });
   check('端の小屋 (右) の壁で止まる', !r.nan && !r.out[0].ok && lv(r.out[0])[1] > H.v + H.depth / 2 - 0.2, r.out[0]);
   // 切符売り場
