@@ -122,11 +122,12 @@ def generate(cfg):
     out = {"short": A["short"], "areas": [], "paths": [], "plazas": [], "buildings": [], "trees": [], "lamps": [], "benches": [], "beds": [], "props": [], "arches": [], "signs": []}
     sign_idx = {}
 
-    def sign(text, scheme):
-        key = (text, scheme[0], scheme[1])
+    def sign(text, scheme, font=None):
+        # font = 字体の名前 (public/src/detail/parkfont.js の FONTS)。看板・ゲームの物は英語で、エリアと店の特徴ごとに字体を変える
+        key = (text, scheme[0], scheme[1], font)
         if key not in sign_idx:
             sign_idx[key] = len(out["signs"])
-            out["signs"].append({"text": text, "bg": scheme[0], "fg": scheme[1]})
+            out["signs"].append({"text": text, "bg": scheme[0], "fg": scheme[1], **({"font": font} if font else {})})
         return sign_idx[key]
 
     # ---- 障害物 (すべてのエリアで共通) ----
@@ -441,17 +442,20 @@ def generate(cfg):
             idx = rng.randrange(len(names))
             nm = names[idx]
             scheme = th["signs"][idx % len(th["signs"])]
+            font = th["fonts"][idx] if th.get("fonts") else th.get("font")
         else:
             scheme = th["signs"][0]
+            font = th.get("font")
         text = nm.format(**short)
-        b["sign"] = sign(text, scheme)
+        b["sign"] = sign(text, scheme, font)
         if rng.random() < th.get("roofSign", 0) and rk == "flat":
-            b["roofSign"] = sign(rng.choice(names).format(**short), th["signs"][rng.randrange(len(th["signs"]))])
+            rn = rng.choice(names)
+            b["roofSign"] = sign(rn.format(**short), th["signs"][rng.randrange(len(th["signs"]))], th["fonts"][names.index(rn)] if th.get("fonts") else th.get("font"))
         if th.get("towerChance", 0) and rng.random() < th["towerChance"] and rk != "flat":
             b["tower"] = {"side": rng.choice([-1, 1]), "r": rl(min(w, d) * 0.28), "h": rl(h + rng.uniform(3, 6)), "rh": rl(min(w, d) * 0.4)}
         if lm:
             b.update({k: lm[k] for k in ("clock", "towers") if k in lm})
-            b["sign"] = sign(lm["name"].format(**short), th["signs"][0])
+            b["sign"] = sign(lm["name"].format(**short), th["signs"][0], th.get("font"))
             b["lm"] = True
             b["roofSign"] = b.get("roofSign") if lm.get("clock") else None
             if b["roofSign"] is None:
@@ -571,12 +575,12 @@ def generate(cfg):
         if "arch" in inf:
             P, T = inf["arch"]
             span = inf["archw"] + 6
-            sg = sign(name, th["signs"][0])
+            sg = sign(th.get("roman", name), th["signs"][0], th.get("font"))
             out["arches"].append({"a": inf["ai"], "x": rl(P[0]), "z": rl(P[1]), "yaw": rl(math.atan2(T[0], T[1])), "span": rl(span), "h": 7.5 if span < 18 else 8.5, "sign": sg})
         elif th["kind"] == "avenue":
             av = inf["paths"][0]["pts"]
             P, T = point_at(av, 26.0)
-            sg = sign(name, th["signs"][0])
+            sg = sign(th.get("roman", name), th["signs"][0], th.get("font"))
             out["arches"].append({"a": inf["ai"], "x": rl(P[0]), "z": rl(P[1]), "yaw": rl(math.atan2(T[0], T[1])), "span": rl(av_w(av, cfg) + 6), "h": 9.5, "sign": sg})
 
     # ---- 道に "arch" (エリア名) があれば、その道がそのエリアに入る所に、そのエリアの名前の門を架ける (入口の道以外の出入口。最後に足すので、ほかの門の順番は変わらない) ----
@@ -596,7 +600,7 @@ def generate(cfg):
         if hit_ is None:
             sys.exit(f"park_areas: 道 {pth['name']} は エリア {an} に入らない")
         P, T = hit_
-        sg = sign(an, inf["th"]["signs"][0])
+        sg = sign(inf["th"].get("roman", an), inf["th"]["signs"][0], inf["th"].get("font"))
         out["arches"].append({"a": inf["ai"], "x": rl(P[0]), "z": rl(P[1]), "yaw": rl(math.atan2(T[0], T[1])), "span": rl(pth["width"] + 6), "h": 7.5 if pth["width"] + 6 < 18 else 8.5, "sign": sg})
 
     # ---- 木 ----
@@ -808,7 +812,7 @@ def make_rides(cfg, R, info, out, site, ellipses, circles, inner, park_paths, el
         cx, cz, yaw = chosen
         cs, sn = math.cos(yaw), math.sin(yaw)
         pts = [[rl(cx + u * cs + v * sn), rl(cz - u * sn + v * cs), h] for u, v, h in shape]
-        rides["coaster"] = {"name": k["name"], "x": cx, "z": cz, "yaw": rl(yaw), "pts": pts, "liftIdx": k["liftIdx"], "stationIdx": k["stationIdx"], "near": k["near"]}
+        rides["coaster"] = {"name": k["name"], "roman": k.get("roman", k["name"]), "x": cx, "z": cz, "yaw": rl(yaw), "pts": pts, "liftIdx": k["liftIdx"], "stationIdx": k["stationIdx"], "near": k["near"]}
     return rides
 
 

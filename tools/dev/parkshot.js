@@ -12,6 +12,14 @@ const THREE_DIR = path.join(__dirname, '.cache', 'package');
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png' };
 
 const VIEWS = [
+  { name: 'e1_arch_night', at: [31121, -25830], look: [-0.230, -0.973], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
+  { name: 'e2_arch_town', at: [31367, -25675], look: [-0.992, -0.129], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
+  { name: 'e3_arch_valley', at: [31661, -25664], look: [0.995, 0.101], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
+  { name: 'e4_arch_sweet', at: [31725, -25460], look: [0.808, 0.590], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
+  { name: 'e5_arch_forest', at: [31326, -25464], look: [-1.000, 0.001], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
+  { name: 'e6_arch_harbor', at: [31510, -25403], look: [0.000, 1.000], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
+  { name: 'e7_arch_station', at: [31385, -25902], look: [0.980, 0.199], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
+  { name: 'e8_town_street', at: [31301, -25684], look: [-0.992, -0.129], pitch: 0.1, dist: 9 },       // ターボ・ダウンタウンの通り (店ごとの字体)
   { name: 'a1_site_aerial', at: [31480, -25760], look: [0, 1], pitch: 1.1, dist: 700 },        // 敷地の上から (北の駅の側から南へ)
   { name: 'a2_gate_aerial', at: [31330, -25919], look: [0.5, 0.866], pitch: 0.7, dist: 120 },  // ゲートとその前の道
   { name: 'a3_approach', at: [31306, -25986], look: [0.2, 1], pitch: 0.25, dist: 24 },          // 駅からの歩道が敷地に入る所から

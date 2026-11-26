@@ -2,6 +2,7 @@
 // 中身は tools/park_areas.py が決まった乱数で作った public/data/park.json の gen (data/park_areas.json のテーマから)。ここは読んで置くだけ。
 // 建物 = 箱 + 壁の柄 (textures.js の makeWallPatcher。頂点に matId) + 屋根 + 看板 (1 枚の模様の集まりから)。エリアごとに 1 つにまとめて描く (頂点の共有・マージ)。
 // 木・街灯・ベンチ・植え込みは InstancedMesh。当たり判定は呼び出し側の col (park.js が world.addColliders)。
+import { fontCss } from './parkfont.js';
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { makeWallPatcher } from './textures.js';
@@ -72,9 +73,11 @@ export function buildAreas(ctx) {
       g.fillStyle = s.bg; g.fillRect(x, y, CW, CH);
       g.strokeStyle = 'rgba(255,255,255,0.85)'; g.lineWidth = 5; g.strokeRect(x + 6, y + 6, CW - 12, CH - 12);
       g.strokeStyle = 'rgba(0,0,0,0.25)'; g.lineWidth = 2; g.strokeRect(x + 12, y + 12, CW - 24, CH - 24);
-      let eq = 0; for (const ch of s.text) eq += ch.charCodeAt(0) > 255 ? 1 : 0.62;
-      const fs = Math.min(50, 336 / Math.max(1, eq));
-      g.font = `bold ${fs}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      // 字体は看板ごと (エリア・店の特徴。parkfont.js)。幅に収まる大きさまで小さくする
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = fontCss(s.font, 50);
+      const fs = Math.min(50, 50 * 336 / Math.max(1, g.measureText(s.text).width));
+      g.font = fontCss(s.font, fs);
       g.shadowColor = 'rgba(0,0,0,0.45)'; g.shadowBlur = 4; g.shadowOffsetY = 2;
       g.fillStyle = s.fg; g.fillText(s.text, x + CW / 2, y + CH / 2 + 2, CW - 36);
       g.shadowColor = 'transparent';

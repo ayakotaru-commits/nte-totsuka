@@ -2,6 +2,7 @@
 // 位置・大きさは tools/park_areas.py が決めた public/data/park.json の gen.rides。ここは読んで作るだけ。
 // 動きは実際の時計 (Date.now) で決まる (だれが見ても同じ形)。当たり判定は col (park.js が world.addColliders)。
 // 描画の数を抑える: 観覧車 = 回る輪の数個 + 箱の InstancedMesh、メリーゴーラウンド = 馬と柱の InstancedMesh、コースター = レールと枕木と柱を 1〜3 個にまとめる。
+import { fontCss } from './parkfont.js';
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 
@@ -302,7 +303,7 @@ export function buildRides(ctx) {
       const sMid = Math.floor(((s0 + (s1 - s0 + M) % M / 2) % M)), c = P[sMid], t = T[sMid];
       const tex = canvasTexture(512, 128, (c2) => {
         c2.fillStyle = '#3a1f66'; c2.fillRect(0, 0, 512, 128); c2.strokeStyle = '#ffd36b'; c2.lineWidth = 6; c2.strokeRect(5, 5, 502, 118);
-        c2.fillStyle = '#ffe9a8'; c2.font = 'bold 54px sans-serif'; c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText(K.name, 256, 66, 470);
+        c2.fillStyle = '#ffe9a8'; c2.font = fontCss('jungle', 58); c2.textAlign = 'center'; c2.textBaseline = 'middle'; c2.fillText(K.roman || K.name, 256, 66, 470);
       });
       const sm2 = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: '#ffffff', emissiveIntensity: 0, roughness: 0.5, side: THREE.DoubleSide });
       sm2.userData.glow = 0.7; emissive.push(sm2);
