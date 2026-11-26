@@ -79,7 +79,7 @@ const VIEWS = [
   { name: 'w1_wall_west', at: [31318, -25470], look: [1, 0], pitch: 0.1, dist: 9 },                      // 西の岸の散歩道から土手と柵 (水際の石垣)
   { name: 'w2_wall_north_gap', at: [31545, -25541], look: [-0.7, 0.7], pitch: 0.18, dist: 20 },           // 北の堤道が岸を越える所 (土手の切れ目のふた)
   { name: 'w3_wall_aerial', at: [31420, -25520], look: [0.9, 0.4], pitch: 0.55, dist: 70 },              // 湖の北西の岸を上から (土手・散歩道・広場からの 2 本の道)
-  { name: 't1_blossom', at: [31820, -25400], look: [0.1, -1], pitch: 0.12, dist: 18 },                    // 桜の木 (葉の板の木。trees.js)
+  { name: 't1_blossom', at: [31833, -25405], look: [0, -1], pitch: 0.1, dist: 10 }, { name: 't1b_blossom', at: [31833, -25445], look: [0, 1], pitch: 0.1, dist: 10 },                    // 桜の木 (葉の板の木。trees.js)
   { name: 't2_pine', at: [31060, -25930], look: [1, 0], pitch: 0.1, dist: 20 },                          // 松 (針葉樹)
   { name: 't3_round', at: [31270, -25830], look: [0, 1], pitch: 0.12, dist: 20 },                         // 丸い木
   { name: 'w4_wall_south', at: [31600, -25395], look: [0, -1], pitch: 0.12, dist: 16 },                   // 南の岸 (ハーバーの側) から湖を見る

@@ -10,7 +10,7 @@ const NEAR = LOW_MEM ? 50 : 85;   // 葉の板の形で描く距離 (m)
 const BASE_H = [4.9, 5.0, 5.2, 1.7];   // 種類ごとの、倍率 1 のときの高さ (m)
 const KINDS = 4;
 const FAR_DIM = 0.7;
-const NEAR_GAIN = 1.2;   // 近い木は葉の板の重なりで暗くなる分を明るく
+const NEAR_GAIN = 1.4;   // 近い木は葉の板の重なりで暗くなる分を明るく
 
 let seed = 1;
 const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -155,7 +155,9 @@ export function updateTreeLayers(camera) { for (const l of LAYERS) l.update(came
 
 export class TreeLayer {
   // name: 'trees' (街の本体。イベントが木を消すとき名前で探す) のほか、パーク・駅前・庭は別の名前にする
-  constructor(spots, name = 'trees') {
+  // opts.gain: 近い木の色への倍率 (パークの明るい配色は、葉の影で暗く沈むので上げる)
+  constructor(spots, name = 'trees', opts = {}) {
+    this.gain = opts.gain || 1;
     LAYERS.push(this);
     this.group = new THREE.Group(); this.group.name = name;
     this.n = spots.length;
@@ -224,7 +226,7 @@ export class TreeLayer {
         const A = near ? M.near : M.far;
         const k = near ? nn++ : nf++;
         A.instanceMatrix.array.set(this.mat.subarray(i * 16, i * 16 + 16), k * 16);
-        const f = near ? NEAR_GAIN : FAR_DIM;   // 遠い木は、葉の影が無い分明るく見えるので少し暗くする
+        const f = near ? NEAR_GAIN * this.gain : FAR_DIM;   // 遠い木は、葉の影が無い分明るく見えるので少し暗くする
         A.instanceColor.array.set([this.rgb[i * 3] * f, this.rgb[i * 3 + 1] * f, this.rgb[i * 3 + 2] * f], k * 3);
         if (near) M.trunk.instanceMatrix.array.set(this.matT.subarray(i * 16, i * 16 + 16), (nn - 1) * 16);
       }

@@ -414,7 +414,7 @@ export function buildAreas(ctx) {
       for (const t of list) { const y = ground(t[0], t[1]); col.circle.push([t[0], t[1], 0.4, y - 0.5, y + 4]); }
     }
     S1.set(1, 1, 1);
-    if (spots.length) { const layer = new TreeLayer(spots, 'trees_park'); api.group.add(layer.group); api.trees = layer; }
+    if (spots.length) { const layer = new TreeLayer(spots, 'trees_park', { gain: 1.3 }); api.group.add(layer.group); api.trees = layer; }
     api.stats.trees = G.trees.length;
   }
 
