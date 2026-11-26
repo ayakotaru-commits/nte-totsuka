@@ -10,6 +10,7 @@ const NEAR = LOW_MEM ? 50 : 85;   // 葉の板の形で描く距離 (m)
 const BASE_H = [4.9, 5.0, 5.2, 1.7];   // 種類ごとの、倍率 1 のときの高さ (m)
 const KINDS = 4;
 const FAR_DIM = 0.7;
+const NEAR_GAIN = 1.2;   // 近い木は葉の板の重なりで暗くなる分を明るく
 
 let seed = 1;
 const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -217,7 +218,7 @@ export class TreeLayer {
         const A = near ? M.near : M.far;
         const k = near ? nn++ : nf++;
         A.instanceMatrix.array.set(this.mat.subarray(i * 16, i * 16 + 16), k * 16);
-        const f = near ? 1 : FAR_DIM;   // 遠い木は、葉の影が無い分明るく見えるので少し暗くする
+        const f = near ? NEAR_GAIN : FAR_DIM;   // 遠い木は、葉の影が無い分明るく見えるので少し暗くする
         A.instanceColor.array.set([this.rgb[i * 3] * f, this.rgb[i * 3 + 1] * f, this.rgb[i * 3 + 2] * f], k * 3);
         if (near) M.trunk.instanceMatrix.array.set(this.matT.subarray(i * 16, i * 16 + 16), (nn - 1) * 16);
       }
