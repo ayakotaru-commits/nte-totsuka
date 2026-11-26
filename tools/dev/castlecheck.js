@@ -186,7 +186,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     check('階段の途中で足元が飛ばない (1 点ごとの上り下りが 1.2 m 以内)', climb.out && climb.out.every((q) => q.hmax - q.hmin < 1.2), climb.out && climb.out.map((q) => q.hmax - q.hmin).sort((a, b) => b - a).slice(0, 3));
     // テラス: 階段の出口からふちを回り、抜け口の柵 (144 度) の手前で止まる
     const rim = []; for (let a = 225; a <= 495; a += 15) rim.push(KP(a, 11.6)); rim.push(KP(512, 11.6));
-    const ter = await walkL(rim, { maxT: 8, tol: 0.8, keepGoing: false });
+    const ter = await walkL(rim, { maxT: 8, tol: 0.8, keepGoing: false, walk: true });   // 走ると柵を飛び越える (パルクール)
     const t0 = ter.out;
     const tq = t0 && t0[t0.length - 1];
     check('テラスのふちを歩ける (高さ 22.7 m のまま。抜け口の柵の手前で止まる)', t0 && t0.length >= rim.length - 2 && t0.slice(0, -1).every((q) => q.ok && Math.abs(q.y - (lv + 22.7)) < 0.5) && !tq.ok, t0 && { 点: t0.length, 最後: tq && tq.at, y: tq && tq.y });
