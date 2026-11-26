@@ -304,20 +304,81 @@ export function buildPark(cfg, world, opts = {}) {
       }
     }
 
-    // ---- ムーンレイク: 水面と岸の縁石、湖に入れないよう岸の外に見えない柵 ----
+    // ---- ムーンレイク: 水面・石垣の土手・水に落ちない柵 (改善: 湖は石垣の土手で囲み、道はその外側に沿う) ----
+    // 土手の断面 (湖の縁からの距離 d [m]。外へ + / 高さ y): 前の面 (d -1.4 の水の中 → d -0.9 の天端、少し寝かせた石積み)、天端 (幅 1.4 m の笠石)、後ろの面 (d +0.5 で地面まで)。
+    // 柵は天端の上 (d -0.2)。当たり判定の線は土手の外側 (d +1.0)。城の堤道が岸を越える所は、土手も柵も切る (castle の causeways)
     {
-      const lk = lakeE.lake, wy = G.level + lk.water;
+      const lk = lakeE.lake, wy = G.level + lk.water, [lcx, lcz] = lakeE.center, rx = lakeE.rx, rz = lakeE.rz;
       const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.12, metalness: 0.15 });
-      group.add(ellipseMesh(lakeE.center, lakeE.rx, lakeE.rz, 0, mat, (r) => [0.22 - 0.08 * (1 - r), 0.55 - 0.15 * (1 - r), 0.86 - 0.18 * (1 - r)], () => wy));
-      const rimPts = ellPts(lakeE.center, lakeE.rx + 0.4, lakeE.rz + 0.4, 160);
-      // 城の堤道が岸を越える所は、縁石も見えない柵も切る (castle の causeways)
+      group.add(ellipseMesh(lakeE.center, rx, rz, 0, mat, (r) => [0.22 - 0.08 * (1 - r), 0.55 - 0.15 * (1 - r), 0.86 - 0.18 * (1 - r)], () => wy));
       const cf = cfg.castle && castleFrame(cfg.castle);
       const onCauseway = (x, z) => { if (!cf) return false; const [lx, lz] = cf.toLocal(x, z); return cfg.castle.causeways.some((c) => Math.abs(lx) < c.width / 2 + 2.6 && lz * c.to > 0 && Math.abs(lz) > Math.min(Math.abs(c.from), Math.abs(c.to)) - 8); };
       const runsOf = (pts) => { const runs = []; let cur = null; for (let k = 0; k <= pts.length; k++) { const q = pts[k % pts.length]; if (onCauseway(q[0], q[1])) { cur = null; continue; } if (!cur) { cur = []; runs.push(cur); } cur.push(q); } return runs; };
-      if (cf) { for (const run of runsOf(rimPts)) if (run.length > 1) group.add(flat(stripPos(run, 1.2, 0.3, false), '#f6f1e8', 0.3)); }
-      else group.add(flat(stripPos(rimPts, 1.2, 0.3, true), '#f6f1e8', 0.3));
-      const wall = ellPts(lakeE.center, lakeE.rx + 2.2, lakeE.rz + 2.2, 120);
-      for (const run of cf ? runsOf(wall) : [wall.concat([wall[0]])]) { const ln = [0.3, 1.4]; for (const q of run) ln.push(q[0], q[1], ground(q[0], q[1])); if (ln.length > 8) col.line.push(ln); }
+      const T = G.level + 0.75, FENCE_H = 0.95;
+      const PROFILE = [[-1.4, wy - 0.8], [-0.9, T], [0.5, T], [0.5, G.level - 0.05]];   // 前の面の下 → 前の面の上 → 天端の外の端 → 後ろの面の下
+      const at = (a, d) => [lcx + (rx + d) * Math.cos(a), lcz + (rz + d) * Math.sin(a)];
+      // 石垣の模様 (間知石積み。横の段ごとに石の幅をずらす)
+      const stoneTex = canvasTexture(512, 256, (g) => {
+        g.fillStyle = '#4d4840'; g.fillRect(0, 0, 512, 256);
+        let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+        const tones = ['#b8b1a1', '#c4bdad', '#a9a291', '#cbc4b4', '#b2ab9a', '#bdb5a4'];
+        for (let row = 0; row < 8; row++) {
+          let x = -rnd() * 60;
+          while (x < 512) { const w = 46 + rnd() * 54; g.fillStyle = tones[Math.floor(rnd() * tones.length)]; g.fillRect(x + 2, row * 32 + 2, w - 4, 28); g.fillStyle = 'rgba(255,255,255,0.13)'; g.fillRect(x + 2, row * 32 + 2, w - 4, 6); g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(x + 2, row * 32 + 24, w - 4, 6); x += w; }
+        }
+      });
+      stoneTex.wrapS = stoneTex.wrapT = THREE.RepeatWrapping; stoneTex.anisotropy = 4; stoneTex.needsUpdate = true;
+      const wallMat = new THREE.MeshStandardMaterial({ map: stoneTex, roughness: 0.95, side: THREE.DoubleSide });
+      const NS = 360, pos = [], uv = [];
+      const arc = [0]; for (let k = 1; k <= NS; k++) { const p0 = at((k - 1) / NS * Math.PI * 2, 0), p1 = at(k / NS * Math.PI * 2, 0); arc.push(arc[k - 1] + Math.hypot(p1[0] - p0[0], p1[1] - p0[1])); }
+      const skip = []; for (let k = 0; k < NS; k++) { const q = at((k + 0.5) / NS * Math.PI * 2, 0); skip.push(onCauseway(q[0], q[1])); }
+      const quad = (P, Uv) => { for (const i of [0, 1, 2, 0, 2, 3]) { pos.push(P[i][0], P[i][1], P[i][2]); uv.push(Uv[i][0], Uv[i][1]); } };
+      for (let k = 0; k < NS; k++) {
+        if (skip[k]) continue;
+        const a0 = k / NS * Math.PI * 2, a1 = (k + 1) / NS * Math.PI * 2, u0 = arc[k] / 3, u1 = arc[k + 1] / 3;
+        let vv = 0;
+        for (let f = 0; f < 3; f++) {
+          const [d0, y0] = PROFILE[f], [d1, y1] = PROFILE[f + 1], p00 = at(a0, d0), p10 = at(a1, d0), p11 = at(a1, d1), p01 = at(a0, d1);
+          const len = Math.hypot(d1 - d0, y1 - y0) / 1.4;
+          quad([[p00[0], y0, p00[1]], [p10[0], y0, p10[1]], [p11[0], y1, p11[1]], [p01[0], y1, p01[1]]], [[u0, vv], [u1, vv], [u1, vv + len], [u0, vv + len]]);
+          vv += len;
+        }
+        // 切れ目 (堤道) の端のふた
+        for (const [side, a] of [[-1, a0], [1, a1]]) {
+          if (!skip[(k + side + NS) % NS]) continue;
+          const P = PROFILE.map(([d, y]) => { const q = at(a, d); return [q[0], y, q[1]]; });
+          quad(P, [[0, 0], [0.4, 0], [0.4, 1], [0, 1]]);
+        }
+      }
+      if (pos.length) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
+        const m = new THREE.Mesh(g, wallMat); m.receiveShadow = true; m.castShadow = true; group.add(m);
+      }
+      // 柵 (天端の上。柱 2.4 m おき + 横木 3 本)
+      {
+        const dense = [], NP = 720; for (let k = 0; k <= NP; k++) dense.push(at(k / NP * Math.PI * 2, -0.2));
+        const cum = [0]; for (let k = 1; k < dense.length; k++) cum.push(cum[k - 1] + Math.hypot(dense[k][0] - dense[k - 1][0], dense[k][1] - dense[k - 1][1]));
+        const per = cum[cum.length - 1], nPost = Math.round(per / 2.4), posts = [];
+        for (let i = 0; i < nPost; i++) { const target = per * i / nPost; let j = 1; while (j < cum.length - 1 && cum[j] < target) j++; const t = (target - cum[j - 1]) / ((cum[j] - cum[j - 1]) || 1); posts.push([dense[j - 1][0] + (dense[j][0] - dense[j - 1][0]) * t, dense[j - 1][1] + (dense[j][1] - dense[j - 1][1]) * t]); }
+        const segs = [], keep = new Set();
+        for (let i = 0; i < nPost; i++) { const p = posts[i], q = posts[(i + 1) % nPost]; if (onCauseway((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)) continue; segs.push([p, q]); keep.add(i); keep.add((i + 1) % nPost); }
+        const RAILS = [[0.3, 0.06], [0.62, 0.06], [FENCE_H, 0.1]];
+        const postM = new THREE.InstancedMesh(new THREE.BoxGeometry(0.14, FENCE_H + 0.12, 0.14).translate(0, (FENCE_H + 0.12) / 2, 0), std('#fbf7ff', 0.5), keep.size);
+        const railM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), std('#cfc3f5', 0.55), segs.length * RAILS.length);
+        const M = new THREE.Matrix4(), P = new THREE.Vector3(), Q = new THREE.Quaternion(), S = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+        let pi = 0, ri = 0;
+        for (const i of keep) postM.setMatrixAt(pi++, M.compose(P.set(posts[i][0], T, posts[i][1]), Q.identity(), S.set(1, 1, 1)));
+        for (const [p, q] of segs) {
+          const L = Math.hypot(q[0] - p[0], q[1] - p[1]), yaw = Math.atan2(q[0] - p[0], q[1] - p[1]);
+          for (const [h, th] of RAILS) railM.setMatrixAt(ri++, M.compose(P.set((p[0] + q[0]) / 2, T + h, (p[1] + q[1]) / 2), Q.setFromAxisAngle(Y, yaw), S.set(th, th, L)));
+        }
+        postM.castShadow = railM.castShadow = true; postM.computeBoundingSphere(); railM.computeBoundingSphere();
+        group.add(postM, railM);
+      }
+      // 当たり判定: 土手の外側の線 (柵より高く = 飛び越え・よじ登りの対象にならない)
+      const wall = ellPts(lakeE.center, rx + 1.0, rz + 1.0, 120);
+      for (const run of cf ? runsOf(wall) : [wall.concat([wall[0]])]) { const ln = [0.3, 1.9]; for (const q of run) ln.push(q[0], q[1], ground(q[0], q[1])); if (ln.length > 8) col.line.push(ln); }
     }
 
     // ---- 外周の柵 (パステルの板と白い柱。駅からゲートへの道が入る所は切る) ----
