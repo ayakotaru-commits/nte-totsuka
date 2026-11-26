@@ -34,6 +34,7 @@
       "scatter": 10, "scatterW": [10, 16], "scatterD": [10, 14], "scatterH": [10, 18],
       "trees": {"perHa": 3, "kinds": {"round": 1}},
       "plaza": {"r": 20}, "lamp": "warm",
+      "detail": {"chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "mid", "goods": 4, "bayChance": 0.35, "balconyChance": 0.3, "bladeChance": 0.6, "plantersChance": 0.25, "windows": {"frame": 5, "canopy": 2, "shutter": 1}, "crowns": {"plain": 2, "stepped": 3, "pediment": 2}, "shutters": ["#2c6fbb", "#2e8b57", "#c0392b", "#2b2b2b"], "flowers": ["#e0585b", "#f2b632", "#ffffff"], "neon": {"none": 3, "sign": 2, "roof": 1}},
       "landmark": {"w": 12, "d": 12, "h": 40, "roof": "hip", "roofH": 8, "clock": true, "wall": 2, "color": "#b9694f", "roofColor": "#2f4f6f", "name": "TURBO TOWER"}
     },
     "ロスト・バレー": {
@@ -47,6 +48,7 @@
       "scatter": 26, "scatterW": [8, 12], "scatterD": [8, 11], "scatterH": [5, 8],
       "trees": {"perHa": 22, "kinds": {"palm": 3, "round": 2}},
       "plaza": {"r": 18}, "lamp": "torch",
+      "detail": {"chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "lite", "door": "#4a3320", "dormerChance": 0.35, "sconceChance": 0.3, "windows": {"frame": 3, "shutter": 2}, "shutters": ["#6b4a2b", "#3f6b3a", "#8a5a3b"], "flowers": ["#e9803a", "#f2d24a", "#ffffff"], "neon": {"none": 1}},
       "features": [{"at": "far", "kind": "volcano"}, {"at": "side", "kind": "rocks"}]
     },
     "メルヘン・フォレスト": {
@@ -60,6 +62,7 @@
       "scatter": 22, "scatterW": [7, 10], "scatterD": [7, 9], "scatterH": [5, 8],
       "trees": {"perHa": 30, "kinds": {"round": 4, "blossom": 2, "pine": 2}},
       "plaza": {"r": 15}, "lamp": "lantern",
+      "detail": {"chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "lite", "door": "#8a5a3b", "dormerChance": 0.3, "sconceChance": 0.5, "windows": {"shutter": 4, "frame": 2}, "shutters": ["#8a5a3b", "#6f9a5a", "#c25a6b", "#7a6bb5"], "flowers": ["#ff9ecb", "#c7a6ff", "#ffe08a"], "neon": {"none": 1}},
       "landmark": {"w": 14, "d": 12, "h": 16, "roof": "hip", "roofH": 9, "wall": 0, "color": "#f6e3ea", "roofColor": "#7a6bb5", "towers": 3, "name": "{short}の城"},
       "features": [{"at": "side", "kind": "mushrooms"}]
     },
@@ -74,6 +77,7 @@
       "scatter": 4, "scatterW": [12, 18], "scatterD": [10, 12], "scatterH": [6, 9],
       "trees": {"perHa": 4, "kinds": {"palm": 1, "round": 2}},
       "plaza": {"r": 16}, "lamp": "sea",
+      "detail": {"chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "mid", "goods": 4, "dormerChance": 0.3, "bayChance": 0.3, "balconyChance": 0.3, "bladeChance": 0.7, "plantersChance": 0.4, "windows": {"frame": 3, "shutter": 2, "canopy": 1}, "crowns": {"plain": 3, "stepped": 1}, "shutters": ["#1d5f9e", "#ffffff", "#c0443c"], "flowers": ["#ffffff", "#4fa0e8", "#ffd36b"], "neon": {"none": 1}},
       "features": [{"at": "far", "kind": "lighthouse"}, {"at": "side", "kind": "galleon"}]
     },
     "スイート・ヒル": {
@@ -87,6 +91,7 @@
       "scatter": 10, "scatterW": [7, 10], "scatterD": [7, 9], "scatterH": [6, 10],
       "trees": {"perHa": 10, "kinds": {"lolli": 3, "blossom": 2}},
       "plaza": {"r": 20}, "lamp": "candy",
+      "detail": {"chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "mid", "goods": 4, "dormerChance": 0.3, "bayChance": 0.3, "bladeChance": 0.8, "plantersChance": 0.8, "windows": {"canopy": 3, "shutter": 2, "flower": 1}, "shutters": ["#ff7fb5", "#7fd6b8", "#a58bff", "#ffb347"], "flowers": ["#ff7fb5", "#ffffff", "#ffd36b"], "neon": {"none": 1}},
       "features": [{"at": "far", "kind": "pad"}, {"at": "side", "kind": "lollipops"}]
     },
     "ミッドナイト・ロット": {
@@ -100,6 +105,7 @@
       "scatter": 6, "scatterW": [9, 12], "scatterD": [9, 11], "scatterH": [9, 14],
       "trees": {"perHa": 14, "kinds": {"dead": 4, "pine": 1}},
       "plaza": {"r": 14}, "lamp": "gas",
+      "detail": {"chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "lite", "door": "#1a1520", "dormerChance": 0.4, "sconceChance": 0.7, "windows": {"frame": 3, "shutter": 2}, "shutters": ["#1a1520", "#3a2250", "#2b2b34"], "flowers": ["#8f6bd6", "#c0443c", "#e8e0c8"], "neon": {"none": 1}},
       "landmark": {"w": 26, "d": 16, "h": 22, "roof": "gablefront", "roofH": 12, "wall": 3, "color": "#3b3350", "roofColor": "#1f1a2b", "towers": 2, "name": "ミッドナイト館"},
       "features": [{"at": "side", "kind": "graves"}]
     }

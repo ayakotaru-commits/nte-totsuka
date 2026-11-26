@@ -99,6 +99,9 @@ export function makeFacadeKit({ glowMat, emissive, signs }) {
 // 1 棟ぶんの細部。env = { b, Buf, P, nW, W, T, S, SG (店の窓), NE (色 → ネオンの Buf), LP (壁灯の玉), signUv, y0, y1, gy, kit }
 export function facadeDetail(env) {
   const { b, Buf, P, nW, W, T, S, SG, NE, LP, signUv, y0, y1, kit, low } = env;   // low = スマホ (細かい飾りを省いて三角形を減らす)
+  // 細かさ (テーマの detail.lod): full = アベニュー (全部)、mid = 町・港・お菓子の丘 (横の面は枠だけ・線や花の立方体は省く)、lite = 谷・森・夜の館 (前の面の窓のまぐさと窓台・鎧戸・玄関だけ)。スマホは full だけ窓を残し、ほかは窓の飾りを省く
+  const lod = low && env.lod !== 'full' ? 'none' : (env.lod || 'full'), rich = lod === 'full', lite = lod === 'lite', none = lod === 'none', lowish = low || !rich;
+  const fancyShop = rich || (lod === 'mid' && !low);
   const det = b.det, hx = b.w / 2, hz = b.d / 2, fh = b.fh, bay = b.bay, F = Math.max(1, Math.round(b.h / fh));
   const tc = C(b.trim), wc = C(b.col), rc = C(b.rcol), white = C('#ffffff'), dark = C('#4b4561');
   const awn = (b.awn && b.awn.length ? b.awn : ['#ff7fb5', '#ffffff']).map(C);
@@ -153,7 +156,7 @@ export function facadeDetail(env) {
   const shop = !!b.shop, ground = y0 + 0.25;
 
   // ---------- 柱型 (四隅) と階の境目の帯 ----------
-  for (const [cx, cz] of [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]]) {
+  for (const [cx, cz] of none ? [] : [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]]) {   // スマホは full 以外の柱型を省く
     const sx = Math.sign(cx), sz = Math.sign(cz);
     const x0 = sx > 0 ? hx - 0.42 : -hx - 0.1, x1 = sx > 0 ? hx + 0.1 : -hx + 0.42, z0 = sz > 0 ? hz - 0.42 : -hz - 0.1, z1 = sz > 0 ? hz + 0.1 : -hz + 0.42;
     const cs = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
@@ -164,8 +167,8 @@ export function facadeDetail(env) {
     }
     T.quad(P(x0, topY, z0), P(x1, topY, z0), P(x1, topY, z1), P(x0, topY, z1), [0, 1, 0], U4, tc);
   }
-  const sideFaces = low ? [0] : [0, 1, 3];   // スマホは横の面の飾りを省く
-  for (const fi of sideFaces) {
+  const sideFaces = none ? [] : (low || !rich) ? [0] : [0, 1, 3];   // 横の面の飾りは PC の full だけ
+  for (const fi of (rich || lod === 'mid') && !none ? sideFaces : []) {
     const f = faces[fi];
     for (let fl = 1; fl < F; fl++) {
       const yy = y0 + fl * fh + (fl === 1 && shop && fi === 0 ? -0.12 : -0.1);
@@ -181,22 +184,23 @@ export function facadeDetail(env) {
       const base = y0 + fl * fh, ya = base + WY0 * fh, yb = base + WY1 * fh, s0 = kk * bay + WX0 * bay, s1 = kk * bay + WX1 * bay;
       if (s0 - 0.62 < 0.25 || s1 + 0.62 > f.L - 0.25) continue;   // 角に近すぎる窓は飾らない (柱型・飾りが角からはみ出さない)
       if (fi === 0 && kk === bayCol && fl >= 1 && fl < 1 + bayFl) continue;   // 出窓の後ろ
+      if (fi === 0 && fl === 0 && !shop && s1 + 0.6 > f.L / 2 - 1.5 && s0 - 0.6 < f.L / 2 + 1.5) continue;   // 玄関の前
       if (fi === 0 && kk === det.balc && fl === 1) { /* バルコニーの窓: 枠だけ (下で手すり) */ }
       // 枠・まぐさ・窓台
-      fbox(f, s0 - 0.1, s0, 0, 0.07, ya - 0.02, yb + 0.02, tc);
-      fbox(f, s1, s1 + 0.1, 0, 0.07, ya - 0.02, yb + 0.02, tc);
+      if (!lite) { fbox(f, s0 - 0.1, s0, 0, 0.07, ya - 0.02, yb + 0.02, tc); fbox(f, s1, s1 + 0.1, 0, 0.07, ya - 0.02, yb + 0.02, tc); }
       fbox(f, s0 - 0.2, s1 + 0.2, 0, 0.16, yb, yb + 0.16, tc);
       fbox(f, s0 - 0.2, s1 + 0.2, 0, 0.22, ya - 0.14, ya, tc);
-      const style = hash(fi, fl, kk) < 0.78 ? det.win : 'frame';
+      let style = hash(fi, fl, kk) < 0.78 ? det.win : 'frame';
+      if (lite && style !== 'shutter') style = 'frame';
       if (style === 'shutter') {
         const sc = C(det.shut);
         fbox(f, s0 - 0.58, s0 - 0.12, 0, 0.05, ya - 0.04, yb + 0.1, sc); fbox(f, s1 + 0.12, s1 + 0.58, 0, 0.05, ya - 0.04, yb + 0.1, sc);
-        for (let sl = 0; sl < (low ? 0 : 3); sl++) { const yy = ya + 0.2 + sl * ((yb - ya) / 3); fbox(f, s0 - 0.54, s0 - 0.16, 0.05, 0.075, yy, yy + 0.04, white); fbox(f, s1 + 0.16, s1 + 0.54, 0.05, 0.075, yy, yy + 0.04, white); }
+        for (let sl = 0; sl < (lowish ? 0 : 3); sl++) { const yy = ya + 0.2 + sl * ((yb - ya) / 3); fbox(f, s0 - 0.54, s0 - 0.16, 0.05, 0.075, yy, yy + 0.04, white); fbox(f, s1 + 0.16, s1 + 0.54, 0.05, 0.075, yy, yy + 0.04, white); }
       } else if (style === 'flower') {
         fbox(f, s0 - 0.05, s1 + 0.05, 0, 0.36, ya - 0.58, ya - 0.2, C('#8a5a3b'));
         fbox(f, s0, s1, 0.03, 0.33, ya - 0.2, ya - 0.08, C('#4f8a3a'));
         const fc = [C(det.flower), white, C('#ffd36b')];
-        for (let q = 0; q < (low ? 0 : 4); q++) { const sx = s0 + 0.1 + q * ((s1 - s0 - 0.2) / 3), oo = 0.1 + (q % 2) * 0.12; fbox(f, sx, sx + 0.13, oo, oo + 0.13, ya - 0.1, ya + 0.04, fc[q % 3]); }
+        for (let q = 0; q < (lowish ? 0 : 4); q++) { const sx = s0 + 0.1 + q * ((s1 - s0 - 0.2) / 3), oo = 0.1 + (q % 2) * 0.12; fbox(f, sx, sx + 0.13, oo, oo + 0.13, ya - 0.1, ya + 0.04, fc[q % 3]); }
       } else if (style === 'canopy') {
         const ns = 5, sa = s0 - 0.25, sb = s1 + 0.25, ex = 0.75, ay = yb + 0.42;
         for (let q = 0; q < ns; q++) {
@@ -237,9 +241,9 @@ export function facadeDetail(env) {
       const top = base + 0.95;
       fbox(f, kc - hw, kc + hw, od - 0.08, od, top - 0.05, top + 0.03, rail);
       for (const sd of [-1, 1]) fbox(f, kc + sd * hw - (sd > 0 ? 0.08 : 0), kc + sd * hw + (sd > 0 ? 0 : 0.08), 0, od, top - 0.05, top + 0.03, rail);
-      const np = low ? 5 : 9;
+      const np = lowish ? 5 : 9;
       for (let q = 0; q <= np; q++) { const sx = kc - hw + 0.04 + (2 * hw - 0.12) * q / np; fbox(f, sx, sx + 0.04, od - 0.06, od - 0.02, base + 0.16, top - 0.05, rail); }
-      for (let q = 1; q < (low ? 1 : 3); q++) for (const sd of [-1, 1]) { const oo = od * q / 3, sx = kc + sd * (hw - 0.06); fbox(f, sx, sx + 0.04, oo, oo + 0.04, base + 0.16, top - 0.05, rail); }
+      for (let q = 1; q < (lowish ? 1 : 3); q++) for (const sd of [-1, 1]) { const oo = od * q / 3, sx = kc + sd * (hw - 0.06); fbox(f, sx, sx + 0.04, oo, oo + 0.04, base + 0.16, top - 0.05, rail); }
     }
   }
 
@@ -254,22 +258,22 @@ export function facadeDetail(env) {
       fbox(f, sx(xa), sx(xb), 0, 0.12, ground + 0.62, ground + 0.7, tc);
       fquad(SG, f, 0.04, sx(xa), sx(xb), ground + 0.7, ground + 3.3, sd < 0 ? gu : [gu[1], gu[0], gu[3], gu[2]]);
       const wd = xb - xa, ns = Math.max(1, Math.ceil(wd / 1.7));
-      for (let q = 0; q <= ns; q++) { const xx = xa + wd * q / ns; fbox(f, sx(xx) - (q === 0 ? 0 : 0.045), sx(xx) + (q === ns ? 0.0 : 0.045) + (q === 0 ? 0.09 : 0), 0, 0.1, ground + 0.7, ground + 3.35, tc); }
+      if (fancyShop) for (let q = 0; q <= ns; q++) { const xx = xa + wd * q / ns; fbox(f, sx(xx) - (q === 0 ? 0 : 0.045), sx(xx) + (q === ns ? 0.0 : 0.045) + (q === 0 ? 0.09 : 0), 0, 0.1, ground + 0.7, ground + 3.35, tc); }
     }
     fbox(f, sx(-gl), sx(gl), 0, 0.14, ground + 3.3, ground + 3.52, tc);
     // 扉 (両開き。ガラスの小窓・取っ手・枠・段)
     fbox(f, sx(-1.05), sx(-0.9), 0, 0.12, ground, ground + 2.95, tc); fbox(f, sx(0.9), sx(1.05), 0, 0.12, ground, ground + 2.95, tc);
     fbox(f, sx(-1.05), sx(1.05), 0, 0.12, ground + 2.72, ground + 2.95, tc);
     fbox(f, sx(-0.9), sx(-0.02), 0, 0.06, ground, ground + 2.72, door); fbox(f, sx(0.02), sx(0.9), 0, 0.06, ground, ground + 2.72, door);
-    for (const sd of [-1, 1]) {
+    if (fancyShop) for (const sd of [-1, 1]) {
       const xa = sd < 0 ? -0.78 : 0.14, xb = sd < 0 ? -0.14 : 0.78;
       fquad(SG, f, 0.075, sx(xa), sx(xb), ground + 0.95, ground + 2.5, du);
       fbox(f, sx(xa) - 0.05, sx(xb) + 0.05, 0.06, 0.1, ground + 0.9, ground + 0.95, tc); fbox(f, sx(xa) - 0.05, sx(xb) + 0.05, 0.06, 0.1, ground + 2.5, ground + 2.55, tc);
       const hxx = sd < 0 ? -0.1 : 0.1; fbox(f, sx(hxx) - 0.025, sx(hxx) + 0.025, 0.08, 0.16, ground + 1.1, ground + 1.55, C('#f0d98a'));
     }
-    fbox(f, sx(-1.2), sx(1.2), 0, 0.5, ground - 0.02, ground + 0.1, C('#efe6d6'));
+    if (fancyShop) fbox(f, sx(-1.2), sx(1.2), 0, 0.5, ground - 0.02, ground + 0.1, C('#efe6d6'));
     // 壁灯 (扉の両わき)
-    if (det.sconce) for (const sd of [-1, 1]) {
+    if (fancyShop && det.sconce) for (const sd of [-1, 1]) {
       const xx = sd * (hx - 0.61);
       fbox(f, sx(xx) - 0.05, sx(xx) + 0.05, 0, 0.1, ground + 2.3, ground + 2.78, dark);
       const q = pt(f, sx(xx), 0.26), c = P(q[0], ground + 2.55, q[1]); blob(LP, c[0], c[1], c[2], 0.15);
@@ -286,7 +290,7 @@ export function facadeDetail(env) {
       for (const sd of [-1, 1]) T.tri(PF(f, sx(sd * aw / 2), 0.05, ay), PF(f, sx(sd * aw / 2), ex, ay - 0.7), PF(f, sx(sd * aw / 2), ex, ay - 0.9), nW(sd, 0), U4.slice(0, 3), awn[0]);
     }
     // 突き出し看板 (通りに向かって張り出す。両面)
-    if (det.blade) {
+    if (fancyShop && det.blade) {
       const sd = det.blade, ss = sd > 0 ? f.L - 0.9 : 0.9, ya = ground + 3.9, yb = ya + 0.52, o0 = 0.15, o1 = 1.75, uv = signUv(b.sign);
       fbox(f, ss - 0.03, ss + 0.03, 0.02, o1 + 0.05, ya + 0.56, ya + 0.62, dark);
       S.quad(PF(f, ss - 0.02, o0, ya), PF(f, ss - 0.02, o1, ya), PF(f, ss - 0.02, o1, yb), PF(f, ss - 0.02, o0, yb), nW(-f.t[0], -f.t[1]), [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]], white);
@@ -294,12 +298,12 @@ export function facadeDetail(env) {
       fbox(f, ss - 0.04, ss - 0.02, o0 - 0.02, o1 + 0.02, yb, yb + 0.04, tc); fbox(f, ss - 0.04, ss - 0.02, o0 - 0.02, o1 + 0.02, ya - 0.04, ya, tc);
     }
     // 鉢植え (店の前の両わき。扉の前はあける)
-    if (det.planters) for (const sd of [-1, 1]) {
+    if (fancyShop && det.planters) for (const sd of [-1, 1]) {
       const xc = sd * (hx - 1.7), fc = [C(det.flower), white, C('#ffd36b')];
       fbox(f, sx(xc) - 0.7, sx(xc) + 0.7, 0.2, 0.7, ground, ground + 0.5, C('#c46b4a'));
       fbox(f, sx(xc) - 0.74, sx(xc) + 0.74, 0.17, 0.73, ground + 0.5, ground + 0.58, C('#d98562'));
       fbox(f, sx(xc) - 0.62, sx(xc) + 0.62, 0.28, 0.62, ground + 0.58, ground + 0.86, C('#4f8a3a'));
-      for (let q = 0; q < (low ? 3 : 5); q++) { const s2 = sx(xc) - 0.55 + q * (low ? 0.4 : 0.26), o2 = 0.3 + ((q * 5) % 3) * 0.1; fbox(f, s2, s2 + 0.14, o2, o2 + 0.14, ground + 0.8, ground + 1.02 + (q % 2) * 0.1, fc[q % 3]); }
+      for (let q = 0; q < (lowish ? 3 : 5); q++) { const s2 = sx(xc) - 0.55 + q * (lowish ? 0.4 : 0.26), o2 = 0.3 + ((q * 5) % 3) * 0.1; fbox(f, s2, s2 + 0.14, o2, o2 + 0.14, ground + 0.8, ground + 1.02 + (q % 2) * 0.1, fc[q % 3]); }
     }
   }
 
@@ -335,10 +339,59 @@ export function facadeDetail(env) {
     }
   }
   if (flatRoof && (!det.crown || det.crown === 'plain') && (det.neon === 'roof' || det.neon === 'both')) neon(front, [[-0.3, y1 - 0.18], [front.L + 0.3, y1 - 0.18]], 0.33, 0.1, signBg);
-  if (!flatRoof && det.chim !== undefined && b.roof === 'gable') {   // 煙突 (棟が前の面と平行な切妻。うしろの斜面から)
+  if (!flatRoof && det.chim !== undefined && (b.roof === 'gable' || (b.roof === 'hip' && hx >= hz))) {   // 煙突 (棟が前の面と平行な切妻。うしろの斜面から)
     const lz = -hz * 0.45, ry = y1 + b.rh * (1 - Math.abs(lz) / hz), cx = det.chim, br = C('#b9694f');
     lbox(cx - 0.45, cx + 0.45, lz - 0.45, lz + 0.45, ry - 0.6, y1 + b.rh + 1.2, br);
     lbox(cx - 0.56, cx + 0.56, lz - 0.56, lz + 0.56, y1 + b.rh + 1.2, y1 + b.rh + 1.4, tc);
+  }
+
+  // ---------- 玄関 (店のない建物の前の面。扉・枠・段・ひさし・壁灯) ----------
+  if (!shop && det.door) {
+    const f = front, door = C(det.door), sx = (x) => x + hx;
+    fbox(f, sx(-1.0), sx(-0.86), 0, 0.14, ground, ground + 2.95, tc); fbox(f, sx(0.86), sx(1.0), 0, 0.14, ground, ground + 2.95, tc);
+    fbox(f, sx(-1.1), sx(1.1), 0, 0.18, ground + 2.7, ground + 2.95, tc);
+    fbox(f, sx(-0.86), sx(0.86), 0, 0.07, ground, ground + 2.7, door);
+    fbox(f, sx(-0.03), sx(0.03), 0.07, 0.09, ground, ground + 2.7, tc);
+    if (!none) {
+      for (const sd of [-1, 1]) fbox(f, sx(sd < 0 ? -0.7 : 0.1), sx(sd < 0 ? -0.1 : 0.7), 0.07, 0.1, ground + 0.35, ground + 1.15, tc);
+      fbox(f, sx(0.18), sx(0.26), 0.09, 0.16, ground + 1.2, ground + 1.45, C('#f0d98a'));
+      fbox(f, sx(-1.3), sx(1.3), 0, 0.6, ground - 0.02, ground + 0.12, C('#d9d2c4'));
+      if (!lite) fbox(f, sx(-1.3), sx(1.3), 0, 0.9, ground + 3.05, ground + 3.17, rc);
+      if (det.sconce) for (const sd of [-1, 1]) {
+        const xx = sd * 1.55;
+        fbox(f, sx(xx) - 0.05, sx(xx) + 0.05, 0, 0.1, ground + 2.0, ground + 2.4, dark);
+        const q = pt(f, sx(xx), 0.26), c = P(q[0], ground + 2.2, q[1]); blob(LP, c[0], c[1], c[2], 0.15);
+      }
+    }
+  }
+
+  // ---------- ドーマー (屋根窓。切妻・寄棟の前の斜面) ----------
+  if (!flatRoof && det.dorm !== undefined) {
+    const cx = det.dorm, rc2 = hz + 0.45, rhh = b.rh * (1 + 0.45 / hz), w2 = 0.7, hh = 1.35;
+    const roofY = (lz) => y1 - 0.1 + (rhh + 0.1) * (1 - Math.abs(lz) / rc2);
+    const zf = hz * 0.4, yb0 = roofY(zf) - 0.15, yt = yb0 + hh;
+    lbox(cx - w2, cx + w2, zf - 1.6, zf, yb0, yt, wc);
+    W.quad(P(cx - 0.45, yb0 + 0.3, zf + 0.012), P(cx + 0.45, yb0 + 0.3, zf + 0.012), P(cx + 0.45, yt - 0.25, zf + 0.012), P(cx - 0.45, yt - 0.25, zf + 0.012), nW(0, 1), G4, white);
+    lbox(cx - 0.55, cx - 0.45, zf, zf + 0.06, yb0 + 0.2, yt - 0.15, tc); lbox(cx + 0.45, cx + 0.55, zf, zf + 0.06, yb0 + 0.2, yt - 0.15, tc);
+    lbox(cx - 0.6, cx + 0.6, zf, zf + 0.1, yt - 0.25, yt - 0.12, tc); lbox(cx - 0.6, cx + 0.6, zf, zf + 0.14, yb0 + 0.12, yb0 + 0.24, tc);
+    const e0 = cx - w2 - 0.15, e1 = cx + w2 + 0.15, zb = zf - 1.6, zr = zf + 0.15, ty = yt + 0.62;
+    T.quad(P(e0, yt, zr), P(e0, yt, zb), P(cx, ty, zb), P(cx, ty, zr), null, U4, rc);
+    T.quad(P(e1, yt, zb), P(e1, yt, zr), P(cx, ty, zr), P(cx, ty, zb), null, U4, rc);
+    T.tri(P(e0 + 0.05, yt, zf + 0.01), P(e1 - 0.05, yt, zf + 0.01), P(cx, ty - 0.05, zf + 0.01), nW(0, 1), U4.slice(0, 3), wc);
+  }
+
+  // ---------- 前向き切妻の飾り (妻の屋根裏窓・破風板) ----------
+  if (b.roof === 'gablefront' && b.rh >= 2.5 && hx >= 3) {
+    const f = front, rh = b.rh, mid = f.L / 2, ya = y1 + rh * 0.18, yb = ya + Math.min(1.5, rh * 0.42);
+    if (!none) {
+      fquad(W, f, 0.02, mid - 0.5, mid + 0.5, ya, yb, G4);
+      fbox(f, mid - 0.6, mid - 0.5, 0, 0.07, ya - 0.02, yb + 0.02, tc); fbox(f, mid + 0.5, mid + 0.6, 0, 0.07, ya - 0.02, yb + 0.02, tc);
+      fbox(f, mid - 0.68, mid + 0.68, 0, 0.14, yb, yb + 0.14, tc); fbox(f, mid - 0.68, mid + 0.68, 0, 0.2, ya - 0.14, ya, tc);
+    }
+    for (const sd of [-1, 1]) {   // 破風板 (妻の斜めの縁の帯)
+      const sa = mid + sd * (hx + 0.1), ya1 = y1 - 0.15, sb = mid, yb1 = y1 + rh + 0.05;
+      T.quad(PF(f, sa, 0.12, ya1), PF(f, sb, 0.12, yb1), PF(f, sb, 0.12, yb1 - 0.34), PF(f, sa, 0.12, ya1 - 0.34), nW(f.nl[0], f.nl[1]), U4, tc);
+    }
   }
 
   // ---------- 看板まわりのネオン ----------

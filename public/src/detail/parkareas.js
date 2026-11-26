@@ -171,7 +171,7 @@ export function buildAreas(ctx) {
       roof(b, T, W, P, nW, hx, hz, y1, rc, wc);
     }
     // 細部 (窓まわり・出窓・バルコニー・店先・屋根の飾り・ネオン。b.det があるエリアだけ)
-    const fd = b.det && kit ? facadeDetail({ b, Buf, P, nW, W, T, S, SG: B.shopglass, LP: B.lamp, NE: (c) => B.neon[c] || (B.neon[c] = new Buf()), signUv, y0, y1, gy, kit, low }) : null;
+    const fd = b.det && kit ? facadeDetail({ b, Buf, P, nW, W, T, S, SG: B.shopglass, LP: B.lamp, NE: (c) => B.neon[c] || (B.neon[c] = new Buf()), signUv, y0, y1, gy, kit, low, lod: A[b.a].lod }) : null;
     // 看板 (前の面の、1 階の上) と、店先の日よけ
     {
       const fw = Math.min(b.shop || b.lm ? hx * 1.7 : 2 * Math.min(hx, 2.6), b.lm ? 11 : (fd ? 5.0 : 7.5)), fhh = fw / 4;

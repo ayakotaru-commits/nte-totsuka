@@ -178,7 +178,7 @@ def generate(cfg):
     info = {}
     for ai, (name, poly) in enumerate(areas.items()):
         th = themes[name]
-        out["areas"].append({"name": name, "kind": th["kind"], "lamp": th.get("lamp", "warm"), "trim": th.get("trim", "#ffffff"), **({"detail": th["detail"].get("style", th["kind"]), "terrace": th["detail"].get("terrace", 0)} if th.get("detail") else {})})
+        out["areas"].append({"name": name, "kind": th["kind"], "lamp": th.get("lamp", "warm"), "trim": th.get("trim", "#ffffff"), **({"detail": th["detail"].get("style", th["kind"]), "terrace": th["detail"].get("terrace", 0), "lod": th["detail"].get("lod", "full")} if th.get("detail") else {})})
         rng = random.Random(f"{name}/{th['seed']}")
         inf = {"ai": ai, "name": name, "poly": poly, "th": th, "rng": rng, "paths": [], "plazas": [], "far": None}
         info[name] = inf
@@ -367,24 +367,36 @@ def generate(cfg):
         hx, hz = b["w"] / 2, b["d"] / 2
         floors = max(1, round(b["h"] / b["fh"]))
         nb = int((b["w"] / b["bay"]) - 0.78 + 1e-6) + 1            # 前の面に入る窓の列の数 (壁の模様の窓の位置と合わせる)
-        d = {"win": pick(rng, dt["windows"]), "goods": rng.randrange(dt.get("goods", 4))}
-        if b["roof"] == "flat":
-            d["crown"] = pick(rng, dt["crowns"])
+        d = {"win": pick(rng, dt["windows"])}
+        shop = bool(b.get("shop"))
+        if shop:
+            d["goods"] = rng.randrange(dt.get("goods", 4))
         else:
-            d["chim"] = rl(rng.uniform(-hx * 0.5, hx * 0.5))
+            d["door"] = dt.get("door", th.get("door", "#4a3320"))
+        if b["roof"] == "flat":
+            if dt.get("crowns"):
+                d["crown"] = pick(rng, dt["crowns"])
+        else:
+            if b["roof"] in ("gable", "hip") or "chimneyChance" not in dt:
+                if "chimneyChance" not in dt or rng.random() < dt["chimneyChance"]:
+                    d["chim"] = rl(rng.uniform(-hx * 0.5, hx * 0.5))
+            if "dormerChance" in dt and (b["roof"] == "gable" or (b["roof"] == "hip" and hx >= hz)) and b["rh"] >= 2.0 and hx >= 3.0 and rng.random() < dt["dormerChance"]:
+                d["dorm"] = rl(rng.uniform(-hx * 0.45, hx * 0.45))
         d["shut"] = rng.choice(dt["shutters"]); d["flower"] = rng.choice(dt["flowers"])
         used = set()
-        if floors >= 3 and nb >= 3 and rng.random() < dt.get("bayChance", 0.6):
+        if floors >= 3 and nb >= 3 and rng.random() < dt.get("bayChance", 0):
             k = rng.randrange(1, nb - 1); used.add(k)
             d["bay"] = [k, 2 if floors >= 4 and rng.random() < 0.5 else 1]          # [列, 階の数 (2 階から)]
-        if floors >= 3 and nb >= 3 and rng.random() < dt.get("balconyChance", 0.5):
-            ks = [k for k in range(nb) if k not in used and all(abs(k - u) > 0 for u in used)]
+        if floors >= 3 and nb >= 3 and rng.random() < dt.get("balconyChance", 0):
+            ks = [k for k in range(nb) if k not in used]
             if ks:
                 d["balc"] = rng.choice(ks)
-        d["sconce"] = rng.random() < 0.8
-        d["blade"] = rng.choice([-1, 1]) if rng.random() < 0.75 else 0
-        d["neon"] = pick(rng, dt["neon"])
-        d["planters"] = rng.random() < 0.7
+        d["sconce"] = rng.random() < dt.get("sconceChance", 0.8)
+        if shop:
+            d["blade"] = rng.choice([-1, 1]) if rng.random() < dt.get("bladeChance", 0.75) else 0
+        d["neon"] = pick(rng, dt["neon"]) if dt.get("neon") else "none"
+        if shop:
+            d["planters"] = rng.random() < dt.get("plantersChance", 0.7)
         return d
 
     # ---- 建物 ----
