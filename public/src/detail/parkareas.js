@@ -7,7 +7,7 @@ import { canvasTexture } from './util.js';
 import { makeWallPatcher } from './textures.js';
 import { buildRides } from './parkrides.js';
 import { mergeStaticMeshes } from './mergestatic.js';
-import { makeFacadeKit, facadeDetail } from './parkfacade.js';
+import { makeFacadeKit, facadeDetail, floorLayout } from './parkfacade.js';
 import { buildBunting, buildSmoke } from './parkfx.js';
 import { buildFurn } from './parkfurn.js';
 
@@ -154,6 +154,13 @@ export function buildAreas(ctx) {
         if (dc) W.quad(P(-0.9, y0, gz + off), P(0.9, y0, gz + off), P(0.9, y0 + 2.9, gz + off), P(-0.9, y0 + 2.9, gz + off), n, [PLAIN, PLAIN, PLAIN, PLAIN], dc, b.wall);
         }
       }
+      if (b.taper) {   // 強制遠近法 (段階 8): 階ごとに壁の面を分け、模様 (窓) は 1 階ぶんを 0〜1 の v で貼る = 階が低いほど窓も低くなる
+        const FLs = floorLayout(b, y0, y1), tt = (y) => (y - y0) / (y1 - y0), cAt = (y) => b.det ? new THREE.Color().lerpColors(wLo, wHi, tt(y)) : wc;
+        for (let k = (front && b.shop ? 1 : 0); k < FLs.F; k++) {
+          const ya = FLs.base(k), yt = k + 1 < FLs.F ? FLs.base(k + 1) : y1, ca = cAt(ya), ct = cAt(yt);
+          W.quad(P(a[0], ya, a[1]), P(c[0], ya, c[1]), P(c[0], yt, c[1]), P(a[0], yt, a[1]), n, [[0, k], [nu, k], [nu, k + 1], [0, k + 1]], wc, b.wall, [ca, ca, ct, ct]);
+        }
+      } else
       W.quad(P(a[0], yb, a[1]), P(c[0], yb, c[1]), P(c[0], y1, c[1]), P(a[0], y1, a[1]), n,
         [[0, (yb - y0) / fh], [nu, (yb - y0) / fh], [nu, (y1 - y0) / fh], [0, (y1 - y0) / fh]], wc, b.wall, b.det ? [front && b.shop ? wc : wLo, front && b.shop ? wc : wLo, wHi, wHi] : null);
       if (front && !b.shop && dc) {   // 扉

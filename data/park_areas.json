@@ -14,7 +14,7 @@
       "names": ["{short}キネマ", "ポップコーン", "NEON DINER", "シネマ・グッズ", "ミルクバー", "LUCKY STAR", "フィルム堂", "レトロ写真館", "SWEETS {shortRoman}", "カフェ・{short}", "スター雑貨店", "PREMIERE", "ミュージック・ボックス", "ソーダ・ファウンテン"],
       "trees": {"perHa": 0, "kinds": {"round": 1}},
       "lamp": "pink",
-      "detail": {"furn": {"wagon": 40, "start": 42}, "bunting": {"colors": ["#ff7fb5", "#3fc8ff", "#ffd36b", "#ffffff", "#8f7bff"], "every": 12, "start": 22, "y": 7.4, "minH": 8}, 
+      "detail": {"perspective": {"taper": 0.72, "far": 0.6}, "furn": {"wagon": 40, "start": 42}, "bunting": {"colors": ["#ff7fb5", "#3fc8ff", "#ffd36b", "#ffffff", "#8f7bff"], "every": 12, "start": 22, "y": 7.4, "minH": 8}, 
         "_doc": "段階 7 の建物の細部 (public/src/detail/parkfacade.js)。tools/park_areas.py の make_detail が建物ごとに det を決める。windows = 窓まわりの飾り、crowns = 平らな屋根の上の飾り、neon = ネオンの付け方 (重み)。",
         "style": "avenue", "terrace": 5.0, "goods": 4, "bayChance": 0.6, "balconyChance": 0.5,
         "windows": {"frame": 2, "shutter": 3, "flower": 3, "canopy": 2},
@@ -34,7 +34,7 @@
       "scatter": 10, "scatterW": [10, 16], "scatterD": [10, 14], "scatterH": [10, 18],
       "trees": {"perHa": 3, "kinds": {"round": 1}},
       "plaza": {"r": 20}, "lamp": "warm",
-      "detail": {"furn": {"wagon": 50, "signpost": true, "bin": true}, "bunting": {"colors": ["#d62f2f", "#f2b632", "#ffffff", "#1e4f9a"], "every": 14, "start": 16, "y": 8.0, "minH": 9}, "deco": {"chance": 0.35, "kinds": {"crate": 2, "pot": 2, "barrel": 1}}, "chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "mid", "goods": 4, "bayChance": 0.35, "balconyChance": 0.3, "bladeChance": 0.6, "plantersChance": 0.25, "windows": {"frame": 5, "canopy": 2, "shutter": 1}, "crowns": {"plain": 2, "stepped": 3, "pediment": 2}, "shutters": ["#2c6fbb", "#2e8b57", "#c0392b", "#2b2b2b"], "flowers": ["#e0585b", "#f2b632", "#ffffff"], "neon": {"none": 3, "sign": 2, "roof": 1}},
+      "detail": {"perspective": {"taper": 0.8}, "furn": {"wagon": 50, "signpost": true, "bin": true}, "bunting": {"colors": ["#d62f2f", "#f2b632", "#ffffff", "#1e4f9a"], "every": 14, "start": 16, "y": 8.0, "minH": 9}, "deco": {"chance": 0.35, "kinds": {"crate": 2, "pot": 2, "barrel": 1}}, "chimneyChance": 0.7, "_doc": "段階 7 (全エリア)。lod = 細かさ (full / mid / lite。parkfacade.js)", "lod": "mid", "goods": 4, "bayChance": 0.35, "balconyChance": 0.3, "bladeChance": 0.6, "plantersChance": 0.25, "windows": {"frame": 5, "canopy": 2, "shutter": 1}, "crowns": {"plain": 2, "stepped": 3, "pediment": 2}, "shutters": ["#2c6fbb", "#2e8b57", "#c0392b", "#2b2b2b"], "flowers": ["#e0585b", "#f2b632", "#ffffff"], "neon": {"none": 3, "sign": 2, "roof": 1}},
       "landmark": {"w": 12, "d": 12, "h": 40, "roof": "hip", "roofH": 8, "clock": true, "wall": 2, "color": "#b9694f", "roofColor": "#2f4f6f", "name": "TURBO TOWER"}
     },
     "ロスト・バレー": {

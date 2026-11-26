@@ -445,6 +445,11 @@ def generate(cfg):
             b["roofSign"] = b.get("roofSign") if lm.get("clock") else None
             if b["roofSign"] is None:
                 del b["roofSign"]
+        pp = (th.get("detail") or {}).get("perspective")
+        if pp and not lm:   # 強制遠近法 (段階 8): 階数と、上の階ほど縮める割合を覚えておく (高さは後で通りの奥ほど低くするので、階数は今の高さから)
+            b["floors"] = max(1, round(b["h"] / b["fh"]))
+            if pp.get("taper"):
+                b["taper"] = pp["taper"]
         if th.get("detail") and not lm:
             b["det"] = make_detail(inf, b)
         return b
@@ -585,6 +590,27 @@ def generate(cfg):
             tree_pts.append((x, z))
             out["trees"].append([rl(x), rl(z), pick(rng, tr["kinds"]), rl(rng.uniform(0.8, 1.3)), inf["ai"]])
             got += 1
+
+    # ---- 強制遠近法 (段階 8): 通りの奥ほど建物を低くする (入口から奥へ見たとき、通りが長く見える)。乱数は使わない ----
+    for name, inf in info.items():
+        far = ((inf["th"].get("detail") or {}).get("perspective") or {}).get("far")
+        mains = [p_ for p_ in inf["paths"] if p_["main"] and p_["pts"]]
+        if not far or far >= 1 or not mains:
+            continue
+        pts = mains[0]["pts"]; Lt = polyline_len(pts)
+        for b in out["buildings"]:
+            if b["a"] != inf["ai"] or b.get("lm"):
+                continue
+            best, acc = None, 0.0   # 建物の中心に最も近い、通りの上の点までの道のり
+            for i in range(len(pts) - 1):
+                a, c = pts[i], pts[i + 1]; ex, ez = c[0] - a[0], c[1] - a[1]; ll = math.hypot(ex, ez) or 1e-9
+                t = max(0.0, min(1.0, ((b["x"] - a[0]) * ex + (b["z"] - a[1]) * ez) / (ll * ll)))
+                d = math.hypot(b["x"] - (a[0] + ex * t), b["z"] - (a[1] + ez * t))
+                if best is None or d < best[0]:
+                    best = (d, acc + ll * t)
+                acc += ll
+            f = 1 - (1 - far) * max(0.0, min(1.0, best[1] / Lt))
+            b["h"] = rl(b["fh"] + (b["h"] - b["fh"]) * f)
 
     # ---- 旗の飾り (段階 7。通りをまたいで、両側の建物の壁にかける。乱数は使わない) ----
     out["bunting"] = []
