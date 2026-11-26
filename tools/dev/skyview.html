@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- 空 (public/src/skyfx.js + time.js) だけを素早く確かめるページ (街を読み込まない。数秒)。
+  撮る: node tools/dev/charshot.js <出力フォルダ> "hour=12&yaw=0&pitch=20" --page skyview ...
+    hour = 時刻 (0〜24)、cloud = 雲の量 (0〜1)、moon = 月齢 (0〜1。0.5 = 満月)、t = 経過秒 (雲の動き)、
+    yaw = 向き (度。0 = 南、90 = 東、-90 = 西、180 = 北)、pitch = 見上げる角度 (度)、fov = 画角 (度)。
+    skyline=1 で地平線に建物の影絵 (箱) と霧を置く (遠景のかすみとの境目を見る)。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>skyview</title>
+<style>html, body { margin: 0; overflow: hidden; background: #000; }</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { patchSky } from '../../public/src/skyfx.js';
+import { TimeOfDay } from '../../public/src/time.js';
+const q = new URLSearchParams(location.search), num = (k, d) => (q.has(k) ? +q.get(k) : d);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.fog = new THREE.Fog('#c9d6e3', 80, 2500);
+const camera = new THREE.PerspectiveCamera(num('fov', 70), innerWidth / innerHeight, 0.3, 3000);
+const sky = new Sky(); sky.scale.setScalar(10000);
+sky.material.uniforms.turbidity.value = 6; sky.material.uniforms.mieCoefficient.value = 0.005; sky.material.uniforms.mieDirectionalG.value = 0.8;
+patchSky(sky); scene.add(sky);
+const hemi = new THREE.HemisphereLight('#e3edff', '#a39a88', 1), sun = new THREE.DirectionalLight('#fff', 3);
+scene.add(hemi, sun);
+if (q.get('skyline') === '1') {
+  const g = new THREE.MeshBasicMaterial({ color: '#202a3a' });
+  for (let i = 0; i < 40; i++) { const a = i / 40 * Math.PI * 2, r = 900, h = 30 + 60 * Math.abs(Math.sin(i * 7.3)); const m = new THREE.Mesh(new THREE.BoxGeometry(60, h, 60), g); m.position.set(Math.sin(a) * r, h / 2, Math.cos(a) * r); scene.add(m); }
+}
+const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: [] });
+tod.hour = tod.target = num('hour', 12); tod.t = num('t', 30); tod.apply();
+camera.position.set(0, 1.6, 0);
+const yaw = THREE.MathUtils.degToRad(num('yaw', 0)), pit = THREE.MathUtils.degToRad(num('pitch', 20));
+camera.lookAt(Math.sin(yaw) * Math.cos(pit), 1.6 + Math.sin(pit), Math.cos(yaw) * Math.cos(pit));
+sky.position.copy(camera.position);
+renderer.render(scene, camera);
+document.title = 'done';
+</script>
+</body>
+</html>
