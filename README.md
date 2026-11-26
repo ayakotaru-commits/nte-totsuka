@@ -257,6 +257,7 @@ python tools/lidar_cover.py --undo   # 足した建物を消し、cover.json と
   - 園内の人は堤道・門・中庭・裏庭を歩く（`park_crowd.py` の `castle` の道）。地図の印「リール・キャッスル」（前の堤道の入口にワープ。ライトアップの 40 秒前から点滅）と、地図の下絵（島・堤道・城壁・屋根の色の塔 = `parkmap.js`）、画面の左の 1 行に「城のライトアップ中！（あと m:ss）」（始まる 90 秒前から「城のライトアップまで」。`parkinfo.js`）。
   - **主塔の中（改善 1）**: 正面の扉（`doors.js`。F で開閉）→ 大広間（半径 11.4 m・高さ 22 m。床・絨毯・天井・シャンデリア）→ 壁ぞいのらせん階段（60 段・1.5 周。歩いて上れる）→ 屋上のテラス（高さ 22.7 m）。`public/src/detail/parkkeep.js`（数字は `KEEP`）。階段は裏から始まり正面の扉の上に出る。テラスは出口から右へ約 45 度ぶん歩ける（隣の塔でふさがる）。外壁・階段・テラスの当たり判定は `col` の輪・扇形の箱。広間の床・天井・階段は `hallMat`（自分の色で一定に光る）。
   - **水面への映り込み（改善 2）**: 壁・屋根・飾りを水面で上下反転した複製を半透明で描く。複製は `gl_FragDepth` に「視線と水面の交点」の深さを書くので、島・堤道・岸に隠れ、水面が見える所だけに映る。PC だけ（`low`・`?noreflect` で無効）。
+  - **島の庭・小舟・白鳥（改善 3）**: 噴水つきの丸い花壇 6 つ（`buildGrounds()` の末尾）。東西の湖面を舟 4・白鳥 6（スマホは 2・2）が楕円でゆっくりまわる（`api.craft`。舟は夜に灯が光る）。
   - 確認: `node tools/dev/castlecheck.js [--touch]`（歩いて確かめる）、`node tools/dev/charshot.js <出力フォルダ> "cam=0,35,170&look=0,28,0" --page castleview --novrm`（城だけを数秒で撮る確認ページ `tools/dev/castleview.html`。`night=1`・`show=1`・`low=1`）、`parkshot.js` の視点 `k1`〜`k15`（k13〜k15 = 主塔の中・テラス）。
 - 確認: `node tools/dev/parkcheck.js [--quick] [--rides]`（歩いて確かめる。段階 1 は 19 項目。段階 2 で各エリアの通り・建物・特別な物を足した。段階 3 = `--rides` だけなら約 5 分で、乗り物の設定・動き・当たり判定・観覧車に乗って降りる）、`node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--night] [--only ..] [--probe]`（画面。`--nopark` が修正前）。
 
