@@ -1,5 +1,6 @@
 // 敷地の外構 (data/appearance.json の sites): 中庭の庭園 (芝生・レンガの通路・噴水・円すい形の木) と、道路沿いのフェンス
 // 配置は tools/build_props.py が計算した data/props.json の sites。ここでは形を作って置くだけ。
+import { TreeLayer } from '../trees.js';
 import * as THREE from 'three';
 import { Builder, canvasTexture } from './util.js';
 import { buildSiteExtras } from './site_extras.js';
@@ -101,12 +102,9 @@ export function buildSites(props) {
         bush.scale.y = 0.6;
         for (const m of [curb, bush]) { m.position.set(p.x, p.y, p.z); m.castShadow = m.receiveShadow = true; group.add(m); }
       }
-      if (g.cypress) {
-        const cone = new THREE.InstancedMesh(new THREE.ConeGeometry(0.9, 5.5, 10).translate(0, 3.25, 0), new THREE.MeshStandardMaterial({ color: '#3f6b3a', roughness: 0.9, flatShading: true }), Math.max(1, g.cypress.length));
-        cone.count = g.cypress.length;
-        g.cypress.forEach(([x, z, y], i) => cone.setMatrixAt(i, M.makeTranslation(x, y, z)));
-        cone.castShadow = true;
-        group.add(cone);
+      if (g.cypress && g.cypress.length) {   // 円すい形の庭木 (葉の板の針葉樹。trees.js)
+        const layer = new TreeLayer(g.cypress.map(([x, z, y], i) => [x, z, y, 1.1, (i * 0.37) % 1, 0x3f6b3a, 1, 0.62]), 'trees_garden');
+        group.add(layer.group);
       }
     }
 

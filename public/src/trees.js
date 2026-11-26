@@ -149,9 +149,15 @@ function buildKinds() {
   ].map((k, i) => ({ ...k, far: farGeo(i), farMat }));
 }
 
+// 作った木の層は全部ここに登録し、main.js が毎コマ updateTreeLayers() で近い / 遠いを入れ替える
+const LAYERS = [];
+export function updateTreeLayers(camera) { for (const l of LAYERS) l.update(camera); }
+
 export class TreeLayer {
-  constructor(spots) {
-    this.group = new THREE.Group(); this.group.name = 'trees';
+  // name: 'trees' (街の本体。イベントが木を消すとき名前で探す) のほか、パーク・駅前・庭は別の名前にする
+  constructor(spots, name = 'trees') {
+    LAYERS.push(this);
+    this.group = new THREE.Group(); this.group.name = name;
     this.n = spots.length;
     this.hidden = new Set();
     this.last = null; this.dirty = true;
