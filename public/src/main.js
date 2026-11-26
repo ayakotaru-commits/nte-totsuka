@@ -10,7 +10,8 @@ import { ThirdPersonCamera } from './camera.js';
 import { Input } from './input.js';
 import { Minimap } from './minimap.js';
 import { Labels } from './labels.js';
-import { TimeOfDay, PRESETS } from './time.js';
+import { TimeOfDay } from './time.js';
+import { patchSky } from './skyfx.js';
 import { Crowd } from './crowd.js';
 import { Traffic } from './traffic.js';
 import { Waypoints } from './waypoint.js';
@@ -99,6 +100,7 @@ async function main() {
   sky.material.uniforms.turbidity.value = 6;
   sky.material.uniforms.mieCoefficient.value = 0.005;
   sky.material.uniforms.mieDirectionalG.value = 0.8;
+  patchSky(sky); // 雲・星・月・薄明 (skyfx.js)
   scene.add(sky);
 
   const hemi = new THREE.HemisphereLight('#e3edff', '#a39a88', 1);
@@ -184,11 +186,12 @@ async function main() {
   const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z), touch: TOUCH });
   window.__bigmap = bigmap; window.__warpTo = warpTo; // 確認用
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
+  let hudTimeText = '';
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
   // 街を歩く人 (crowd.js。動きは crowdsim.js、通り道は props.json の crowd)。?nocrowd で無し、?crowd=人数 で上限を変える (確認用)
   const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined, park, viewSlots: parkInfo ? makeViewSlots(park, parkInfo.route) : null });   // 園内の人は park (千葉ドリームランド) があるとき
   if (Q.has('nocrowd')) crowd.setVisible(false);
-  window.__crowd = crowd; // 確認用
+  window.__crowd = crowd; window.__tod = tod; // 確認用 (__tod = 時刻・空。tools/dev/skycheck.js)
   // 街を走る車 (traffic.js。動きは trafficsim.js、道は props.json の traffic)。?notraffic で無し、?traffic=台数 で上限を変える (確認用)
   const traffic = new Traffic(scene, props, { low: TOUCH, cap: Q.has('traffic') ? +Q.get('traffic') : undefined });
   if (Q.has('notraffic')) traffic.setVisible(false);
@@ -386,6 +389,7 @@ async function main() {
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
     tod.update(dt);
+    { const lb = tod.label(); if (lb !== hudTimeText) { hudTimeText = lb; $('hud-time').textContent = lb; } }
     let parkWant;
     if (parkInfo) {   // ショーの案内 (画面の 1 行) と、観客の指定
       const sch = parkSchedule(park, showClock(), parkInfo.paradeSec);
@@ -396,8 +400,8 @@ async function main() {
       if (parkHud.hidden === near2) parkHud.hidden = !near2;
     }
     updateTreeLayers(camera);   // 近い木だけ葉の板の形 (trees.js。街・パーク・駅前・庭の全部)
-    if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, parkWant);
-    if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, tod.cur.win);
+    if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, tod.name, clock.elapsedTime, parkWant);
+    if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, tod.name, clock.elapsedTime, tod.cur.win);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
     detail.railExt?.update(camera.position.x, camera.position.z); // 線路の延長: カメラの近くの区間を読み込む・遠い区間を捨てる

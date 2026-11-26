@@ -83,7 +83,7 @@ export class Look {
     // 映り込み用の空は太陽の円盤を消す (円盤はとても明るく、ぼかすと日陰まで照らして影が消える。太陽の光は sun ライトが受け持つ)
     const skyMat = new THREE.ShaderMaterial({
       name: 'SkyEnv', uniforms: sky.material.uniforms, vertexShader: sky.material.vertexShader,
-      fragmentShader: sky.material.fragmentShader.replace('* sundisk;', '* 0.0;'), side: THREE.BackSide, depthWrite: false,
+      fragmentShader: sky.material.fragmentShader.replace('* sundisk;', '* 0.0;').replace('#define SKY_DISCS 1', '#define SKY_DISCS 0'), side: THREE.BackSide, depthWrite: false,
     });
     this.skyMesh = new THREE.Mesh(sky.geometry, skyMat);
     this.skyMesh.scale.setScalar(100);
@@ -125,7 +125,7 @@ export class Look {
     const o = this.over;
     cur = { ...cur, ...o, ao: o.aoK ?? cur.ao };
     // 空の映り込み: 空の形 (太陽の高さ・向き・散乱) が変わったら作り直す。移り変わりの途中は 0.3 秒ごと
-    const key = [cur.skyElev, cur.azim, cur.rayleigh].map(v => v.toFixed(1)).join() + (this.sky.visible ? '' : cur.fogC.getHexString());
+    const key = [cur.skyElev, cur.azim, cur.rayleigh, (cur.cloud ?? 0) * 5].map(v => v.toFixed(0)).join() + cur.fogC.getHexString().slice(0, 4);
     this.envT -= dt;
     if (key !== this.envKey && this.envT <= 0 && !this.noenv) {
       this.envKey = key; this.envT = 0.3;
