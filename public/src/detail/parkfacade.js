@@ -93,12 +93,12 @@ export function makeFacadeKit({ glowMat, emissive, signs }) {
     if (!neonMats[color]) { const m = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0, roughness: 0.4, side: THREE.DoubleSide }); m.userData.glow = 1.8; emissive.push(m); neonMats[color] = m; }
     return neonMats[color];
   };
-  return { shopMat, lampMat, neonMat, cellUv: atlas.cellUv, signs };
+  return { shopMat, lampMat, neonMat, neonMats, cellUv: atlas.cellUv, signs };
 }
 
 // 1 棟ぶんの細部。env = { b, Buf, P, nW, W, T, S, SG (店の窓), NE (色 → ネオンの Buf), LP (壁灯の玉), signUv, y0, y1, gy, kit }
 export function facadeDetail(env) {
-  const { b, Buf, P, nW, W, T, S, SG, NE, LP, signUv, y0, y1, kit, low } = env;   // low = スマホ (細かい飾りを省いて三角形を減らす)
+  const { b, Buf, P, nW, W, T, S, SG, NE, LP, signUv, y0, y1, kit, low, onChimney } = env;   // low = スマホ (細かい飾りを省いて三角形を減らす)
   // 細かさ (テーマの detail.lod): full = アベニュー (全部)、mid = 町・港・お菓子の丘 (横の面は枠だけ・線や花の立方体は省く)、lite = 谷・森・夜の館 (前の面の窓のまぐさと窓台・鎧戸・玄関だけ)。スマホは full だけ窓を残し、ほかは窓の飾りを省く
   const lod = low && env.lod !== 'full' ? 'none' : (env.lod || 'full'), rich = lod === 'full', lite = lod === 'lite', none = lod === 'none', lowish = low || !rich;
   const fancyShop = rich || (lod === 'mid' && !low);
@@ -134,6 +134,14 @@ export function facadeDetail(env) {
     }
     buf.quad(P(x0, yb, z0), P(x1, yb, z0), P(x1, yb, z1), P(x0, yb, z1), [0, 1, 0], U4, color);
   };
+  // 建物の軸に合わせた円柱 (局所座標 x・z。r0 = 下の半径、r1 = 上の半径。8 角形)
+  const lcyl = (cx, cz, r0, r1, ya, yb, color, buf = T, n = 8) => {
+    for (let i = 0; i < n; i++) {
+      const a0 = i / n * Math.PI * 2, a1 = (i + 1) / n * Math.PI * 2, am = (a0 + a1) / 2;
+      buf.quad(P(cx + Math.cos(a0) * r0, ya, cz + Math.sin(a0) * r0), P(cx + Math.cos(a1) * r0, ya, cz + Math.sin(a1) * r0), P(cx + Math.cos(a1) * r1, yb, cz + Math.sin(a1) * r1), P(cx + Math.cos(a0) * r1, yb, cz + Math.sin(a0) * r1), nW(Math.cos(am), Math.sin(am)), U4, color);
+      buf.tri(P(cx, yb, cz), P(cx + Math.cos(a0) * r1, yb, cz + Math.sin(a0) * r1), P(cx + Math.cos(a1) * r1, yb, cz + Math.sin(a1) * r1), [0, 1, 0], U4.slice(0, 3), color);
+    }
+  };
   // 面に平行な板 (o の位置、向きは面と同じ外向き)
   const fquad = (buf, f, o, s0, s1, ya, yb, uv, color = white) => buf.quad(PF(f, s0, o, ya), PF(f, s1, o, ya), PF(f, s1, o, yb), PF(f, s0, o, yb), nW(f.nl[0], f.nl[1]), uv, color);
   // 面の上の三角形・多角形 (s, y の点の並び。外向き)
@@ -146,9 +154,9 @@ export function facadeDetail(env) {
       buf.quad(PF(f, p[0] + px, o, p[1] + py), PF(f, q[0] + px, o, q[1] + py), PF(f, q[0] - px, o, q[1] - py), PF(f, p[0] - px, o, p[1] - py), nW(f.nl[0], f.nl[1]), U4, white);
     }
   };
-  const blob = (buf, cx, cy, cz, r) => {   // 20 面体 (光る玉)
+  const blob = (buf, cx, cy, cz, r, color = white) => {   // 20 面体 (光る玉・葉のかたまり)
     const v = ICO.v.map((p) => [cx + p[0] * r, cy + p[1] * r, cz + p[2] * r]);
-    for (const [i, j, k] of ICO.f) { const m = [(v[i][0] + v[j][0] + v[k][0]) / 3 - cx, (v[i][1] + v[j][1] + v[k][1]) / 3 - cy, (v[i][2] + v[j][2] + v[k][2]) / 3 - cz]; buf.tri(v[i], v[j], v[k], m, U4.slice(0, 3), white); }
+    for (const [i, j, k] of ICO.f) { const m = [(v[i][0] + v[j][0] + v[k][0]) / 3 - cx, (v[i][1] + v[j][1] + v[k][1]) / 3 - cy, (v[i][2] + v[j][2] + v[k][2]) / 3 - cz]; buf.tri(v[i], v[j], v[k], m, U4.slice(0, 3), color); }
   };
   const hash = (fi, fl, k, salt = 0) => { let t = (Math.floor(b.x * 10) * 73856093 ^ Math.floor(b.z * 10) * 19349663 ^ (fi * 83492791 + fl * 2654435 + k * 40503 + salt * 9973)) | 0; t = Math.imul(t ^ (t >>> 15), 1 | t); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 
@@ -307,6 +315,21 @@ export function facadeDetail(env) {
     }
   }
 
+  // ---------- 店先・玄関わきの小物 (樽・木箱・植木鉢。det.deco = [種類, 横, 外へ, 段数]) ----------
+  if (det.deco && !none) for (const [kind, dx, dout, n] of det.deco) {
+    const cx = dx, cz = hz + dout;
+    if (kind === 'barrel') {
+      lcyl(cx, cz, 0.32, 0.36, ground, ground + 0.45, C('#8a5a3b')); lcyl(cx, cz, 0.36, 0.3, ground + 0.45, ground + 0.88, C('#8a5a3b'));
+      for (const yy of [0.14, 0.7]) lcyl(cx, cz, 0.38, 0.38, ground + yy, ground + yy + 0.06, C('#4b4561'));
+    } else if (kind === 'crate') {
+      for (let q = 0; q < n; q++) lbox(cx - 0.36 + q * 0.04, cx + 0.36 + q * 0.04, cz - 0.36, cz + 0.36, ground + q * 0.7, ground + (q + 1) * 0.7, q ? C('#b58a55') : C('#c79a63'));
+    } else {
+      lcyl(cx, cz, 0.2, 0.3, ground, ground + 0.5, C('#c46b4a')); lcyl(cx, cz, 0.32, 0.32, ground + 0.5, ground + 0.58, C('#d98562'));
+      const q = P(cx, ground + 0.85, cz); blob(T, q[0], q[1], q[2], 0.32, C('#4f8a3a'));
+      const f = P(cx + 0.1, ground + 1.1, cz + 0.05); blob(T, f[0], f[1], f[2], 0.1, C(det.flower));
+    }
+  }
+
   // ---------- 屋根の飾り ----------
   let crownH = 0;
   if (flatRoof && det.crown && det.crown !== 'plain') {
@@ -343,6 +366,7 @@ export function facadeDetail(env) {
     const lz = -hz * 0.45, ry = y1 + b.rh * (1 - Math.abs(lz) / hz), cx = det.chim, br = C('#b9694f');
     lbox(cx - 0.45, cx + 0.45, lz - 0.45, lz + 0.45, ry - 0.6, y1 + b.rh + 1.2, br);
     lbox(cx - 0.56, cx + 0.56, lz - 0.56, lz + 0.56, y1 + b.rh + 1.2, y1 + b.rh + 1.4, tc);
+    if (onChimney && hash(9, 0, 0) < 0.55) { const q = P(cx, y1 + b.rh + 1.4, lz); onChimney(q[0], q[1], q[2]); }   // 煙を出す煙突の位置 (parkareas.js が動かす)
   }
 
   // ---------- 玄関 (店のない建物の前の面。扉・枠・段・ひさし・壁灯) ----------

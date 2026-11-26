@@ -401,6 +401,7 @@ export function buildPark(cfg, world, opts = {}) {
     update(x, z, win = 0) {
       if (!built && Math.hypot(x - gate.at[0], z - gate.at[1]) < 1500 && ready()) build();
       if (api.beams) api.beams.rotation.y = performance.now() / 1000 * 0.25;
+      api.areas?.update?.(Date.now() / 1000, x, z);   // 旗のゆれ・煙突の煙・ネオンのまたたき (段階 7)
       api.areas?.rides?.update(Date.now() / 1000, x, z);   // 観覧車・メリーゴーラウンド・コースターの動き (近くのときだけ)
       api.show?.update(showClockNow(), x, z, win);          // 花火・パレード・水上ショー (win = 夜の度合い。time.js)
     },

@@ -178,7 +178,7 @@ def generate(cfg):
     info = {}
     for ai, (name, poly) in enumerate(areas.items()):
         th = themes[name]
-        out["areas"].append({"name": name, "kind": th["kind"], "lamp": th.get("lamp", "warm"), "trim": th.get("trim", "#ffffff"), **({"detail": th["detail"].get("style", th["kind"]), "terrace": th["detail"].get("terrace", 0), "lod": th["detail"].get("lod", "full")} if th.get("detail") else {})})
+        out["areas"].append({"name": name, "kind": th["kind"], "lamp": th.get("lamp", "warm"), "trim": th.get("trim", "#ffffff"), **({"detail": th["detail"].get("style", th["kind"]), "terrace": th["detail"].get("terrace", 0), "lod": th["detail"].get("lod", "full"), **({"bunting": th["detail"]["bunting"]["colors"]} if th["detail"].get("bunting") else {})} if th.get("detail") else {})})
         rng = random.Random(f"{name}/{th['seed']}")
         inf = {"ai": ai, "name": name, "poly": poly, "th": th, "rng": rng, "paths": [], "plazas": [], "far": None}
         info[name] = inf
@@ -397,6 +397,14 @@ def generate(cfg):
         d["neon"] = pick(rng, dt["neon"]) if dt.get("neon") else "none"
         if shop:
             d["planters"] = rng.random() < dt.get("plantersChance", 0.7)
+        if dt.get("deco"):   # 店先・玄関わきの小物 (樽・木箱・植木鉢)。[種類, 横 (面の中心から), 外へ]
+            dc = dt["deco"]; ds = []
+            for sd in (-1, 1):
+                if rng.random() < dc.get("chance", 0.4):
+                    kind = pick(rng, dc["kinds"])
+                    ds.append([kind, rl(sd * (hx - rng.uniform(1.3, 2.2) - (0 if shop else -0.2))), rl(rng.uniform(0.45, 0.8)), rng.randrange(1, 3) if kind == "crate" else 1])
+            if ds:
+                d["deco"] = ds
         return d
 
     # ---- 建物 ----
@@ -577,6 +585,38 @@ def generate(cfg):
             tree_pts.append((x, z))
             out["trees"].append([rl(x), rl(z), pick(rng, tr["kinds"]), rl(rng.uniform(0.8, 1.3)), inf["ai"]])
             got += 1
+
+    # ---- 旗の飾り (段階 7。通りをまたいで、両側の建物の壁にかける。乱数は使わない) ----
+    out["bunting"] = []
+    for name, inf in info.items():
+        th = inf["th"]; bt = (th.get("detail") or {}).get("bunting")
+        if not bt:
+            continue
+        bl = [b for b in out["buildings"] if b["a"] == inf["ai"]]
+
+        def hit(px, pz, nx, nz, t0, t1):
+            t = t0
+            while t <= t1:
+                x, z = px + nx * t, pz + nz * t
+                for b in bl:
+                    c, sn = math.cos(b["yaw"]), math.sin(b["yaw"])
+                    dx, dz = x - b["x"], z - b["z"]
+                    lx, lz = c * dx - sn * dz, sn * dx + c * dz
+                    if abs(lx) <= b["w"] / 2 - 0.8 and abs(lz) <= b["d"] / 2 and b["h"] >= bt.get("minH", 8) and lz > 0:
+                        return (x - nx * 0.3, z - nz * 0.3, b)
+                t += 0.1
+            return None
+        for pth in inf["paths"]:
+            if not pth["main"] or pth["pts"] is None:
+                continue
+            Lt = polyline_len(pth["pts"]); s_ = bt.get("start", 24.0)
+            while s_ < Lt - 10:
+                P, T = point_at(pth["pts"], s_)
+                nx, nz = -T[1], T[0]
+                hl, hr = hit(P[0], P[1], nx, nz, pth["w"] / 2, pth["w"] / 2 + th["setback"] + 3), hit(P[0], P[1], -nx, -nz, pth["w"] / 2, pth["w"] / 2 + th["setback"] + 3)
+                if hl and hr:
+                    out["bunting"].append([rl(hl[0]), rl(hl[1]), rl(hr[0]), rl(hr[1]), rl(min(bt.get("y", 7.0), min(hl[2]["h"], hr[2]["h"]) - 1.2)), inf["ai"]])
+                s_ += bt.get("every", 18.0)
 
     # ---- 乗り物 (段階 3)。乱数は使わない (ここより前の出力は変わらない) ----
     out["rides"] = make_rides(cfg, A.get("rides"), info, out, site, ellipses, circles, inner, park_paths, ell_hit, path_clear)

@@ -8,6 +8,7 @@ import { makeWallPatcher } from './textures.js';
 import { buildRides } from './parkrides.js';
 import { mergeStaticMeshes } from './mergestatic.js';
 import { makeFacadeKit, facadeDetail } from './parkfacade.js';
+import { buildBunting, buildSmoke } from './parkfx.js';
 
 const C = (s) => new THREE.Color(s);
 const mulberry = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -18,17 +19,17 @@ class Buf {
   constructor() { this.p = []; this.n = []; this.uv = []; this.c = []; this.m = []; }
   vert(p, n, uv, c, m) { this.p.push(p[0], p[1], p[2]); this.n.push(n[0], n[1], n[2]); this.uv.push(uv[0], uv[1]); this.c.push(c.r, c.g, c.b); this.m.push(m); }
   // 三角形。nOut = 外向きの法線 (向きを合わせ、陰影にも使う)。null = 面の法線を上向きにそろえる (屋根)
-  tri(a, b, c, nOut, uv, col, mat = 0) {
+  tri(a, b, c, nOut, uv, col, mat = 0, cols = null) {   // cols = 頂点ごとの色 [a, b, c] (経年感の濃淡)
     const e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
     let g = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
     const l = Math.hypot(g[0], g[1], g[2]) || 1; g = [g[0] / l, g[1] / l, g[2] / l];
     const ref = nOut || [0, 1, 0];
-    let [pa, pb, pc, ua, ub, uc] = [a, b, c, uv[0], uv[1], uv[2]];
-    if (g[0] * ref[0] + g[1] * ref[1] + g[2] * ref[2] < 0) { pb = c; pc = b; ub = uv[2]; uc = uv[1]; g = [-g[0], -g[1], -g[2]]; }
+    let [pa, pb, pc, ua, ub, uc] = [a, b, c, uv[0], uv[1], uv[2]], [ca, cb, cc] = cols || [col, col, col];
+    if (g[0] * ref[0] + g[1] * ref[1] + g[2] * ref[2] < 0) { pb = c; pc = b; ub = uv[2]; uc = uv[1]; cb = cols ? cols[2] : col; cc = cols ? cols[1] : col; g = [-g[0], -g[1], -g[2]]; }
     const n = nOut || g;
-    this.vert(pa, n, ua, col, mat); this.vert(pb, n, ub, col, mat); this.vert(pc, n, uc, col, mat);
+    this.vert(pa, n, ua, ca, mat); this.vert(pb, n, ub, cb, mat); this.vert(pc, n, uc, cc, mat);
   }
-  quad(a, b, c, d, nOut, uv, col, mat = 0) { this.tri(a, b, c, nOut, [uv[0], uv[1], uv[2]], col, mat); this.tri(a, c, d, nOut, [uv[0], uv[2], uv[3]], col, mat); }
+  quad(a, b, c, d, nOut, uv, col, mat = 0, cols = null) { this.tri(a, b, c, nOut, [uv[0], uv[1], uv[2]], col, mat, cols && [cols[0], cols[1], cols[2]]); this.tri(a, c, d, nOut, [uv[0], uv[2], uv[3]], col, mat, cols && [cols[0], cols[2], cols[3]]); }
   geometry(withMat) {
     if (!this.p.length) return null;
     const g = new THREE.BufferGeometry();
@@ -115,6 +116,7 @@ export function buildAreas(ctx) {
   const bufs = A.map(() => ({ wall: new Buf(), trim: new Buf(), sign: new Buf(), shopglass: new Buf(), lamp: new Buf(), neon: {} }));
   const kit = A.some((a) => a.detail) ? makeFacadeKit({ glowMat, emissive, signs: G.signs }) : null;   // 建物の細部 (段階 7。parkfacade.js)
   const gyOf = (x, z) => ground(x, z);
+  const chimneys = [];   // 煙を出す煙突の位置 (parkfx.js)
 
   function addBuilding(b) {
     const B = bufs[b.a], W = B.wall, T = B.trim, S = B.sign;
@@ -123,6 +125,14 @@ export function buildAreas(ctx) {
     const P = (lx, y, lz) => [b.x + rx * lx + ux * lz, y, b.z + rz * lx + uz * lz];
     const nW = (lx, lz) => [rx * lx + ux * lz, 0, rz * lx + uz * lz];   // 局所の向き → 世界の向き
     const wc = C(b.col), tc = C(b.trim), rc = C(b.rcol), dc = b.door ? C(b.door) : null, white = C('#ffffff');
+    // 経年感 (段階 7): 建物ごとに壁・屋根の色を少しずらし、壁のすそを暗く・上を少し明るくする (雨だれ・すすけ)。細部のある建物だけ
+    let wLo = wc, wHi = wc;
+    if (b.det) {
+      const h1 = Math.sin(b.x * 12.9898 + b.z * 78.233) * 43758.5453, h2 = Math.sin(b.x * 3.1 + b.z * 9.7) * 24634.6345, f1 = h1 - Math.floor(h1), f2 = h2 - Math.floor(h2);
+      wc.offsetHSL((f1 - 0.5) * 0.012, (f2 - 0.5) * 0.06, (f1 - 0.5) * 0.05); rc.offsetHSL((f2 - 0.5) * 0.01, 0, (f1 - 0.5) * 0.06);
+      const sh = (c, k) => new THREE.Color(Math.min(1, c.r * k), Math.min(1, c.g * k), Math.min(1, c.b * k));
+      wLo = sh(wc, 0.82); wHi = sh(wc, 1.03);
+    }
     const fh = b.fh, bay = b.bay;
     // 4 つの面 (局所: 前 +Z、右 +X、後ろ -Z、左 -X)。外から見て左 → 右の順
     const faces = [[[-hx, hz], [hx, hz], [0, 1]], [[hx, hz], [hx, -hz], [1, 0]], [[hx, -hz], [-hx, -hz], [0, -1]], [[-hx, -hz], [-hx, hz], [-1, 0]]];
@@ -132,7 +142,7 @@ export function buildAreas(ctx) {
       let yb = y0;
       if (front && b.shop) {   // 1 階は店先: 無地の壁の帯 + ガラス + 扉 (細部のある建物は、ガラス・扉を parkfacade.js が作る)
         yb = y0 + fh;
-        W.quad(P(a[0], y0, a[1]), P(c[0], y0, c[1]), P(c[0], yb, c[1]), P(a[0], yb, a[1]), n, [PLAIN, PLAIN, PLAIN, PLAIN], wc, b.wall);
+        W.quad(P(a[0], y0, a[1]), P(c[0], y0, c[1]), P(c[0], yb, c[1]), P(a[0], yb, a[1]), n, [PLAIN, PLAIN, PLAIN, PLAIN], wLo, b.wall);
         if (!b.det) {
         const gl = Math.min(hx - 0.8, hx), gz = hz + 0.06, off = 0.06;
         W.quad(P(-gl, y0 + 0.4, gz), P(gl, y0 + 0.4, gz), P(gl, yb - 0.5, gz), P(-gl, yb - 0.5, gz), n, [GLASS, GLASS, GLASS, GLASS], white, b.wall);
@@ -140,7 +150,7 @@ export function buildAreas(ctx) {
         }
       }
       W.quad(P(a[0], yb, a[1]), P(c[0], yb, c[1]), P(c[0], y1, c[1]), P(a[0], y1, a[1]), n,
-        [[0, (yb - y0) / fh], [nu, (yb - y0) / fh], [nu, (y1 - y0) / fh], [0, (y1 - y0) / fh]], wc, b.wall);
+        [[0, (yb - y0) / fh], [nu, (yb - y0) / fh], [nu, (y1 - y0) / fh], [0, (y1 - y0) / fh]], wc, b.wall, b.det ? [front && b.shop ? wc : wLo, front && b.shop ? wc : wLo, wHi, wHi] : null);
       if (front && !b.shop && dc) {   // 扉
         const gz = hz + 0.06;
         W.quad(P(-0.9, y0, gz), P(0.9, y0, gz), P(0.9, y0 + 2.8, gz), P(-0.9, y0 + 2.8, gz), n, [PLAIN, PLAIN, PLAIN, PLAIN], dc, b.wall);
@@ -171,7 +181,7 @@ export function buildAreas(ctx) {
       roof(b, T, W, P, nW, hx, hz, y1, rc, wc);
     }
     // 細部 (窓まわり・出窓・バルコニー・店先・屋根の飾り・ネオン。b.det があるエリアだけ)
-    const fd = b.det && kit ? facadeDetail({ b, Buf, P, nW, W, T, S, SG: B.shopglass, LP: B.lamp, NE: (c) => B.neon[c] || (B.neon[c] = new Buf()), signUv, y0, y1, gy, kit, low, lod: A[b.a].lod }) : null;
+    const fd = b.det && kit ? facadeDetail({ b, Buf, P, nW, W, T, S, SG: B.shopglass, LP: B.lamp, NE: (c) => B.neon[c] || (B.neon[c] = new Buf()), signUv, y0, y1, gy, kit, low, lod: A[b.a].lod, onChimney: (x, y, z) => chimneys.push([x, y, z]) }) : null;
     // 看板 (前の面の、1 階の上) と、店先の日よけ
     {
       const fw = Math.min(b.shop || b.lm ? hx * 1.7 : 2 * Math.min(hx, 2.6), b.lm ? 11 : (fd ? 5.0 : 7.5)), fhh = fw / 4;
@@ -274,6 +284,15 @@ export function buildAreas(ctx) {
     }
   });
   const gc = clockBuf.geometry(false); if (gc) meshOf(gc, clockMat, 'park_clocks', false);
+  // 旗の飾りと煙突の煙・ネオンのまたたき (段階 7)。?nofx で無効
+  const noFx = new URLSearchParams(location.search).has('nofx');
+  const bunting = noFx ? null : buildBunting({ gen: G, ground, group: api.group }), smoke = noFx ? null : buildSmoke({ chimneys, group: api.group, low });
+  api.stats.bunting = bunting ? bunting.strings : 0; api.stats.chimneys = chimneys.length;
+  api.update = (t, x, z) => {
+    t %= 3600;   // 秒が大きいと float の精度が足りずシェーダのゆれがぎくしゃくする (1 時間でつなぎ目が 1 回)
+    bunting?.update(t); smoke?.update(t, x, z);
+    if (kit) Object.values(kit.neonMats).forEach((m, i) => { const f = (t * 0.21 + i * 0.37) % 1; m.userData.glow = 1.8 * (0.92 + 0.08 * Math.sin(t * 6.3 + i * 2)) * (f < 0.016 ? 0.2 : 1); });   // ネオンのわずかなゆらぎと、ときどきの消えかけ
+  };
   api.stats.buildings = G.buildings.length;
   api.stats.facadeTris = bufs.reduce((n, B) => n + (B.shopglass.p.length + B.lamp.p.length + Object.values(B.neon).reduce((m, nb) => m + nb.p.length, 0)) / 9, 0) | 0;   // 細部のうち別のメッシュにした分 (壁・縁取り・看板の中の増え分は含まない)
   api.stats.trisAll = bufs.reduce((n, B) => n + (B.wall.p.length + B.trim.p.length + B.sign.p.length) / 9, 0) | 0;
@@ -454,7 +473,7 @@ export function buildAreas(ctx) {
   }
 
   // スマホ: 動かない小物のメッシュを材質 × 区画でまとめる (描画の呼び出しを減らす。PC は今までどおり)
-  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks|facade)/.test(o.name) });
+  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks|facade|bunting|smoke)/.test(o.name) });
 
   // ---------- 乗り物 (段階 3。観覧車・メリーゴーラウンド・コースター) ----------
   api.rides = buildRides({ cfg, ground, std, glowMat, group, col, emissive });
