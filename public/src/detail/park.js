@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import { H } from '../terrain.js';
 import { canvasTexture } from './util.js';
 import { buildAreas } from './parkareas.js';
+import { buildAvenuePaving } from './parkpaving.js';
 import { buildShow, showClock as showClockNow } from './parkshow.js';
 
 const bboxOf = (p) => {
@@ -258,6 +259,11 @@ export function buildPark(cfg, world, opts = {}) {
     const ring = ellPts(prE.center, prE.rx + pr.offset, prE.rz + pr.offset, 144);
     roadPos.stone.push(...stripPos(ring, pr.width, 0.19, true));
     group.add(flat(roadPos.stone, '#dcd2c2', 0.18), flat(roadPos.pink, '#ecc4dc', 0.2));
+    // 段階 7: アベニューの舗装 (本通りのタイル・店の前の歩道。parkpaving.js。?nopaving で無効 = 確認用)
+    {
+      const av = cfg.gen && cfg.gen.areas.find((a) => a.detail === 'avenue' && a.terrace > 0), ap = cfg.paths.find((p) => p.name === 'ネオン・アベニュー');
+      if (av && ap && !new URLSearchParams(location.search).has('nopaving')) buildAvenuePaving({ path: ap, terrace: av.terrace, ground, group });
+    }
 
     // ---- サンライズ・プラザ: 放射状の模様の舗装 ----
     {
@@ -377,7 +383,7 @@ export function buildPark(cfg, world, opts = {}) {
       const t0 = performance.now();
       const ar = buildAreas({ cfg, ground, std, glowMat, group, col, emissive, low: !!opts.low, flat, stripPos });
       api.areas = ar;
-      console.info(`[park] 各エリア: 建物 ${ar.stats.buildings}・木 ${ar.stats.trees}・看板 ${ar.stats.signs}・乗り物の三角形 ${ar.rides.stats.tris}、${(performance.now() - t0).toFixed(0)} ms`);
+      console.info(`[park] 各エリア: 建物 ${ar.stats.buildings} (壁・縁取り・看板の三角形 ${ar.stats.trisAll}、店の窓・ネオンなど ${ar.stats.facadeTris})・木 ${ar.stats.trees}・看板 ${ar.stats.signs}・乗り物の三角形 ${ar.rides.stats.tris}、${(performance.now() - t0).toFixed(0)} ms`);
     }
     // ---- 段階 4: ショー (花火・パレード・水上ショー・夜の光)。public/data/park.json の show ----
     if (cfg.show) {

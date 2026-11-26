@@ -7,6 +7,7 @@ import { canvasTexture } from './util.js';
 import { makeWallPatcher } from './textures.js';
 import { buildRides } from './parkrides.js';
 import { mergeStaticMeshes } from './mergestatic.js';
+import { makeFacadeKit, facadeDetail } from './parkfacade.js';
 
 const C = (s) => new THREE.Color(s);
 const mulberry = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -111,7 +112,8 @@ export function buildAreas(ctx) {
   if (!low) makeWallPatcher(cfg.tower.at[0], cfg.tower.at[1], 1300).then((patch) => { patch(wallMat, 'park'); wallMat.needsUpdate = true; wallMeshes.forEach((m) => { m.visible = true; }); }).catch((e) => { console.warn('[park] 壁の柄', e); wallMeshes.forEach((m) => { m.visible = true; }); });
 
   // ---------- 建物 ----------
-  const bufs = A.map(() => ({ wall: new Buf(), trim: new Buf(), sign: new Buf() }));
+  const bufs = A.map(() => ({ wall: new Buf(), trim: new Buf(), sign: new Buf(), shopglass: new Buf(), lamp: new Buf(), neon: {} }));
+  const kit = A.some((a) => a.detail) ? makeFacadeKit({ glowMat, emissive, signs: G.signs }) : null;   // 建物の細部 (段階 7。parkfacade.js)
   const gyOf = (x, z) => ground(x, z);
 
   function addBuilding(b) {
@@ -128,12 +130,14 @@ export function buildAreas(ctx) {
       const L = Math.hypot(c[0] - a[0], c[1] - a[1]), n = nW(nl[0], nl[1]), nu = L / bay;
       const front = fi === 0;
       let yb = y0;
-      if (front && b.shop) {   // 1 階は店先: 無地の壁の帯 + ガラス + 扉
+      if (front && b.shop) {   // 1 階は店先: 無地の壁の帯 + ガラス + 扉 (細部のある建物は、ガラス・扉を parkfacade.js が作る)
         yb = y0 + fh;
         W.quad(P(a[0], y0, a[1]), P(c[0], y0, c[1]), P(c[0], yb, c[1]), P(a[0], yb, a[1]), n, [PLAIN, PLAIN, PLAIN, PLAIN], wc, b.wall);
+        if (!b.det) {
         const gl = Math.min(hx - 0.8, hx), gz = hz + 0.06, off = 0.06;
         W.quad(P(-gl, y0 + 0.4, gz), P(gl, y0 + 0.4, gz), P(gl, yb - 0.5, gz), P(-gl, yb - 0.5, gz), n, [GLASS, GLASS, GLASS, GLASS], white, b.wall);
         if (dc) W.quad(P(-0.9, y0, gz + off), P(0.9, y0, gz + off), P(0.9, y0 + 2.9, gz + off), P(-0.9, y0 + 2.9, gz + off), n, [PLAIN, PLAIN, PLAIN, PLAIN], dc, b.wall);
+        }
       }
       W.quad(P(a[0], yb, a[1]), P(c[0], yb, c[1]), P(c[0], y1, c[1]), P(a[0], y1, a[1]), n,
         [[0, (yb - y0) / fh], [nu, (yb - y0) / fh], [nu, (y1 - y0) / fh], [0, (y1 - y0) / fh]], wc, b.wall);
@@ -166,14 +170,16 @@ export function buildAreas(ctx) {
       box(T, -hx - 0.15, hx + 0.15, y1 - 0.25, y1 + 0.05, -hz - 0.15, hz + 0.15, tc);
       roof(b, T, W, P, nW, hx, hz, y1, rc, wc);
     }
+    // 細部 (窓まわり・出窓・バルコニー・店先・屋根の飾り・ネオン。b.det があるエリアだけ)
+    const fd = b.det && kit ? facadeDetail({ b, Buf, P, nW, W, T, S, SG: B.shopglass, LP: B.lamp, NE: (c) => B.neon[c] || (B.neon[c] = new Buf()), signUv, y0, y1, gy, kit, low }) : null;
     // 看板 (前の面の、1 階の上) と、店先の日よけ
     {
-      const fw = Math.min(b.shop || b.lm ? hx * 1.7 : 2 * Math.min(hx, 2.6), b.lm ? 11 : 7.5), fhh = fw / 4;
-      const ya = y0 + (b.shop ? fh : 3.1) + 0.15, gz = hz + 0.1;
+      const fw = Math.min(b.shop || b.lm ? hx * 1.7 : 2 * Math.min(hx, 2.6), b.lm ? 11 : (fd ? 5.0 : 7.5)), fhh = fw / 4;
+      const ya = y0 + (b.shop ? fh : 3.1) + (fd ? 0.1 : 0.15), gz = hz + 0.1;
       const uv = signUv(b.sign);
       S.quad(P(-fw / 2, ya, gz), P(fw / 2, ya, gz), P(fw / 2, ya + fhh, gz), P(-fw / 2, ya + fhh, gz), nW(0, 1), [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]], white);
       box(T, -fw / 2 - 0.12, fw / 2 + 0.12, ya - 0.12, ya + fhh + 0.12, hz + 0.02, hz + 0.09, tc);
-      if (b.shop && b.awn) {
+      if (b.shop && b.awn && !fd) {
         const aw = hx * 2 - 1.6, n = Math.max(2, Math.round(aw / 0.9)), ex = 1.3, ay = y0 + fh - 0.15;
         for (let k = 0; k < n; k++) {
           const xa = -aw / 2 + aw * k / n, xb = -aw / 2 + aw * (k + 1) / n, color = C(b.awn[k % 2]);
@@ -183,7 +189,7 @@ export function buildAreas(ctx) {
     }
     // 屋上の看板 (道に向けて 2 枚の板 + 柱)
     if (b.roofSign !== undefined) {
-      const fw = Math.min(hx * 1.6, 9), fhh = fw / 4, ya = y1 + 1.0, uv = signUv(b.roofSign);
+      const fw = Math.min(hx * 1.6, 9), fhh = fw / 4, ya = y1 + 1.0 + (fd ? Math.max(0, fd.crownH - 0.5) : 0), uv = signUv(b.roofSign);
       S.quad(P(-fw / 2, ya, 0), P(fw / 2, ya, 0), P(fw / 2, ya + fhh, 0), P(-fw / 2, ya + fhh, 0), nW(0, 1), [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]], white);
       S.quad(P(fw / 2, ya, -0.05), P(-fw / 2, ya, -0.05), P(-fw / 2, ya + fhh, -0.05), P(fw / 2, ya + fhh, -0.05), nW(0, -1), [[uv[0], uv[1]], [uv[2], uv[1]], [uv[2], uv[3]], [uv[0], uv[3]]], white);
       for (const s of [-1, 1]) box(T, s * fw * 0.4 - 0.15, s * fw * 0.4 + 0.15, y1, ya, -0.15, 0.15, tc);
@@ -260,9 +266,17 @@ export function buildAreas(ctx) {
     if (gw) { const m = meshOf(gw, wallMat, 'park_walls_' + ai); m.visible = !!low; wallMeshes.push(m); }
     if (gt) meshOf(gt, trimMat, 'park_trim_' + ai);
     if (gs) meshOf(gs, signMat, 'park_signs_' + ai, false);
+    if (kit) {   // 店の窓・壁灯の玉・ネオン (色ごと)
+      const g1 = B.shopglass.geometry(false), g2 = B.lamp.geometry(false);
+      if (g1) meshOf(g1, kit.shopMat, 'park_facade_shop_' + ai, false);
+      if (g2) meshOf(g2, kit.lampMat, 'park_facade_lamp_' + ai, false);
+      for (const [c, nb] of Object.entries(B.neon)) { const gn = nb.geometry(false); if (gn) meshOf(gn, kit.neonMat(c), 'park_facade_neon_' + ai, false); }
+    }
   });
   const gc = clockBuf.geometry(false); if (gc) meshOf(gc, clockMat, 'park_clocks', false);
   api.stats.buildings = G.buildings.length;
+  api.stats.facadeTris = bufs.reduce((n, B) => n + (B.shopglass.p.length + B.lamp.p.length + Object.values(B.neon).reduce((m, nb) => m + nb.p.length, 0)) / 9, 0) | 0;   // 細部のうち別のメッシュにした分 (壁・縁取り・看板の中の増え分は含まない)
+  api.stats.trisAll = bufs.reduce((n, B) => n + (B.wall.p.length + B.trim.p.length + B.sign.p.length) / 9, 0) | 0;
 
   // ---------- 内側の道・広場 ----------
   const PATHCOL = { avenue: '#ecc4dc', town: '#a9a7ad', valley: '#c9b087', forest: '#d8c6a0', harbor: '#c8b79c', sweet: '#f6d3e4', night: '#8d8798' };
@@ -440,7 +454,7 @@ export function buildAreas(ctx) {
   }
 
   // スマホ: 動かない小物のメッシュを材質 × 区画でまとめる (描画の呼び出しを減らす。PC は今までどおり)
-  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks)/.test(o.name) });
+  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks|facade)/.test(o.name) });
 
   // ---------- 乗り物 (段階 3。観覧車・メリーゴーラウンド・コースター) ----------
   api.rides = buildRides({ cfg, ground, std, glowMat, group, col, emissive });

@@ -74,6 +74,17 @@ try {
         const cx = bs.reduce((s, b) => s + b.x, 0) / bs.length, cz = bs.reduce((s, b) => s + b.z, 0) / bs.length;
         VIEWS.push({ name: nm + '_aerial', at: [cx, cz], look: [0, 1], pitch: 0.95, dist: 170 });
       }
+      if (a.detail) {   // 段階 7: 建物の細部があるエリア。店先・上の階・通りの眺めを、建物 4 棟ぶん
+        const dbs = bs.filter((b) => b.det);
+        [3, 8, 14, 19].forEach((k, n) => {
+          const b = dbs[Math.min(k, dbs.length - 1)]; if (!b) return;
+          const ux = Math.sin(b.yaw), uz = Math.cos(b.yaw), r = b.d / 2 + 6;
+          VIEWS.push({ name: 'e' + n + '_front', at: [b.x + ux * r, b.z + uz * r], look: [-ux, -uz], pitch: 0.1, dist: 9 });
+          VIEWS.push({ name: 'e' + n + '_upper', at: [b.x + ux * (r + 4), b.z + uz * (r + 4)], look: [-ux, -uz], pitch: 0.28, dist: 13 });
+          VIEWS.push({ name: 'e' + n + '_shop', at: [b.x + ux * (b.d / 2 + 3), b.z + uz * (b.d / 2 + 3)], look: [-ux, -uz], pitch: 0.06, dist: 4.5 });
+          VIEWS.push({ name: 'e' + n + '_side', at: [b.x + ux * r - uz * 9, b.z + uz * r + ux * 9], look: [-ux * 0.6 + uz * 0.8, -uz * 0.6 - ux * 0.8], pitch: 0.12, dist: 12 });
+        });
+      }
       const mp = park.gen.paths.find((p2) => p2.a === i);
       if (mp) { const q = mp.pts[Math.floor(mp.pts.length / 2)], r = mp.pts[Math.floor(mp.pts.length / 2) + 1] || mp.pts[0]; const d = Math.hypot(r[0] - q[0], r[1] - q[1]) || 1; VIEWS.push({ name: nm + '_street', at: [q[0], q[1]], look: [(r[0] - q[0]) / d, (r[1] - q[1]) / d], pitch: 0.1, dist: 10 }); }
     });

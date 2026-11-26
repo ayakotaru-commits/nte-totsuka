@@ -178,7 +178,7 @@ def generate(cfg):
     info = {}
     for ai, (name, poly) in enumerate(areas.items()):
         th = themes[name]
-        out["areas"].append({"name": name, "kind": th["kind"], "lamp": th.get("lamp", "warm"), "trim": th.get("trim", "#ffffff")})
+        out["areas"].append({"name": name, "kind": th["kind"], "lamp": th.get("lamp", "warm"), "trim": th.get("trim", "#ffffff"), **({"detail": th["detail"].get("style", th["kind"]), "terrace": th["detail"].get("terrace", 0)} if th.get("detail") else {})})
         rng = random.Random(f"{name}/{th['seed']}")
         inf = {"ai": ai, "name": name, "poly": poly, "th": th, "rng": rng, "paths": [], "plazas": [], "far": None}
         info[name] = inf
@@ -360,6 +360,33 @@ def generate(cfg):
                 if got < cnt:
                     print(f"警告: {name} の {kind} が {got}/{cnt} しか置けなかった")
 
+    # ---- 建物の細部 (テーマの "detail" があるエリアだけ。段階 7)。乱数は建物の位置から作る (ほかの乱数の列を動かさない = 既存の出力は変わらない) ----
+    def make_detail(inf, b):
+        th = inf["th"]; dt = th["detail"]
+        rng = random.Random(f"{inf['name']}/det/{b['x']}/{b['z']}")
+        hx, hz = b["w"] / 2, b["d"] / 2
+        floors = max(1, round(b["h"] / b["fh"]))
+        nb = int((b["w"] / b["bay"]) - 0.78 + 1e-6) + 1            # 前の面に入る窓の列の数 (壁の模様の窓の位置と合わせる)
+        d = {"win": pick(rng, dt["windows"]), "goods": rng.randrange(dt.get("goods", 4))}
+        if b["roof"] == "flat":
+            d["crown"] = pick(rng, dt["crowns"])
+        else:
+            d["chim"] = rl(rng.uniform(-hx * 0.5, hx * 0.5))
+        d["shut"] = rng.choice(dt["shutters"]); d["flower"] = rng.choice(dt["flowers"])
+        used = set()
+        if floors >= 3 and nb >= 3 and rng.random() < dt.get("bayChance", 0.6):
+            k = rng.randrange(1, nb - 1); used.add(k)
+            d["bay"] = [k, 2 if floors >= 4 and rng.random() < 0.5 else 1]          # [列, 階の数 (2 階から)]
+        if floors >= 3 and nb >= 3 and rng.random() < dt.get("balconyChance", 0.5):
+            ks = [k for k in range(nb) if k not in used and all(abs(k - u) > 0 for u in used)]
+            if ks:
+                d["balc"] = rng.choice(ks)
+        d["sconce"] = rng.random() < 0.8
+        d["blade"] = rng.choice([-1, 1]) if rng.random() < 0.75 else 0
+        d["neon"] = pick(rng, dt["neon"])
+        d["planters"] = rng.random() < 0.7
+        return d
+
     # ---- 建物 ----
     def make_building(inf, x, z, yaw, w, d, h, wall=None, color=None, roof=None, rcol=None, rh=None, nm=None, shop=None, lm=None, rows_roof_sign=True):
         th, rng = inf["th"], inf["rng"]
@@ -398,6 +425,8 @@ def generate(cfg):
             b["roofSign"] = b.get("roofSign") if lm.get("clock") else None
             if b["roofSign"] is None:
                 del b["roofSign"]
+        if th.get("detail") and not lm:
+            b["det"] = make_detail(inf, b)
         return b
 
     def add(b, inf):
