@@ -856,6 +856,85 @@ export function buildCastle(ctx) {
     cm.castShadow = true; api.group.add(cm, tg);
     // 庭の灯 (大通りの両側)
     for (const sd of [-1, 1]) for (const z of [31.5, 14]) { parapet.box(sd * 4.6, 1.6, z, 0.28, 3.0, 0.28, 0, tint(goldC, 0.95)); lamps.push([sd * 4.6, 3.3, z, lampWarm, 0.42]); }
+    // 島の庭 (改善 3): 噴水のある丸い花壇 6 つ (前の芝 2・裏の芝 2・東西の端 2)。石の縁・水・金の噴き口・花の輪。ふち石の輪は砂利色
+    {
+      const spots = []; for (const sd of [-1, 1]) spots.push([sd * 34, 34], [sd * 36, -31], [sd * 76, -2]);
+      const nS = spots.length, rg = mulberry(11), nF = low ? 12 : 34;
+      const basinG = new THREE.CylinderGeometry(1.9, 2.0, 0.6, low ? 14 : 24).translate(0, 0.3, 0), waterG = new THREE.CircleGeometry(1.7, low ? 14 : 24).rotateX(-Math.PI / 2).translate(0, 0.56, 0);
+      const spoutG = new THREE.CylinderGeometry(0.12, 0.3, 1.5, 8).translate(0, 1.1, 0), capG = new THREE.SphereGeometry(0.3, 8, 6).translate(0, 1.95, 0);
+      const basinM = new THREE.InstancedMesh(basinG, trimMat, nS), waterM = new THREE.InstancedMesh(waterG, new THREE.MeshStandardMaterial({ color: '#7fcfe6', roughness: 0.08, metalness: 0.1 }), nS);
+      const spoutM = new THREE.InstancedMesh(spoutG, goldMat, nS), capM = new THREE.InstancedMesh(capG, goldMat, nS);
+      const fl2 = new THREE.InstancedMesh(new THREE.SphereGeometry(0.28, 5, 3), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), nS * nF);
+      const dd = new THREE.Object3D(), cc2 = new THREE.Color(); let fj = 0;
+      const fcols = ['#ff86b8', '#ffd36b', '#9a7ae6', '#ffffff', '#59c8e6', '#ff9a7a'];
+      spots.forEach(([x, z], i) => {
+        flatMesh(fan(ell(7, 7, low ? 20 : 36, x, z), 0.13, [x, z]), '#cfc4b0', 0.13);   // 砂利の輪
+        flatMesh(fan(ell(5.1, 5.1, low ? 20 : 36, x, z), 0.15, [x, z]), '#6aa24e', 0.15);   // 芝の輪
+        flatMesh(fan(ell(2.6, 2.6, low ? 16 : 28, x, z), 0.17, [x, z]), '#e8dfd2', 0.17);   // 噴水のまわりの石畳
+        dd.position.set(x, 0.2, z); dd.scale.set(1, 1, 1); dd.rotation.set(0, 0, 0); dd.updateMatrix();
+        [basinM, waterM, spoutM, capM].forEach((m) => m.setMatrixAt(i, dd.matrix));
+        for (let k = 0; k < nF; k++) { const a = (k + rg() * 0.8) / nF * TAU, r = 2.9 + rg() * 1.8; dd.position.set(x + Math.cos(a) * r, 0.32, z + Math.sin(a) * r); dd.scale.setScalar(0.7 + rg() * 0.5); dd.updateMatrix(); fl2.setMatrixAt(fj, dd.matrix); fl2.setColorAt(fj, cc2.set(fcols[Math.floor(rg() * fcols.length)])); fj++; }
+        for (let k = 0; k < 4; k++) { const a = (k + 0.5) / 4 * TAU + 0.4; lamps.push([x + Math.cos(a) * 6.1, 1.9, z + Math.sin(a) * 6.1, k % 2 ? lampPink : lampCyan, 0.3]); parapet.box(x + Math.cos(a) * 6.1, 0.95, z + Math.sin(a) * 6.1, 0.14, 1.8, 0.14, 0, tint(goldC, 0.9)); }
+        const [wx, wz] = W(x, z); col.circle.push([wx, wz, 2.0, y0, y0 + 0.9]);
+      });
+      fl2.count = fj; [basinM, waterM, spoutM, capM, fl2].forEach((m) => { m.instanceMatrix.needsUpdate = true; api.group.add(m); });
+      if (fl2.instanceColor) fl2.instanceColor.needsUpdate = true;
+      basinM.receiveShadow = true;
+    }
+  }
+
+  // ---------- 堀の小舟と白鳥 (改善 3)。東西の湖面をゆっくりまわる。夜は小舟の灯が光る。PC は 小舟 4・白鳥 6、スマホ (low) は 2・2 ----------
+  const craft = [];
+  {
+    const mergeParts = (parts) => {
+      const pos = [], nor = [], colr = [], idx = []; let off = 0;
+      for (const [g0, c] of parts) {
+        const g = g0.index ? g0 : g0, p = g.attributes.position, n = g.attributes.normal;
+        for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); nor.push(n.getX(i), n.getY(i), n.getZ(i)); colr.push(c.r, c.g, c.b); }
+        if (g.index) for (let i = 0; i < g.index.count; i++) idx.push(g.index.getX(i) + off); else for (let i = 0; i < p.count; i++) idx.push(i + off);
+        off += p.count;
+      }
+      const r = new THREE.BufferGeometry(); r.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); r.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3)); r.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3)); r.setIndex(idx); return r;
+    };
+    const sph = (rx, ry, rz, x, y, z, seg = 8) => new THREE.SphereGeometry(1, seg, Math.max(4, seg - 2)).scale(rx, ry, rz).translate(x, y, z);
+    const white = C('#f7f4ef'), grey = C('#e3dfd8'), beak = C('#f0a24a'), dark = C('#2a2a30');
+    // 白鳥 (長さ約 2.3 m): 胴・首 (S 字に 4 つの球)・頭・くちばし・翼・尾
+    const swanG = mergeParts([
+      [sph(0.42, 0.34, 0.95, 0, 0.36, 0), white], [sph(0.3, 0.2, 0.55, 0.36, 0.55, -0.12), grey], [sph(0.3, 0.2, 0.55, -0.36, 0.55, -0.12), grey],
+      [sph(0.2, 0.22, 0.2, 0, 0.66, 0.78), white], [sph(0.15, 0.2, 0.15, 0, 0.9, 0.9), white], [sph(0.13, 0.2, 0.13, 0, 1.15, 0.86), white], [sph(0.13, 0.16, 0.13, 0, 1.36, 0.92), white],
+      [sph(0.12, 0.11, 0.18, 0, 1.38, 1.1), white], [sph(0.06, 0.05, 0.13, 0, 1.36, 1.26, 6), beak], [sph(0.04, 0.04, 0.04, 0.06, 1.42, 1.15, 5), dark], [sph(0.04, 0.04, 0.04, -0.06, 1.42, 1.15, 5), dark],
+      [sph(0.16, 0.12, 0.3, 0, 0.5, -0.95, 6), white],
+    ]);
+    const swanM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, emissive: '#ffffff', emissiveIntensity: 0.0 });
+    swanM.userData.glow = 0.1; emissive.push(swanM);   // 夜はほんのり白く (灯りが当たっているように)
+    // 小舟 (長さ約 4.4 m): 先がとがった船体・内側・座板・舳先の灯の柱
+    const hullShape = new THREE.Shape(); hullShape.moveTo(0, -2.2); hullShape.bezierCurveTo(1.0, -1.6, 1.0, 1.0, 0, 2.2); hullShape.bezierCurveTo(-1.0, 1.0, -1.0, -1.6, 0, -2.2);
+    const hull = new THREE.ExtrudeGeometry(hullShape, { depth: 0.55, bevelEnabled: false, curveSegments: 10 }); hull.rotateX(-Math.PI / 2); hull.translate(0, -0.2, 0);
+    const inner = new THREE.ExtrudeGeometry(hullShape, { depth: 0.1, bevelEnabled: false, curveSegments: 10 }); inner.scale(0.82, 0.86, 1); inner.rotateX(-Math.PI / 2); inner.translate(0, 0.28, 0);
+    const boatColors = ['#ff9ccf', '#8fe8c8', '#c3a6ff', '#ffd36b'];
+    const mkBoat = (hc) => mergeParts([
+      [hull, C(hc)], [inner, C('#f5ead6')], [new THREE.BoxGeometry(1.6, 0.08, 0.35).translate(0, 0.45, -0.3), C('#b98a58')], [new THREE.BoxGeometry(1.5, 0.08, 0.35).translate(0, 0.45, 0.7), C('#b98a58')],
+      [new THREE.CylinderGeometry(0.05, 0.05, 1.5, 6).translate(0, 1.0, 1.8), C('#d6b25e')], [new THREE.BoxGeometry(1.0, 0.04, 0.04).translate(0, 1.7, 1.8), C('#d6b25e')],
+    ]);
+    const boatM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide });
+    const lampBall = new THREE.SphereGeometry(0.2, 8, 6);
+    const lagoon = (sd) => ({ boats: [[sd * 132, 4, 30, 18, 0.045, 0.0], [sd * 124, -8, 17, 9, -0.06, 2.1], ...(low ? [] : [[sd * 150, 22, 16, 8, 0.05, 4.0], [sd * 108, 14, 10, 6, -0.055, 1.0]]) ].slice(0, low ? 1 : 2 + (sd > 0 ? 0 : 0)),
+      swans: [[sd * 140, 14, 22, 12, 0.032, 0.0], [sd * 140, 14, 22, 12, 0.032, 0.35], ...(low ? [] : [[sd * 140, 14, 22, 12, 0.032, 0.62]])].slice(0, low ? 1 : 3) });
+    let bi = 0;
+    for (const sd of [-1, 1]) {
+      const Lg = lagoon(sd);
+      Lg.boats.forEach(([cx, cz, ax, az, w, ph]) => {
+        const m = new THREE.Mesh(mkBoat(boatColors[bi % 4]), boatM); m.frustumCulled = false;
+        const lamp = new THREE.Mesh(lampBall, lampWarm); lamp.position.set(0, 1.65, 1.8); m.add(lamp);
+        const lamp2 = new THREE.Mesh(lampBall, lampPink); lamp2.scale.setScalar(0.8); lamp2.position.set(0, 1.0, -1.9); m.add(lamp2);
+        api.group.add(m); craft.push({ m, cx, cz, ax, az, w, ph: ph + bi, k: 0.045, bob: bi }); bi++;
+      });
+      Lg.swans.forEach(([cx, cz, ax, az, w, ph]) => {
+        const m = new THREE.Mesh(swanG, swanM); m.scale.setScalar(1.5); m.frustumCulled = false;
+        api.group.add(m); craft.push({ m, cx, cz, ax, az, w: w * (sd > 0 ? 1 : -1), ph: ph * TAU + (sd > 0 ? 0 : 1.7), k: 0.02, bob: bi++ });
+      });
+    }
+    api.craft = craft; api.stats.craft = craft.length;
   }
 
   // ---------- 形を仕上げる ----------
@@ -971,6 +1050,11 @@ export function buildCastle(ctx) {
     if (d2 > 1500 * 1500) return;
     crown.rotation.y = now * 0.052;
     if (api.mirrorT) api.mirrorT.value = now;
+    if (d2 < 1200 * 1200) for (const c of craft) {
+      const a = now * c.w + c.ph, x = c.cx + c.ax * Math.cos(a), z = c.cz + c.az * Math.sin(a), dx = -c.ax * Math.sin(a) * c.w, dz = c.az * Math.cos(a) * c.w;
+      c.m.position.set(x, wy + 0.02 + 0.04 * Math.sin(now * 1.3 + c.bob), z);
+      c.m.rotation.set(0.03 * Math.sin(now * 0.9 + c.bob), Math.atan2(dx, dz), 0.04 * Math.sin(now * 1.1 + c.bob * 2), 'YXZ');
+    }
     wheels.forEach((w, i) => { w.wheel.rotation.z = now * w.rate * w.dir + i; });
     // 電球のまたたき (夜)
     const sh = api.showAmt(cyc);

@@ -76,6 +76,7 @@ const VIEWS = [
   { name: 'k15_keep_terrace', at: [31506, -25471], look: [0, -1], pitch: 0.2, dist: 8, dy: 22.7 },            // 屋上のテラス (正面側。プラザの方を見る = 扉の上)
   { name: 'k16_castle_reflect', at: [31345, -25500], look: [1, 0.2], pitch: 0.1, dist: 14 },                // 湖の西の岸から島の城の横顔 (水面への映り込み。改善 2)
   { name: 'k17_castle_reflect_n', at: [31345, -25500], look: [1, 0.2], pitch: 0.1, dist: 14, show: { idle: true } },   // 同じ場所の夜 (--night)
+  { name: 'k18_castle_garden', at: [31442, -25430], look: [0.5, 1], pitch: 0.35, dist: 22 },      // 島の前の芝の花壇・噴水を上気味に (改善 3。島の東の端のあたり)
   { name: 'k10_castle_night', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { idle: true } },   // 夜 (--night)
   { name: 'k11_castle_show', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { castle: 30 } },    // 夜の映写のライトアップ (--night)
   { name: 'k12_castle_fw', at: [31490, -25640], look: [0.1, 1], pitch: 0.06, dist: 30, show: { fw: 'burst:20' } },  // 花火の夜 (--night)
