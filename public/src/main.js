@@ -394,6 +394,7 @@ async function main() {
       if (near2) { if (parkHud.textContent !== li.text) parkHud.textContent = li.text; parkHud.classList.toggle('soon', li.soon); }
       if (parkHud.hidden === near2) parkHud.hidden = !near2;
     }
+    if (built.treeLayer) built.treeLayer.update(camera);   // 近い木だけ葉の板の形 (trees.js)
     if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, parkWant);
     if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, PRESETS[tod.idx].name, clock.elapsedTime, tod.cur.win);
     look.update(dt, tod.cur);

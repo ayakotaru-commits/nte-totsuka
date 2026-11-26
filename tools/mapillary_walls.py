@@ -223,7 +223,7 @@ class Occluders:
                     (x1, z1), (x2, z2) = ring[i - 1], ring[i]
                     segs.append((x1, z1, x2, z2, yb, yt))
         self.seg = np.array(segs, float)
-        self.tree = np.array([[t[0], t[1], 1.7 * t[3], t[2] + 1.0 * t[3], t[2] + 4.9 * t[3]] for t in trees] or [[0, 0, 0, 0, 0]], float)
+        self.tree = np.array([[t[0], t[1], 1.7 * t[3] * (t[7] if len(t) > 7 else 1.0), t[2] + 1.0 * t[3], t[2] + 4.9 * t[3]] for t in trees] or [[0, 0, 0, 0, 0]], float)
         self.sg, self.tg = self._grid(self.seg[:, [0, 2]].min(1), self.seg[:, [1, 3]].min(1), self.seg[:, [0, 2]].max(1), self.seg[:, [1, 3]].max(1)), \
             self._grid(self.tree[:, 0] - self.tree[:, 2], self.tree[:, 1] - self.tree[:, 2], self.tree[:, 0] + self.tree[:, 2], self.tree[:, 1] + self.tree[:, 2])
 

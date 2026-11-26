@@ -222,6 +222,14 @@ export class Rhythm {
   hideTrees() {
     this.showTrees();
     const fx = Math.sin(SH.yaw), fz = Math.cos(SH.yaw);
+    const layer = this.scene.getObjectByName('trees') && this.scene.getObjectByName('trees').userData.layer;   // 葉の板の木 (trees.js)
+    if (layer) {
+      layer.hide(layer.inBox((x0, z0) => {
+        const x = x0 - SH.o[0], zz = z0 - SH.o[1], lx = x * fz - zz * fx, lz = x * fx + zz * fz;
+        return !(lx < AX - 8 || lx > AX + 9 || lz < 2 || lz > 16);
+      }));
+      return;
+    }
     for (const name of ['trees_trunk', 'trees_crown']) {
       const im = this.scene.getObjectByName(name);
       if (!im) continue;
@@ -242,6 +250,8 @@ export class Rhythm {
     for (const c of [this.lead, ...this.crowd]) if (c.baseY != null) c.root.position.y = c.baseY;
   }
   showTrees() {
+    const g = this.scene.getObjectByName('trees');
+    if (g && g.userData.layer) g.userData.layer.showAll();
     if (!this.hiddenTrees) return;
     for (const t of this.hiddenTrees) { t.im.setMatrixAt(t.i, t.m); t.im.instanceMatrix.needsUpdate = true; }
     this.hiddenTrees = null;
