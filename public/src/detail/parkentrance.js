@@ -353,7 +353,15 @@ export function buildEntrance({ cfg, ground, std, glowMat, group, col, emissive,
     const tp = [], tb = [];
     for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + Math.PI / 8; tp.push({ u: bu + Math.cos(a) * (M.rx + 1.5), y: 0, v: bv + Math.sin(a) * (M.rz + 1.5) }); tb.push({ u: bu + Math.cos(a) * (M.rx + 1.5), y: 0, v: bv + Math.sin(a) * (M.rz + 1.5), c: FLAGS[i % FLAGS.length] }); }
     inst(loc, new THREE.CylinderGeometry(0.42, 0.34, 0.6, 10).translate(0, 0.3, 0), mat('#e8d6f5', 0.8), tp);
-    inst(loc, new THREE.SphereGeometry(0.62, 12, 8).translate(0, 1.2, 0), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9 }), tb);
+    inst(loc, new THREE.ConeGeometry(0.62, 1.7, 12).translate(0, 1.45, 0), mat('#4fae6a', 0.9), tb.map((q) => ({ ...q, c: null })));
+    inst(loc, new THREE.SphereGeometry(0.2, 8, 6).translate(0, 2.4, 0), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), tb);
+    // 築山の真ん中: 金のフィルムのリールの飾り (大門の冠と同じ形。夜は光る。広間の側へ向く)
+    const emb = new THREE.Group(); emb.position.set(bu, 0.3 + M.h + 2.6, bv); loc.add(emb);
+    emb.add(new THREE.Mesh(new THREE.TorusGeometry(1.9, 0.2, 8, 36), gold));
+    emb.add(new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.4, 14).rotateX(Math.PI / 2), gold));
+    for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + Math.PI / 6, ho = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.09, 6, 14), gold); ho.position.set(Math.cos(a) * 1.15, Math.sin(a) * 1.15, 0); emb.add(ho); }
+    addCyl(loc, 0.12, 0.16, 2.7, bu, 0.3 + M.h - 0.1, bv, gold, 8, false);
+    st.tris += 400; st.meshes += 9;
     // 当たり判定: 築山 (縁石 + 盛り土。楕円を 20 角形で)
     const ring = []; for (let i = 0; i < 20; i++) { const a = i / 20 * Math.PI * 2, [x, z] = F.W(bu + (M.rx + 0.75) * Math.cos(a), bv + (M.rz + 0.75) * Math.sin(a)); ring.push([x, z]); }
     col.poly = col.poly || []; col.poly.push([ring, gy - 1, gy + 1.1]);
