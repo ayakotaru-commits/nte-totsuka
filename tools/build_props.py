@@ -2137,21 +2137,43 @@ def build_walk(city, world, H, col):
 
 # 6. 点群から読んだ木と駐車場 (data/lots.json。tools/lidar_cover.py が作る)
 # =====================================================================
+TRAITS = ROOT / "data" / "tree_traits.json"   # 木ごとの葉の色・樹形 (tools/tree_traits.py が作る。無ければ全部同じ種類)
+TREE_BASE_H = (4.9, 5.0, 5.2, 1.7)    # 種類ごとの、倍率 1 の木の高さ (m)。public/src/trees.js の BASE_H と同じ
+TREE_BASE_R = (1.7, 1.4, 0.95, 1.3)   # 同、葉の半径 (m)
+TREE_MAX_SC = (3.2, 3.2, 3.2, 1.8)    # 高さの倍率の上限 (点群の高さが 16 m を超える木は 16 m で止める)
+
+
 def build_lidar_trees(lots, world, H, col):
-    """木: 点群で周りより高かった所に、その高さの木を置く。建物に近い木は、葉が壁に入らない大きさに縮める"""
+    """木: 点群で周りより高かった所に、その高さの木を置く。建物に近い木は、葉が壁に入らない大きさに縮める。
+    data/tree_traits.json があれば、種類 (広葉樹・針葉樹・細い木・低木)・葉の色・幅も付ける。
+    [x, z, y, 高さの倍率, 乱数, 葉の色 (0xRRGGBB か null), 種類, 幅の倍率]。無いときは先頭の 5 つだけ"""
+    traits = {}
+    if TRAITS.exists():
+        for x, z, kind, rgb, wr in json.loads(TRAITS.read_text(encoding="utf-8"))["trees"]:
+            traits[(x, z)] = (kind, rgb, wr / 100)
     trees = []
     for x, z, h in lots["trees"]:
         near = world.query(x - 5, z - 5, x + 5, z + 5)
         if any(world.contains(b, x, z) for b in near):
             continue
-        sc = min(2.6, max(0.6, h / 4.9))                      # 基準の木の高さは 4.9 m
         d = min([world.closest_d(b, x, z) for b in near], default=9.0)
-        sc = max(0.5, min(sc, (d + 0.6) / 1.7))               # 葉の半径 1.7 m × 倍率
         r = hash_rng(f"lt{x},{z}")()
         y = H(x, z)
-        trees.append([r2(x), r2(z), r2(y), r3(sc), r3(r)])
+        tr = traits.get((x, z))
+        if tr is None:
+            sc = min(2.6, max(0.6, h / 4.9))                      # 基準の木の高さは 4.9 m
+            sc = max(0.5, min(sc, (d + 0.6) / 1.7))               # 葉の半径 1.7 m × 倍率
+            trees.append([r2(x), r2(z), r2(y), r3(sc), r3(r)])
+        else:
+            kind, rgb, wr = tr
+            R = TREE_BASE_R[kind]
+            sc = min(TREE_MAX_SC[kind], max(0.6 if kind != 3 else 0.5, h / TREE_BASE_H[kind]))
+            wr = max(0.5, min(wr, (d + 0.6) / (R * sc)))          # 壁に近い木は横を細くし、それでも入るなら低くする
+            if R * sc * wr > d + 0.6:
+                sc = max(0.5, (d + 0.6) / (R * wr))
+            trees.append([r2(x), r2(z), r2(y), r3(sc), r3(r), None if rgb < 0 else rgb, kind, r2(wr)])
         col.tree.append([r2(x), r2(z), r3(0.25 * sc), r2(y), r2(y + 4.9 * sc)])
-    print(f"trees (lidar)={len(trees)}")
+    print(f"trees (lidar)={len(trees)}" + (f" (種類・色つき {sum(1 for t in trees if len(t) > 5)})" if traits else ""))
     return trees
 
 
