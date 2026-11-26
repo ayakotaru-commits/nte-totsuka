@@ -74,7 +74,7 @@ function buildMaterial() {
 const NO_SHOW = { parade: 0, fw: 0, paradeOn: false, fwOn: false };
 
 export class Crowd {
-  // props = props.json (crowd を持つこと)。opt = { low: スマホなど (人数・範囲を減らす), cap, park: フェアリー・リールパークの設定 (public/data/park.json。園内の通り道と観客の場所を足す) }
+  // props = props.json (crowd を持つこと)。opt = { low: スマホなど (人数・範囲を減らす), cap, park: 千葉ドリームランドの設定 (public/data/park.json。園内の通り道と観客の場所を足す) }
   constructor(scene, props, opt = {}) {
     let crowd = props && props.crowd;
     // 園内の通り道 (park.json の crowd。k = 'p') を街の通り道に足す。足すだけで、街の通り道・人の動きは変えない

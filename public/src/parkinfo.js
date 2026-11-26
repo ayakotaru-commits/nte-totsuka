@@ -1,4 +1,4 @@
-// フェアリー・リールパーク 段階 5: ショーの時刻の案内と、観客の場所。three.js・DOM に依存しない (tools/dev/parkcrowdcheck.mjs が数字を確かめる)。
+// 千葉ドリームランド 段階 5: ショーの時刻の案内と、観客の場所。three.js・DOM に依存しない (tools/dev/parkcrowdcheck.mjs が数字を確かめる)。
 //   ・ショーは時計 (Date.now) の cycle 秒ごとにくり返す (detail/parkshow.js)。「次のパレード・花火まであと何秒か」は時計から計算できる (parkSchedule)
 //   ・観客: パレードの道の両側と、湖のまわり・プラザの南の縁の「立つ場所」(makeViewSlots)。ショーが近づくと増え、終わると減る (viewWant)。人の出し入れは crowdsim.js の updateViewers
 const ev = (ph, cyc, start, dur) => {

@@ -1,4 +1,4 @@
-"""フェアリー・リールパーク (舞浜の架空のテーマパーク。計画は PARK_PLAN.md) の設定を検証し、ブラウザ用の public/data/park.json を作る。
+"""千葉ドリームランド (舞浜の架空のテーマパーク。計画は PARK_PLAN.md) の設定を検証し、ブラウザ用の public/data/park.json を作る。
 
 設定: data/park.json (名前・敷地・エリア・広場・湖・ゲート・道)。パークの名前は設定の 1 か所だけ。
 使う側: public/src/detail/park.js

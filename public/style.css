@@ -11,7 +11,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #hud-time { position: fixed; right: 20px; top: 232px; width: 200px; text-align: center; font-size: 13px; text-shadow: 0 1px 3px #000; pointer-events: none; }
 
 #hud-goal { position: fixed; left: 24px; top: 82px; font-size: 14px; color: #ffd27a; text-shadow: 0 1px 3px #000; pointer-events: none; }
-/* フェアリー・リールパーク: 次のパレード・花火までの案内 (parkinfo.js。園の近くにいるときだけ。始まる 60 秒前・開催中は目立つ) */
+/* 千葉ドリームランド: 次のパレード・花火までの案内 (parkinfo.js。園の近くにいるときだけ。始まる 60 秒前・開催中は目立つ) */
 #hud-park { position: fixed; left: 24px; top: 110px; padding: 5px 14px; border-radius: 999px; background: rgba(48,24,92,.66); border: 1px solid rgba(255,206,255,.4); color: #fff; font-size: 13px; letter-spacing: .04em; text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap; }
 #hud-park.soon { background: linear-gradient(90deg, rgba(255,95,162,.82), rgba(143,123,255,.82)); animation: parkpulse 1s ease-in-out infinite; }
 @keyframes parkpulse { 50% { filter: brightness(1.28); } }

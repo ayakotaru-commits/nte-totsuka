@@ -1,4 +1,4 @@
-"""フェアリー・リールパーク 段階 5: 園内を歩く人の通り道 (crowd) と、地図の印・ワープ先 (spots) を作る。tools/park.py が呼ぶ (public/data/park.json の crowd・spots)。
+"""千葉ドリームランド 段階 5: 園内を歩く人の通り道 (crowd) と、地図の印・ワープ先 (spots) を作る。tools/park.py が呼ぶ (public/data/park.json の crowd・spots)。
 
 通り道 (crowd.lanes): 園内の道 (設定の paths・各エリアの内側の道 gen.paths)・湖のまわりの散歩道・サンライズ・プラザの輪と放射状の道を、
   道どうしの交わる所で切ってつなぐ (T 字・十字の交差で人が引き返さないように。切るのは「道の端が別の道の 6 m 以内」のとき)。

@@ -22,7 +22,7 @@ export async function loadDetail({ scene, city, world, built, props, ext = null,
   const emissive = [];
   const updaters = []; // 毎フレーム呼ぶもの (信号の切り替え)
   let trains = null;
-  let parkApi = null; // フェアリー・リールパーク (detail/park.js。設定 data/park.json があるときだけ。main.js が毎コマ update(カメラの位置) を呼ぶ)
+  let parkApi = null; // 千葉ドリームランド (detail/park.js。設定 data/park.json があるときだけ。main.js が毎コマ update(カメラの位置) を呼ぶ)
   let railExt = null; // 線路の延長 (区間ごとに読み込む。main.js が毎コマ update(カメラの位置) を呼ぶ)
   if (!props) console.warn('[detail] data/props.json がありません。python tools/build_props.py で作ってください (小物・外構・ベランダ・看板なし)');
 
@@ -109,7 +109,7 @@ export async function loadDetail({ scene, city, world, built, props, ext = null,
 
   let on = true;
   return {
-    park: parkApi, // フェアリー・リールパーク (detail/park.js。update(x, z)。無いときは null)
+    park: parkApi, // 千葉ドリームランド (detail/park.js。update(x, z)。無いときは null)
     railExt, // 線路の延長 (detail/railext.js。update(x, z)・map・stats。無いときは null)
     trains,  // 電車の時刻・位置の計算 (detail/trains.js の api。電車が無いときは null)
     emissive, // 夜に光らせるマテリアル (TimeOfDay に渡す)

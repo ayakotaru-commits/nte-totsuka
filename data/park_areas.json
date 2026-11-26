@@ -1,5 +1,5 @@
 {
-  "_doc": "フェアリー・リールパークの各エリアの建物・道・木のテーマ (段階 2)。tools/park_areas.py がこれと data/park.json (敷地・エリア・道) から、決まった乱数で建物・内側の道・広場・木・看板を作り、public/data/park.json の gen に入れる。色は #rrggbb。壁の材質 wall = city.js の WALL_MAT (0 吹き付け・1 サイディング・2 タイル・3 打ち放し・4 角波・5 ALC)。実在のパークの建物の形・配置は使わない。",
+  "_doc": "千葉ドリームランドの各エリアの建物・道・木のテーマ (段階 2)。tools/park_areas.py がこれと data/park.json (敷地・エリア・道) から、決まった乱数で建物・内側の道・広場・木・看板を作り、public/data/park.json の gen に入れる。色は #rrggbb。壁の材質 wall = city.js の WALL_MAT (0 吹き付け・1 サイディング・2 タイル・3 打ち放し・4 角波・5 ALC)。実在のパークの建物の形・配置は使わない。",
   "short": "リール",
   "shortRoman": "REEL",
   "_short_doc": "看板の文字に使う、パークの名前の短い形 (名前の設定 = park.json の name・roman と合わせる)。",

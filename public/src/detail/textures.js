@@ -55,7 +55,7 @@ export async function applyTextures({ built, cx, cz, R }) {
   return { set: (v) => { common.uDetOn.value = v ? 1 : 0; } };
 }
 
-// 街の本体の外の建物 (線路の延長・フェアリー・リールパークなど) の壁の材質にも、同じ模様・目地・つやを付ける (段階 0 の調査 → 段階 2 で使う)。
+// 街の本体の外の建物 (線路の延長・千葉ドリームランドなど) の壁の材質にも、同じ模様・目地・つやを付ける (段階 0 の調査 → 段階 2 で使う)。
 // 返す patch(mat, key) は、頂点ごとに matId (0〜5 = city.js の WALL_MAT) を持つ壁の材質に掛ける。窓は map の色 (明るい = 壁、青みの暗い = ガラス) で見分けるので、
 // 窓の絵を持つ map が要る (railext.js の MAT.walls と同じ作り)。cx・cz・R = 模様を出す範囲 (街の本体はスタート地点の半径 DETAIL.radius。延長の先はそこから遠いので別に渡す)
 export async function makeWallPatcher(cx, cz, R) {

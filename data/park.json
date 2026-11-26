@@ -1,7 +1,7 @@
 {
- "_doc": "フェアリー・リールパーク (舞浜の北側 約 60 ha に作る架空のテーマパーク) の設定。tools/park.py が検証して public/data/park.json に書く (ブラウザはそちらを読む)。座標はゲームの座標 [x, z] (m。x = 東、z = 南)。配置図は docs/park_layout_v5.png、計画は PARK_PLAN.md。実在の園内の建物・水路・園内の道の輪郭は使わない (海岸線と外周の道路だけ)。",
- "name": "フェアリー・リールパーク",
- "roman": "Fairy Reel Park",
+ "_doc": "千葉ドリームランド (舞浜の北側 約 60 ha に作る架空のテーマパーク) の設定。tools/park.py が検証して public/data/park.json に書く (ブラウザはそちらを読む)。座標はゲームの座標 [x, z] (m。x = 東、z = 南)。配置図は docs/park_layout_v5.png、計画は PARK_PLAN.md。実在の園内の建物・水路・園内の道の輪郭は使わない (海岸線と外周の道路だけ)。",
+ "name": "千葉ドリームランド",
+ "roman": "Chiba Dreamland",
  "_name_doc": "パークの名前はここ 1 か所だけ。看板・案内・地図の表示はこの値から作る (差し替えるときはこの 2 行だけ直して python tools/park.py)。",
  "station": "舞浜",
  "site": [
@@ -802,8 +802,8 @@
      0.95,
      0.3
     ],
-    "text": "フェアリー・リールパーク",
-    "sub": "← 約 330 m"
+    "text": "Chiba Dreamland",
+    "sub": "← about 330 m"
    },
    {
     "at": [
@@ -814,8 +814,8 @@
      0.95,
      0.3
     ],
-    "text": "フェアリー・リールパーク",
-    "sub": "← 約 130 m  入口はこの先"
+    "text": "Chiba Dreamland",
+    "sub": "← about 130 m  This way to the gate"
    }
   ]
  },

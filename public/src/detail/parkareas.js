@@ -1,4 +1,4 @@
-// フェアリー・リールパーク 段階 2: 各エリアの建物・内側の道・広場・木・看板・門・特別な物 (火山・灯台・船など)。
+// 千葉ドリームランド 段階 2: 各エリアの建物・内側の道・広場・木・看板・門・特別な物 (火山・灯台・船など)。
 // 中身は tools/park_areas.py が決まった乱数で作った public/data/park.json の gen (data/park_areas.json のテーマから)。ここは読んで置くだけ。
 // 建物 = 箱 + 壁の柄 (textures.js の makeWallPatcher。頂点に matId) + 屋根 + 看板 (1 枚の模様の集まりから)。エリアごとに 1 つにまとめて描く (頂点の共有・マージ)。
 // 木・街灯・ベンチ・植え込みは InstancedMesh。当たり判定は呼び出し側の col (park.js が world.addColliders)。

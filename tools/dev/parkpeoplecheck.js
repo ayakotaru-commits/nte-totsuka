@@ -1,4 +1,4 @@
-// フェアリー・リールパーク 段階 5 (園内の人・地図の印とワープ・ショーの案内) を、ゲーム本体で確かめる。画面は撮らない (画面は parkshot.js の x*・m* の視点)。
+// 千葉ドリームランド 段階 5 (園内の人・地図の印とワープ・ショーの案内) を、ゲーム本体で確かめる。画面は撮らない (画面は parkshot.js の x*・m* の視点)。
 // 使い方: node tools/dev/parkpeoplecheck.js   (約 5〜10 分。three.js は tools/dev/.cache/package に要る = CLAUDE.md の手順。node 単体の数字の確認は tools/dev/parkcrowdcheck.mjs)
 // 確かめること: 地図の印 14 か所 (城の印を含む) が出ている / 大きい地図の印を選んでワープすると、その場所の道の上に立つ (建物・柵の中ではない・地面に立つ) /
 //   縮小した大きい地図では細かい印が選べない / 園内に人が出る (敷地の中・建物の外・街の人は混ざらない) / ショーの案内 (開催前・開催中・遠くでは出ない) /
@@ -106,7 +106,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     check('ショーの無い時刻には観客を立たせない (消えていく途中の人は除く)', sel0 === 0, { sel: sel0, view: c.view });
     // ミニマップの人数・時刻: 人数が目標どおり
     const placeTxt = await page.evaluate(() => ({ place: document.getElementById('place').textContent, area: document.getElementById('area').textContent }));
-    check('左上の場所の名前が、園内のいちばん近い印の名前になる', /サンライズ・プラザ 付近/.test(placeTxt.place) && /フェアリー・リールパーク/.test(placeTxt.area), placeTxt);
+    check('左上の場所の名前が、園内のいちばん近い印の名前になる', /サンライズ・プラザ 付近/.test(placeTxt.place) && /千葉ドリームランド/.test(placeTxt.area), placeTxt);
     const hudShow = await page.evaluate(() => ({ hidden: document.getElementById('hud-park').hidden, text: document.getElementById('hud-park').textContent }));
     check('園の近くではショーの案内が出る (パレードまで・花火まで。この時刻 270 秒は城のライトアップ中 = 「城のライトアップ中！」)', !hudShow.hidden && (/城のライトアップ中/.test(hudShow.text) || (/パレードまで/.test(hudShow.text) && /花火まで/.test(hudShow.text))), hudShow);
   }

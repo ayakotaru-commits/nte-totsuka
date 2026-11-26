@@ -1,4 +1,4 @@
-// フェアリー・リールパーク 段階 7: 通りの小物 (屋台のワゴン・案内標識・ごみ箱)。位置は tools/park_areas.py の furn (data/park_areas.json のテーマの detail.furn)。
+// 千葉ドリームランド 段階 7: 通りの小物 (屋台のワゴン・案内標識・ごみ箱)。位置は tools/park_areas.py の furn (data/park_areas.json のテーマの detail.furn)。
 // 1 つの BufferGeometry にまとめる (頂点色。エリアごとに色がちがうので InstancedMesh にしない。数は 50 個ほど)。当たり判定は col に足す。
 import * as THREE from 'three';
 

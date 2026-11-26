@@ -1,4 +1,4 @@
-// フェアリー・リールパーク: パレードの道。three.js に依存しない (parkshow.js・parkinfo.js・tools/dev/parkcrowdcheck.mjs が使う)
+// 千葉ドリームランド: パレードの道。three.js に依存しない (parkshow.js・parkinfo.js・tools/dev/parkcrowdcheck.mjs が使う)
 // パレードの道 (1 m おきの点の並び): ネオン・アベニューの入口 → プラザを半周 (入口の側から東の側を通って湖の側へ) → プラザから湖へ。角はなめらかにする。
 // 山車 (buildShow)・観客の場所 (parkcrowd.js)・ショーの案内の所要時間 (parkinfo.js) が同じ道を使う
 export function paradeRoute(cfg) {

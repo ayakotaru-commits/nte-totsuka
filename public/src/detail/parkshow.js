@@ -1,4 +1,4 @@
-// フェアリー・リールパーク 段階 4: ショーと夜の光。設定は public/data/park.json の show (元は data/park.json)。
+// 千葉ドリームランド 段階 4: ショーと夜の光。設定は public/data/park.json の show (元は data/park.json)。
 //   ・夜の光 (地面の光の輪・アベニューの縁・湖のふち) と、湖の水上ショー (噴水の光の柱 + しぶき)。光は time.js の win に合わせて夜だけ出る (昼は見えない)
 //   ・花火: 時計 (Date.now) の cycle 秒ごとに、start 秒から duration 秒、湖の上で打ち上がる。Points 1 つ (粒は決まった式で動く = だれが見ても同じ形)。
 //   ・パレード: ネオン・アベニューの入口 → プラザを半周 → 湖へ。山車 floats を gap m おきに進める。山車の上の光・踊り手・先頭の鼓笛隊 (InstancedMesh)。
