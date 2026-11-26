@@ -9,6 +9,7 @@ import { buildRides } from './parkrides.js';
 import { mergeStaticMeshes } from './mergestatic.js';
 import { makeFacadeKit, facadeDetail } from './parkfacade.js';
 import { buildBunting, buildSmoke } from './parkfx.js';
+import { buildFurn } from './parkfurn.js';
 
 const C = (s) => new THREE.Color(s);
 const mulberry = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -126,12 +127,16 @@ export function buildAreas(ctx) {
     const nW = (lx, lz) => [rx * lx + ux * lz, 0, rz * lx + uz * lz];   // 局所の向き → 世界の向き
     const wc = C(b.col), tc = C(b.trim), rc = C(b.rcol), dc = b.door ? C(b.door) : null, white = C('#ffffff');
     // 経年感 (段階 7): 建物ごとに壁・屋根の色を少しずらし、壁のすそを暗く・上を少し明るくする (雨だれ・すすけ)。細部のある建物だけ
-    let wLo = wc, wHi = wc;
+    let wLo = wc, wHi = wc, rLo = null, rHi = null, rLoF = null, rHiF = null;
     if (b.det) {
       const h1 = Math.sin(b.x * 12.9898 + b.z * 78.233) * 43758.5453, h2 = Math.sin(b.x * 3.1 + b.z * 9.7) * 24634.6345, f1 = h1 - Math.floor(h1), f2 = h2 - Math.floor(h2);
       wc.offsetHSL((f1 - 0.5) * 0.012, (f2 - 0.5) * 0.06, (f1 - 0.5) * 0.05); rc.offsetHSL((f2 - 0.5) * 0.01, 0, (f1 - 0.5) * 0.06);
       const sh = (c, k) => new THREE.Color(Math.min(1, c.r * k), Math.min(1, c.g * k), Math.min(1, c.b * k));
       wLo = sh(wc, 0.82); wHi = sh(wc, 1.03);
+      // 屋根のあせ: ひさし側 = 暗く少し緑 (こけ・雨だれ)、棟側 = 明るく色が薄い (日焼け)。向きで差をつける (道に向いた斜面ほど日に焼ける)
+      const grey = (c, k) => { const l = (c.r + c.g + c.b) / 3; return new THREE.Color(c.r + (l - c.r) * k, c.g + (l - c.g) * k, c.b + (l - c.b) * k); };
+      const fade = 0.2 + 0.3 * (f1 * 0.6 + f2 * 0.4);
+      rLo = sh(rc, 0.8); rLo.g = Math.min(1, rLo.g * 1.06); rHi = sh(grey(rc, fade * 0.6), 1.04); rLoF = sh(grey(rc, fade * 0.4), 0.9); rHiF = sh(grey(rc, fade), 1.12);
     }
     const fh = b.fh, bay = b.bay;
     // 4 つの面 (局所: 前 +Z、右 +X、後ろ -Z、左 -X)。外から見て左 → 右の順
@@ -175,10 +180,10 @@ export function buildAreas(ctx) {
     };
     if (b.roof === 'flat') {
       box(T, -hx - 0.3, hx + 0.3, y1 - 0.5, y1 + 0.15, -hz - 0.3, hz + 0.3, tc, 0.3);
-      T.quad(P(-hx, y1 + 0.15, -hz), P(hx, y1 + 0.15, -hz), P(hx, y1 + 0.15, hz), P(-hx, y1 + 0.15, hz), [0, 1, 0], [PLAIN, PLAIN, PLAIN, PLAIN], rc);
+      T.quad(P(-hx, y1 + 0.15, -hz), P(hx, y1 + 0.15, -hz), P(hx, y1 + 0.15, hz), P(-hx, y1 + 0.15, hz), [0, 1, 0], [PLAIN, PLAIN, PLAIN, PLAIN], rc, 0, rLo && [rLo, rHiF, rHi, rLoF]);
     } else {
       box(T, -hx - 0.15, hx + 0.15, y1 - 0.25, y1 + 0.05, -hz - 0.15, hz + 0.15, tc);
-      roof(b, T, W, P, nW, hx, hz, y1, rc, wc);
+      roof(b, T, W, P, nW, hx, hz, y1, rc, wc, rLo && [rLo, rHi, rLoF, rHiF]);
     }
     // 細部 (窓まわり・出窓・バルコニー・店先・屋根の飾り・ネオン。b.det があるエリアだけ)
     const fd = b.det && kit ? facadeDetail({ b, Buf, P, nW, W, T, S, SG: B.shopglass, LP: B.lamp, NE: (c) => B.neon[c] || (B.neon[c] = new Buf()), signUv, y0, y1, gy, kit, low, lod: A[b.a].lod, onChimney: (x, y, z) => chimneys.push([x, y, z]) }) : null;
@@ -238,7 +243,7 @@ export function buildAreas(ctx) {
   const clockQuads = [];
 
   // 屋根 (切妻・前向き切妻・寄せ棟・とんがり)
-  function roof(b, T, W, P, nW, hx, hz, y1, rc, wc) {
+  function roof(b, T, W, P, nW, hx, hz, y1, rc, wc, wr) {   // wr = 屋根のあせの色 [ひさし側, 棟側, ひさし側 (日焼け), 棟側 (日焼け)] (細部のある建物だけ)
     const rk = b.roof, rh = b.rh, ov = 0.45;
     if (rk === 'gable' || rk === 'gablefront') {
       const alongX = rk === 'gable';   // 棟が前の面と平行 (X に沿う)
@@ -246,7 +251,8 @@ export function buildAreas(ctx) {
       const loc = (a, c, y) => (alongX ? P(a, y, c) : P(c, y, a));
       const ra = A + 0.3, rc2 = Cc + ov, rhh = rh * (1 + ov / Cc);
       for (const s of [-1, 1]) {
-        T.quad(loc(-ra, s * rc2, y1 - 0.1), loc(ra, s * rc2, y1 - 0.1), loc(ra, 0, y1 + rhh), loc(-ra, 0, y1 + rhh), null, [PLAIN, PLAIN, PLAIN, PLAIN], rc);
+        const cl = wr && (s > 0 ? [wr[2], wr[2], wr[3], wr[3]] : [wr[0], wr[0], wr[1], wr[1]]);
+        T.quad(loc(-ra, s * rc2, y1 - 0.1), loc(ra, s * rc2, y1 - 0.1), loc(ra, 0, y1 + rhh), loc(-ra, 0, y1 + rhh), null, [PLAIN, PLAIN, PLAIN, PLAIN], rc, 0, cl);
         // 妻 (棟の両端の三角)
         for (const e of [-1, 1]) {
           const nl = alongX ? [e, 0] : [0, e];
@@ -260,8 +266,9 @@ export function buildAreas(ctx) {
       const ra = A + ov, rc2 = Cc + ov, rhh = rh * (1 + ov / Cc);
       const r0 = rl / 2;
       for (const s of [-1, 1]) {
-        T.quad(loc(-ra, s * rc2, y1 - 0.1), loc(ra, s * rc2, y1 - 0.1), loc(r0, 0, y1 + rhh), loc(-r0, 0, y1 + rhh), null, [PLAIN, PLAIN, PLAIN, PLAIN], rc);
-        T.tri(loc(s * ra, -rc2, y1 - 0.1), loc(s * ra, rc2, y1 - 0.1), loc(s * r0, 0, y1 + rhh), null, [PLAIN, PLAIN, PLAIN], rc);
+        const cl = wr && (s > 0 ? [wr[2], wr[2], wr[3], wr[3]] : [wr[0], wr[0], wr[1], wr[1]]);
+        T.quad(loc(-ra, s * rc2, y1 - 0.1), loc(ra, s * rc2, y1 - 0.1), loc(r0, 0, y1 + rhh), loc(-r0, 0, y1 + rhh), null, [PLAIN, PLAIN, PLAIN, PLAIN], rc, 0, cl);
+        T.tri(loc(s * ra, -rc2, y1 - 0.1), loc(s * ra, rc2, y1 - 0.1), loc(s * r0, 0, y1 + rhh), null, [PLAIN, PLAIN, PLAIN], rc, 0, wr && [wr[1], wr[1], wr[3]]);
       }
     }
   }
@@ -287,6 +294,13 @@ export function buildAreas(ctx) {
   // 旗の飾りと煙突の煙・ネオンのまたたき (段階 7)。?nofx で無効
   const noFx = new URLSearchParams(location.search).has('nofx');
   const bunting = noFx ? null : buildBunting({ gen: G, ground, group: api.group }), smoke = noFx ? null : buildSmoke({ chimneys, group: api.group, low });
+  if (bunting && bunting.lanterns.length) {   // ちょうちん (旗の綱につるす。夜は光る)
+    const lm = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffb25c', emissiveIntensity: 0, roughness: 0.6 }); lm.userData.glow = 1.4; emissive.push(lm);
+    const mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.3, 0).scale(1, 1.25, 1), lm, bunting.lanterns.length); mesh.name = 'park_lanterns';
+    const M = new THREE.Matrix4(); bunting.lanterns.forEach((l, i) => { M.makeTranslation(l[0], l[1], l[2]); mesh.setMatrixAt(i, M); mesh.setColorAt(i, l[3]); }); mesh.castShadow = false; api.group.add(mesh);
+  }
+  const furn = buildFurn({ gen: G, ground, group: api.group, col });   // 屋台のワゴン・案内標識・ごみ箱
+  api.stats.furn = furn ? furn.counts : null;
   api.stats.bunting = bunting ? bunting.strings : 0; api.stats.chimneys = chimneys.length;
   api.update = (t, x, z) => {
     t %= 3600;   // 秒が大きいと float の精度が足りずシェーダのゆれがぎくしゃくする (1 時間でつなぎ目が 1 回)
@@ -473,7 +487,7 @@ export function buildAreas(ctx) {
   }
 
   // スマホ: 動かない小物のメッシュを材質 × 区画でまとめる (描画の呼び出しを減らす。PC は今までどおり)
-  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks|facade|bunting|smoke)/.test(o.name) });
+  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks|facade|bunting|smoke|furn|lanterns)/.test(o.name) });
 
   // ---------- 乗り物 (段階 3。観覧車・メリーゴーラウンド・コースター) ----------
   api.rides = buildRides({ cfg, ground, std, glowMat, group, col, emissive });

@@ -195,11 +195,12 @@ export function facadeDetail(env) {
       if (fi === 0 && fl === 0 && !shop && s1 + 0.6 > f.L / 2 - 1.5 && s0 - 0.6 < f.L / 2 + 1.5) continue;   // 玄関の前
       if (fi === 0 && kk === det.balc && fl === 1) { /* バルコニーの窓: 枠だけ (下で手すり) */ }
       // 枠・まぐさ・窓台
-      if (!lite) { fbox(f, s0 - 0.1, s0, 0, 0.07, ya - 0.02, yb + 0.02, tc); fbox(f, s1, s1 + 0.1, 0, 0.07, ya - 0.02, yb + 0.02, tc); }
+      fbox(f, s0 - 0.1, s0, 0, 0.07, ya - 0.02, yb + 0.02, tc); fbox(f, s1, s1 + 0.1, 0, 0.07, ya - 0.02, yb + 0.02, tc);
+      if (lite) { const sm = (s0 + s1) / 2, ym = (ya + yb) / 2; fbox(f, sm - 0.03, sm + 0.03, 0, 0.05, ya, yb, tc); fbox(f, s0, s1, 0, 0.05, ym - 0.03, ym + 0.03, tc); }   // 格子 (lite の窓: 十字の桟)
       fbox(f, s0 - 0.2, s1 + 0.2, 0, 0.16, yb, yb + 0.16, tc);
       fbox(f, s0 - 0.2, s1 + 0.2, 0, 0.22, ya - 0.14, ya, tc);
       let style = hash(fi, fl, kk) < 0.78 ? det.win : 'frame';
-      if (lite && style !== 'shutter') style = 'frame';
+      if (lite && style !== 'shutter' && style !== 'flower') style = 'frame';
       if (style === 'shutter') {
         const sc = C(det.shut);
         fbox(f, s0 - 0.58, s0 - 0.12, 0, 0.05, ya - 0.04, yb + 0.1, sc); fbox(f, s1 + 0.12, s1 + 0.58, 0, 0.05, ya - 0.04, yb + 0.1, sc);

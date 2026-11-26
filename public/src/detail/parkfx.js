@@ -7,7 +7,7 @@ export function buildBunting({ gen, ground, group }) {
   const pos = [], nor = [], col = [], sway = [];
   const C = (s) => new THREE.Color(s);
   const push = (p, n, c, sw) => { pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]); col.push(c.r, c.g, c.b); sway.push(sw[0], sw[1]); };
-  const cord = C('#4b4561');
+  const cord = C('#4b4561'), lanterns = [];   // lanterns = ちょうちん [x, y, z, 色]
   (gen.bunting || []).forEach((st, si) => {
     const [x1, z1, x2, z2, y, ai] = st, colors = (gen.areas[ai] && gen.areas[ai].bunting || ['#ff7fb5', '#ffffff']).map(C);
     const A = [x1, ground(x1, z1) + y, z1], B = [x2, ground(x2, z2) + y, z2];
@@ -21,6 +21,7 @@ export function buildBunting({ gen, ground, group }) {
         const a = [p[0] - ox, p[1] - oy, p[2] - oz], b = [p[0] + ox, p[1] + oy, p[2] + oz], d = [q[0] - ox, q[1] - oy, q[2] - oz], e = [q[0] + ox, q[1] + oy, q[2] + oz];
         for (const v of [a, b, e, a, e, d]) push(v, [0, 1, 0], cord, [0, 0]);
       }
+      if (i % 4 === 2) { lanterns.push([p[0], p[1] - 0.45, p[2], c]); continue; }   // 4 つめごとに旗のかわりにちょうちん
       // 三角旗 (綱から下へ)。先のとがりほどゆれる
       const m = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2], g = 0.1;
       const t0 = [p[0] + (q[0] - p[0]) * g, p[1] + (q[1] - p[1]) * g - 0.02, p[2] + (q[2] - p[2]) * g], t1 = [q[0] - (q[0] - p[0]) * g, q[1] - (q[1] - p[1]) * g - 0.02, q[2] - (q[2] - p[2]) * g], tip = [m[0], m[1] - 0.78, m[2]];
@@ -38,7 +39,7 @@ export function buildBunting({ gen, ground, group }) {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec2 aSway;\nuniform float uTime;').replace('#include <begin_vertex>', '#include <begin_vertex>\n  transformed += normal * sin(uTime * 2.4 + aSway.y) * 0.17 * aSway.x;');
   };
   const mesh = new THREE.Mesh(g, mat); mesh.name = 'park_bunting'; mesh.castShadow = false; group.add(mesh);
-  return { mesh, strings: gen.bunting.length, tris: pos.length / 9, update: (t) => { if (mat.userData.sh) mat.userData.sh.uniforms.uTime.value = t; } };
+  return { mesh, lanterns, strings: gen.bunting.length, tris: pos.length / 9, update: (t) => { if (mat.userData.sh) mat.userData.sh.uniforms.uTime.value = t; } };
 }
 
 // 煙突の煙: 近く (90 m 以内) の煙突のうち近い順に最大 N 本、それぞれ 3 つの丸い煙をゆっくり上へ流す。

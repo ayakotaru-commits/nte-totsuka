@@ -618,6 +618,54 @@ def generate(cfg):
                     out["bunting"].append([rl(hl[0]), rl(hl[1]), rl(hr[0]), rl(hr[1]), rl(min(bt.get("y", 7.0), min(hl[2]["h"], hr[2]["h"]) - 1.2)), inf["ai"]])
                 s_ += bt.get("every", 18.0)
 
+    # ---- 通りの小物 (段階 7。屋台のワゴン・案内標識・ごみ箱。乱数は使わない) ----
+    out["furn"] = []
+    for name, inf in info.items():
+        th = inf["th"]; fz = (th.get("detail") or {}).get("furn")
+        if not fz:
+            continue
+        ai = inf["ai"]; poly = inf["poly"]
+        lamps = [(l[0], l[1]) for l in out["lamps"] if l[2] == ai] + [(b[0], b[1]) for b in out["benches"] if b[3] == ai]
+
+        def free(x, z, hx, hz, yaw, gap=2.5):
+            return inside(x, z, poly, 3) and not any(obb_overlap((x, z, yaw, hx, hz), q, 0.8) for q in placed) and all(math.hypot(x - lx, z - lz) > gap for lx, lz in lamps) and not any(math.hypot(x - f[1], z - f[2]) < 3.0 for f in out["furn"])
+        # ワゴン: 主な通りの縁ぞいに、決まった間隔で左右交互に
+        if fz.get("wagon"):
+            for pth in inf["paths"]:
+                if not pth["main"] or pth["pts"] is None:
+                    continue
+                Lt = polyline_len(pth["pts"]); s_, side = fz.get("start", 42.0), 1
+                while s_ < Lt - 12:
+                    P, T = point_at(pth["pts"], s_)
+                    nx, nz = -T[1], T[0]
+                    x, z = P[0] + nx * side * (pth["w"] / 2 - 2.0), P[1] + nz * side * (pth["w"] / 2 - 2.0)
+                    yaw = math.atan2(T[0], T[1])
+                    if free(x, z, 0.7, 1.1, yaw):
+                        out["furn"].append(["wagon", rl(x), rl(z), rl(yaw), ai])
+                    side = -side
+                    s_ += fz["wagon"]
+        # 案内標識: 枝の道の入口のわきに (枝の向きを指す)
+        if fz.get("signpost"):
+            for pth in inf["paths"]:
+                if pth["main"] or pth["pts"] is None or pth.get("exist") or len(pth["pts"]) < 2:
+                    continue
+                a0, a1 = pth["pts"][0], pth["pts"][1]
+                dx, dz = a1[0] - a0[0], a1[1] - a0[1]; l_ = math.hypot(dx, dz) or 1
+                tx, tz = dx / l_, dz / l_
+                for sd in (1, -1):
+                    x, z = a0[0] - tz * sd * (pth["w"] / 2 + 1.0) + tx * 1.5, a0[1] + tx * sd * (pth["w"] / 2 + 1.0) + tz * 1.5
+                    if free(x, z, 0.3, 0.3, 0, 1.5):
+                        out["furn"].append(["signpost", rl(x), rl(z), rl(math.atan2(-tz, tx)), ai])
+                        break
+        # ごみ箱: ベンチのわきに
+        if fz.get("bin"):
+            for b in out["benches"]:
+                if b[3] != ai:
+                    continue
+                x, z = b[0] + math.cos(b[2]) * 1.6, b[1] - math.sin(b[2]) * 1.6
+                if free(x, z, 0.3, 0.3, 0, 0.8):
+                    out["furn"].append(["bin", rl(x), rl(z), 0.0, ai])
+
     # ---- 乗り物 (段階 3)。乱数は使わない (ここより前の出力は変わらない) ----
     out["rides"] = make_rides(cfg, A.get("rides"), info, out, site, ellipses, circles, inner, park_paths, ell_hit, path_clear)
     return out
