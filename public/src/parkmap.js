@@ -1,7 +1,7 @@
 // フェアリー・リールパークの地図の下絵 (ミニマップ・大きい地図)。線路の延長の下絵 (detail/railext.js の map) と同じ形: { bounds, draw(c, X, Z, scale, bbox) }。
 // X(x)・Z(z) = ワールドの座標 → 画面の座標、scale = 1 m の画面上の長さ (px)、bbox = 見えている範囲 [x0, z0, x1, z1]。
 // 描くもの: 敷地 (実在の舞浜の道・建物の絵の上に塗りつぶす)・エリアの色・湖・プラザ・園内の道・建物・観覧車・コースター。実在のパークの絵は使わない (この設定から描く)。
-const AREA_TINT = ['#d9d2ea', '#e9e3d4', '#f4dbe8', '#e2d6c0', '#fbe0ee', '#cfe6c4', '#cfe1ef'];   // gen.areas の順 (ミッドナイト・ターボ・アベニュー・バレー・スイート・フォレスト・ハーバー)
+const AREA_TINT = ['#d9d2ea', '#e9e3d4', '#f4dbe8', '#e2d6c0', '#fbe0ee', '#cfe6c4', '#cfe1ef', '#f0d9b8'];   // gen.areas の順 (ミッドナイト・ターボ・アベニュー・バレー・スイート・フォレスト・ハーバー・タイム・ステーション)
 
 export function createParkMap(cfg) {
   const site = cfg.site, xs = site.map((p) => p[0]), zs = site.map((p) => p[1]);

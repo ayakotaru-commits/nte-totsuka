@@ -327,16 +327,16 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
 
   // ---- 段階 2: 各エリア (建物・内側の道・広場・木・看板・門・特別な物) ----
   const gen = park.gen;
-  check('設定に各エリアの建物がある (gen)', gen && gen.buildings.length > 300 && gen.areas.length === 7, gen && { buildings: gen.buildings.length, trees: gen.trees.length, signs: gen.signs.length });
+  check('設定に各エリアの建物がある (gen)', gen && gen.buildings.length > 300 && gen.areas.length === 8, gen && { buildings: gen.buildings.length, trees: gen.trees.length, signs: gen.signs.length });
   const parts = await page.evaluate(() => { const g = window.__g.scene.getObjectByName('park_areas'); if (!g) return null; const n = {}; g.traverse((o) => { if (o.isMesh) { const k = o.name.replace(/_\d+$/, '') || (o.isInstancedMesh ? 'inst' : 'mesh'); n[k] = (n[k] || 0) + 1; } }); return n; });
   console.log(JSON.stringify(parts));
-  check('各エリアの壁・屋根・看板の面が出ている (7 エリア分)', parts && parts.park_walls === 7 && parts.park_trim >= 6 && parts.park_signs >= 6, parts);
+  check('各エリアの壁・屋根・看板の面が出ている (8 エリア分)', parts && parts.park_walls === 8 && parts.park_trim >= 6 && parts.park_signs >= 6, parts);
   // 段階 7: 建物の細部。アベニュー以外のエリアに細部のメッシュが出ていない・三角形の数 (壁・縁取り・看板 + 店の窓・壁灯・ネオン)
   const tris = await page.evaluate(() => { const g = window.__g.scene.getObjectByName('park_areas'), r = { detail: 0, other: 0, walls: 0, facade: 0 }; g.traverse((o) => { if (!o.isMesh || o.isInstancedMesh || !o.geometry) return; const t = (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; if (/^park_facade_/.test(o.name)) { r.facade += t; r.detail++; } else if (/^park_(walls|trim|signs)_/.test(o.name)) r.walls += t; }); return r; });
   console.log(JSON.stringify({ tris }));
   check('建物の細部のメッシュがある (店の窓・壁灯・ネオン)', gen.areas.some((a) => a.detail) ? tris.detail >= 3 && tris.facade > 1000 : tris.detail === 0, tris);
   const walls = await page.evaluate(() => { let patched = 0, vis = 0, n = 0; window.__g.scene.traverse((o) => { if (o.isMesh && o.name.startsWith('park_walls_')) { n++; if (o.visible) vis++; if (o.material.onBeforeCompile && String(o.material.onBeforeCompile).length > 200) patched++; } }); return { n, vis, patched }; });
-  check('壁の柄 (街の本体と同じ) が付き、壁が見えている', walls.n === 7 && walls.vis === 7 && walls.patched === 7, walls);
+  check('壁の柄 (街の本体と同じ) が付き、壁が見えている', walls.n === 8 && walls.vis === 8 && walls.patched === 8, walls);
   const aName = gen.areas.map((q) => q.name);
   const approach = (b, d) => [b.x + Math.sin(b.yaw) * (b.d / 2 + d), b.z + Math.cos(b.yaw) * (b.d / 2 + d)];
   let allNaN = false;
@@ -393,6 +393,22 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       if (q && !q.ok && dd > pr.r * 0.6 && dd < pr.r + 3) break;
     }
     check(`${pr.k} (${aName[pr.a]}) の根元で止まる`, best && !best.ok && best.dd > pr.r * 0.6 && best.dd < pr.r + 3, { r: pr.r, dist: +best.dd.toFixed(1) });
+  }
+  // 段階 10: 蒸気機関車の展示・広場の大時計と歯車は、中心へ向かうと手前で止まる (通り抜けない)
+  for (const pr of gen.props.filter((q) => q.k === 'locomotive' || q.k === 'clockwork')) {
+    const lim = pr.k === 'locomotive' ? [1.5, 11] : [1.2, 7.5];
+    let best = null;
+    for (const ang of [0.3, 1.9, 3.5, 5.1, 0.9, 2.5, 4.2, 5.8]) {
+      const sx1 = pr.x + Math.cos(ang) * 16, sz1 = pr.z + Math.sin(ang) * 16, sy1 = await hAt(sx1, sz1);
+      await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [sx1, sy1 + 0.2, sz1]);
+      await frames(page, 3); await extIdle(page); await frames(page, 2);
+      const h = await page.evaluate((a) => window.__walkXZ(a, { maxT: 12, walk: true, keepGoing: true, tol: 0.3 }), [[pr.x, pr.z]]);
+      allNaN = allNaN || !!h.nan;
+      const q = h.out[0], dd = q ? Math.hypot(q.at[0] - pr.x, q.at[1] - pr.z) : 99;
+      if (!best || dd < best.dd) best = { dd, ok: q && q.ok };
+      if (q && !q.ok && dd > lim[0] && dd < lim[1]) break;
+    }
+    check(`${pr.k} (${aName[pr.a]}) の手前で止まる (通り抜けない)`, best && !best.ok && best.dd > lim[0] && best.dd < lim[1], { dist: +best.dd.toFixed(1), lim });
   }
   check('NaN なし (段階 2)', !allNaN);
 

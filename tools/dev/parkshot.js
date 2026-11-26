@@ -82,14 +82,23 @@ const VIEWS = [
   { name: 'k10_castle_night', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { idle: true } },   // 夜 (--night)
   { name: 'k11_castle_show', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { castle: 30 } },    // 夜の映写のライトアップ (--night)
   { name: 'k12_castle_fw', at: [31490, -25640], look: [0.1, 1], pitch: 0.06, dist: 30, show: { fw: 'burst:20' } },  // 花火の夜 (--night)
-  { name: 'a8_station_side', at: [31730, -25950], look: [-1, 0.2], pitch: 0.4, dist: 60 },      // 駅の南口のロータリー (敷地の縁。省いた所と残した所の境目)
+  { name: 'a8_station_side', at: [31730, -25950], look: [-1, 0.2], pitch: 0.4, dist: 60 },      // 駅の南口のロータリー (敷地の縁。省いた所と残した所の境目)  // 段階 10: タイム・ステーション (ネオン・アベニューとロスト・バレーの間)
+  { name: 't1_ts_aerial', at: [31560, -25830], look: [0, 1], pitch: 1.1, dist: 330 },            // 3 つのエリアの境目を上から (北が上)
+  { name: 't2_ts_entrance', at: [31356, -25904], look: [0.989, 0.148], pitch: 0.12, dist: 14 },  // ネオン・アベニューの入口の側から、東の道 (門) へ
+  { name: 't3_ts_street', at: [31452, -25896], look: [0.81, 0.585], pitch: 0.1, dist: 14 },      // 主な通りを奥 (駅舎) へ
+  { name: 't4_ts_hall', at: [31596, -25796], look: [0.83, 0.56], pitch: 0.1, dist: 12 },          // 駅舎 (時計) と広場
+  { name: 't5_ts_clockwork', at: [31604, -25792], look: [0.7, 0.71], pitch: 0.1, dist: 9 },       // 広場の大時計と歯車
+  { name: 't6_ts_loco', at: [31598, -25849], look: [-0.58, 0.81], pitch: 0.1, dist: 12 },           // 蒸気機関車の展示
+  { name: 't7_ts_to_lost', at: [31624, -25785], look: [0.63, -0.77], pitch: 0.12, dist: 14 },    // 広場からロストへの道 (門)
+  { name: 't8_lost_side', at: [31690, -25840], look: [0.6, 0.8], pitch: 0.12, dist: 16 },        // ロストの側から見た境目
+  { name: 't9_ts_neon_aerial', at: [31430, -25880], look: [0.8, 0.6], pitch: 0.55, dist: 120 },  // ネオンとの境目 (東の並びが切れる所)
 ];
 
 // 段階 2: 各エリアの視点を、設定 (public/data/park.json の gen) から作る。<n>_arch = 門の前から入る向き、<n>_aerial = 建物の中心を上から、<n>_street = 主な通りを歩く目の高さ
 try {
   const park = JSON.parse(fs.readFileSync(process.env.PARK_JSON || path.join(PUBLIC, 'data', 'park.json')));   // PARK_JSON = 視点だけ別の設定から取る (修正前の作業コピーで撮るとき)
   if (park.gen) {
-    const ROM = ['midnight', 'town', 'avenue', 'valley', 'sweet', 'forest', 'harbor'];
+    const ROM = ['midnight', 'town', 'avenue', 'valley', 'sweet', 'forest', 'harbor', 'station'];
     park.gen.areas.forEach((a, i) => {
       const nm = 'c' + i + '_' + (a.kind || ROM[i]);
       const bs = park.gen.buildings.filter((b) => b.a === i);
