@@ -30,7 +30,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   await page.evaluate(([x, z]) => window.__ride.place(x, -11, z, 0), [px, pz]);
   for (let k = 0; k < 80; k++) { await frames(3); if (await page.evaluate(() => !!window.__pride.park.show)) break; }
   const S = await page.evaluate(() => { const s = window.__pride.park.show; return s && s.stats; });
-  check('ショーが作られる (stats)', S && S.floats === 6 && S.bursts > 40 && S.jets === 9 && S.routeLen > 400 && S.routeLen < 900, S);
+  check('ショーが作られる (stats)', S && S.floats === 6 && S.bursts > 40 && S.jets === 12 && S.routeLen > 400 && S.routeLen < 900, S);
   const R = await page.evaluate(([px, pz, cfg]) => {
     const pk = window.__pride.park, s = pk.show, F = cfg.show.fireworks, P = cfg.show.parade, out = {};
     const at = (phase, win, x = px, z = pz) => { window.__showClock = () => 600000 + phase; s.update(600000 + phase, x, z, win); };

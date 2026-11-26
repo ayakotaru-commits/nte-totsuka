@@ -113,14 +113,16 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   check('道の上の高さが一定 (堤道・トンネル・中庭で ±0.4 m)', a.out && a.out.every((q) => Math.abs(q.hmax - q.hmin) < 0.4 && Math.abs(q.y - lv) < 0.6), a.out && a.out.map((q) => [q.hmin, q.hmax]));
 
   // ---- 4. 止まる: 主塔・門塔の袖・城壁・塔の根元 ----
+  const TW = (id) => C.towers.find((t) => t.id === id), tr = (id) => TW(id).tiers[0].r;   // 塔の位置・半径は設定から (右側の塔)
+  const gt = TW('gatetower'), inn = TW('inner'), mid = TW('mid');
   const stops = [
     ['主塔の正面', [0, 12], [0, -4], (r) => r > 11 && r < 15.5, 'keep'],
     ['門塔の左の袖', [-12, 40], [-12, 27], (_, p) => p[1] > 33, 'gate wing'],
     ['門塔の右の袖', [12, 40], [12, 27], (_, p) => p[1] > 33, 'gate wing'],
     ['前の城壁 (外から)', [32, 40], [32, 18], (_, p) => p[1] > 20, 'wall'],
-    ['門の塔 (小塔の根元)', [22, 44], [18.5, 29], (_, p) => Math.hypot(p[0] - 18.5, p[1] - 29) > 4.4, 'gatetower'],
-    ['内側の塔 (中庭から)', [26, 14], [16.5, 3], (_, p) => Math.hypot(p[0] - 16.5, p[1] - 3) > 5.4, 'inner'],
-    ['中の塔', [26, 4], [33, -7], (_, p) => Math.hypot(p[0] - 33, p[1] + 7) > 4.8, 'mid'],
+    ['門の塔 (小塔の根元)', [gt.x + 3.5, 44], [gt.x, gt.z], (_, p) => Math.hypot(p[0] - gt.x, p[1] - gt.z) > tr('gatetower') - 0.2, 'gatetower'],
+    ['内側の塔 (中庭から)', [inn.x + 10, 14], [inn.x, inn.z], (_, p) => Math.hypot(p[0] - inn.x, p[1] - inn.z) > tr('inner') - 0.2, 'inner'],
+    ['中の塔', [mid.x - 7, 4], [mid.x, mid.z], (_, p) => Math.hypot(p[0] - mid.x, p[1] - mid.z) > tr('mid') - 0.2, 'mid'],
   ];
   for (const [name, from, to, ok, tag] of stops) {
     await place(from[0], from[1]); await frames(page, 2);

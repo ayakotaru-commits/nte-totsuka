@@ -106,7 +106,7 @@ check('パレードが道を通りきる秒数は 200〜240 秒', PS > 200 && PS
   check('時計が負でも周期の中に入る (−5 秒 = 595 秒)', Math.abs(s4.phase - 595) < 1e-9);
   check('表示の文字: 開催前', infoLine(s0).text === `パレードまで ${fmtMin(20)}　花火まで ${fmtMin(330)}` && !infoLine(s0).on && !infoLine(s0).soon === false, infoLine(s0).text);
   check('表示の文字: 開催中 (パレード・花火)', infoLine(s1).on && infoLine(s1).text.includes('パレード開催中') && infoLine(s3).text.includes('花火 開催中'), infoLine(s1).text);
-  check('表示の文字: 始まる 60 秒前から soon', infoLine(parkSchedule(park, S.fireworks.start - 50, PS)).soon && !infoLine(parkSchedule(park, 250, PS)).soon);
+  check('表示の文字: 始まる 60 秒前から soon', infoLine(parkSchedule(park, S.fireworks.start - 50, PS)).soon && !infoLine(parkSchedule(park, 500, PS)).soon);   // 500 秒 = 花火の後〜次のパレードの 60 秒前までの何も無い時刻 (パレード 20〜240・城のライトアップ 245〜320・花火 330〜458)
   check('fmtMin', fmtMin(65) === '1:05' && fmtMin(0) === '0:00' && fmtMin(59.2) === '1:00');
 }
 
@@ -166,7 +166,7 @@ const watch = (nowSec, center, preset = '昼', seconds = 30) => {
 // ---- 地図の印・ワープ先 ----
 {
   const sp = park.spots, names = sp.map((s) => s.name);
-  check('地図の印: ゲート・プラザ・パレード (= アベニュー)・観覧車・コースター・湖・6 エリア', sp.length === 12 && ['ゲート', 'サンライズ・プラザ', '観覧車', 'ムーンレイク（花火）'].every((n) => names.includes(n)) && park.gen.areas.filter((a) => a.name !== 'ネオン・アベニュー').every((a) => names.includes(a.name)), names.join('・'));
+  check('地図の印: ゲート・プラザ・パレード (= アベニュー)・観覧車・コースター・湖・6 エリア', sp.length === 13 && ['ゲート', 'サンライズ・プラザ', '観覧車', 'ムーンレイク（花火）', 'リール・キャッスル'].every((n) => names.includes(n)) && park.gen.areas.filter((a) => a.name !== 'ネオン・アベニュー').every((a) => names.includes(a.name)), names.join('・'));
   check('印は敷地の中で、建物・木・湖の中ではない', sp.every((s) => inPoly(s.x, s.z, park.site) && !inBuilding(s.x, s.z, 2) && !park.gen.trees.some((t) => Math.hypot(t[0] - s.x, t[1] - s.z) < 1.5)));
   // 乗り物・コースターの柱・塔・特別な物・街灯などから離れている (ワープで押し出されない)
   const rd = park.gen.rides, cp = rd.coaster.pts, cd = (x, z) => Math.min(...cp.map((q, i) => segD(x, z, q, cp[(i + 1) % cp.length])));

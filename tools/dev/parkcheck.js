@@ -288,7 +288,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   // ---- 段階 1: 地面・湖・塔・柵・案内 ----
   const lake = park.ellipses['ムーンレイク'], lc = lake.center, lv = park.ground.level;
   const hAt = (x, z) => page.evaluate(([x, z]) => window.__groundH(x, z), [x, z]);
-  const gg = await hAt(g0[0], g0[1]), pp = await hAt(pl[0], pl[1]), lcH = await hAt(lc[0], lc[1] - 1), rimH = await hAt(lc[0], lc[1] - lake.rz - 6);
+  const gg = await hAt(g0[0], g0[1]), pp = await hAt(pl[0], pl[1]), lcH = await hAt(lc[0] + 100, lc[1] - 1)   // 段階 9: 湖の中心は城の島なので、100 m 東の水面で測る, rimH = await hAt(lc[0], lc[1] - lake.rz - 6);
   check('パークの地面は平ら (ゲート・広場が level の ±0.1 m)', Math.abs(gg - lv) < 0.1 && Math.abs(pp - lv) < 0.1, { gate: +gg.toFixed(2), plaza: +pp.toFixed(2), level: lv });
   check('湖の中心が深さ分 (2.5 m) 掘れている', Math.abs((lv - lcH) - lake.lake.depth) < 0.3 && Math.abs(rimH - lv) < 0.1, { center: +lcH.toFixed(2), rim: +rimH.toFixed(2) });
   const names = await page.evaluate(() => window.__g.scene.getObjectByName('park').children.length);

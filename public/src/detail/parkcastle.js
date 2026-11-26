@@ -272,6 +272,7 @@ export function buildCastle(ctx) {
   const goldMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.34, metalness: 0.3, side: THREE.DoubleSide, emissive: '#9a6e1c', emissiveIntensity: 0 });
   goldMat.userData.glow = 0.4; emissive.push(goldMat);
   const lampWarm = glowMat('#ffe2a0', 1.5), lampPink = glowMat('#ff9ccf', 1.3), lampCyan = glowMat('#8fe8ff', 1.3);
+  lampWarm.color.set('#eadcb8'); lampPink.color.set('#ecc0d6'); lampCyan.color.set('#bfe0ea');   // 昼は色つきのガラスに見える (夜は emissive で光る)
 
   const wall = new Buf(), roof = new Buf(), trim = new Buf(), gold = new Buf();
   const stone = C(Cs.stone), cream = C(Cs.cream), goldC = C(Cs.gold), shade = C(Cs.stoneShade);
@@ -433,7 +434,7 @@ export function buildCastle(ctx) {
   let maxTop = 0;
   function buildTower(T) {
     const cx = T.x, cz = T.z, R0 = T.tiers[0].r, N = Math.max(low ? 10 : 14, Math.round((low ? 14 : 30) * Math.sqrt(R0 / 12.5) + 10) & ~1) * (low ? 1 : 1);
-    const baseTint = T.id === 'keep' ? stone : tint(stone, 0.97 + rngC() * 0.05);
+    const rc0 = C(Cs[T.roof.color] || T.roof.color), baseTint = new THREE.Color().lerpColors(stone, rc0, T.id === 'keep' ? 0.04 : 0.09).multiplyScalar(T.id === 'keep' ? 1 : 0.97 + rngC() * 0.05);   // 壁は屋根の色をほんのり映す
     // 土台 (水際の石組み)
     lathe(trim, cx, cz, [{ r: R0 + 1.5, y: -3 }, { r: R0 + 1.5, y: 0.35 }, { r: R0 + 0.95, y: 0.6 }, { r: R0 + 0.45, y: 0.9 }, { r: R0 + 0.12, y: 1.15 }], N, shade);
     let y = 0, topR = R0;
@@ -553,6 +554,11 @@ export function buildCastle(ctx) {
         for (const sd of [-1, 1]) gold.quad([sd * (w + 0.5), h - 0.1, pz], [sd * (w + 0.5 - 0.7), h + 0.45, pz], [0, h + gable - 0.2, pz], [0, h + gable + 0.5, pz], [0, 0, fc], NOUV, goldC);
         if (out && g.rose) { const rc = cellRect(CELL.ROSE), ry = h + gable * 0.38, rr = 1.9; wall.quad([-rr, ry - rr, pz], [rr, ry - rr, pz], [rr, ry + rr, pz], [-rr, ry + rr, pz], [0, 0, fc], rc, stone); lathe3(gold, 0, ry, pz + fc * 0.03, rr, rr + 0.25, fc, goldC); }
       }
+      if (gable) {   // 切妻の板張り (縦の金の桟)
+        const fc = zz === z1 ? 1 : -1, hh = (x) => (gable + 0.1) * (1 - Math.abs(x) / (w + 0.5));
+        for (let x = -w + 1.2; x < w - 1; x += 1.7) { const hx = hh(x) - 0.55; if (hx > 0.6) gold.box(x, h + hx / 2 + 0.1, zz + fc * 0.3, 0.1, hx, 0.08, 0, tint(goldC, 0.85), NOUV, false); }
+        gold.box(0, h + 0.5, zz + fc * 0.3, 2 * w, 0.18, 0.08, 0, goldC, NOUV, false);
+      }
       // 軒より上の切妻 (三角)
       if (gable) trim.tri([-w - 0.5, h, zz + (zz === z1 ? 0.2 : -0.2)], [w + 0.5, h, zz + (zz === z1 ? 0.2 : -0.2)], [0, h + gable, zz + (zz === z1 ? 0.1 : -0.1)], nn, [[0, 0], [1, 0], [0.5, 1]], tint(stone, 0.97));
     }
@@ -619,6 +625,16 @@ export function buildCastle(ctx) {
       if (g.rose) finial(0, h + gable + 0.2, z1 - 1, 9, 'gold', false);
       else finial(0, h + gable + 0.2, (z0 + z1) / 2, 6, 'gold', false);
     }
+    // 上げかけの落とし格子 (鉄の縦棒 + 横の桟。アーチの上の方に下がる)
+    {
+      const bars = low ? 5 : 9, zz = zOut - fo * 0.9, iron = C('#3b3a4a'), top = (x) => spring + Math.sqrt(Math.max(0, 4 * hw * hw - (Math.abs(x) - hw) ** 2));
+      for (let k = 0; k < bars; k++) {
+        const x = -hw + 0.55 + (2 * hw - 1.1) * k / (bars - 1), yt = top(x) - 0.05;
+        gold.box(x, yt - 0.8, zz, 0.1, 1.6, 0.1, 0, iron, NOUV, false);
+        gold.box(x, yt - 1.6, zz, 0.16, 0.3, 0.16, 0, goldC, NOUV);
+      }
+      for (const dy of [0.55, 1.1]) { const yy = top(0) - dy - 0.7; gold.box(0, yy, zz, 2 * hw - 0.9, 0.08, 0.1, 0, iron, NOUV, false); }
+    }
     // 床と下の石組み
     wall.quad([-w, -2.5, zOut], [w, -2.5, zOut], [w, 0.3, zOut], [-w, 0.3, zOut], [0, 0, fo], plain, tint(shade, 0.92));
     // 角の見張り塔 (小塔)
@@ -633,7 +649,7 @@ export function buildCastle(ctx) {
   }
   function bartizan(x, y, z, r, sx) {   // 角の小塔: 持ち送り (さかさの円すい) + 胴 + 屋根
     const N = low ? 8 : 12, c = tint(stone, 0.96);
-    lathe(trim, x, z, [{ r: r * 0.5, y: y + 0.5 }, { r: r * 0.78, y: y + 1.0 }, { r: r + 0.1, y: y + 1.7 }, { r: r + 0.2, y: y + 2.0 }], N, cream);
+    lathe(trim, x, z, [{ r: r * 0.45, y: y + 0.5 }, { r: r * 0.62, y: y + 0.5 }, { r: r * 0.62, y: y + 0.95 }, { r: r * 0.82, y: y + 0.95 }, { r: r * 0.82, y: y + 1.4 }, { r: r + 0.12, y: y + 1.4 }, { r: r + 0.12, y: y + 2.0 }], N, cream);
     cylWall(x, z, y + 2.0, r, r * 0.97, 1, 3.4, CELL.SLIT, 3.0, c);
     cornice(x, z, r * 0.97, y + 5.4, N);
     roofCone(x, z, y + 5.7, r + 0.9, 4.8, N, 8, 'gold', { dormers: 0, ribs: false, curve: 1.3 });
@@ -685,6 +701,13 @@ export function buildCastle(ctx) {
       }
       wheels.push({ wheel, dir: w % 2 ? -1 : 1, rate: RC.spin * (1 + w * 0.18) });
     }
+    {   // 冠の頂の星 (金の六芒星。夜は光る)
+      const st = new THREE.Shape(), RO = 2.0, RI = 0.85;
+      for (let k = 0; k < 12; k++) { const a = k / 12 * TAU, r = k % 2 ? RI : RO; (k ? st.lineTo(Math.sin(a) * r, Math.cos(a) * r) : st.moveTo(Math.sin(a) * r, Math.cos(a) * r)); }
+      st.closePath();
+      const sg = new THREE.ExtrudeGeometry(st, { depth: 0.5, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 1 }); sg.translate(0, 0, -0.25);
+      const sm = new THREE.Mesh(sg, goldM); sm.position.set(0, RC.finialTop ? RC.finialTop - RC.y + 1.2 : 11.4, 0); crown.add(sm); const sm2 = sm.clone(); sm2.rotation.y = Math.PI / 2; crown.add(sm2);
+    }
     crown.position.set(0, RC.y, -4);
     const hubBall = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 12), goldM); crown.add(hubBall);
     api.group.add(crown);
@@ -693,7 +716,7 @@ export function buildCastle(ctx) {
 
   // ---------- 灯・のぼり・旗 ----------
   {
-    const N = lamps.length, gl = new THREE.SphereGeometry(1, 8, 6);
+    const N = lamps.length, gl = new THREE.SphereGeometry(1, low ? 5 : 7, low ? 3 : 5);
     const by = new Map();
     for (const l of lamps) { if (!by.has(l[3])) by.set(l[3], []); by.get(l[3]).push(l); }
     for (const [mat, list] of by) {
@@ -809,12 +832,12 @@ export function buildCastle(ctx) {
     const bed = (x0, z0, x1, z1) => { hedge.box((x0 + x1) / 2, 0.45, z0, x1 - x0, 0.7, 0.55, 0, hedgeC); hedge.box((x0 + x1) / 2, 0.45, z1, x1 - x0, 0.7, 0.55, 0, hedgeC); hedge.box(x0, 0.45, (z0 + z1) / 2, 0.55, 0.7, z1 - z0, 0, hedgeC); hedge.box(x1, 0.45, (z0 + z1) / 2, 0.55, 0.7, z1 - z0, 0, hedgeC); };
     for (const sd of [-1, 1]) { bed(sd * 9.5, 33.5, sd * 20, 42); bed(sd * 10, 9.5, sd * 20, 20.5); }
     const beds = [[-9.5, 33.5, -20, 42], [9.5, 33.5, 20, 42], [-10, 9.5, -20, 20.5], [10, 9.5, 20, 20.5]];
-    const flowerC = ['#ff86b8', '#ffd36b', '#9a7ae6', '#ffffff', '#59c8e6'], fl = new THREE.InstancedMesh(new THREE.SphereGeometry(0.28, 6, 4), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), 600);
+    const flowerC = ['#ff86b8', '#ffd36b', '#9a7ae6', '#ffffff', '#59c8e6'], fl = new THREE.InstancedMesh(new THREE.SphereGeometry(0.28, 5, 3), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7 }), low ? 240 : 600);
     let fi = 0; const d = new THREE.Object3D(), cc = new THREE.Color(), rf = mulberry(5);
     for (const [xa, za, xb, zb] of beds) {
       flatMesh(rectPos(Math.min(xa, xb), Math.min(za, zb), Math.max(xa, xb), Math.max(za, zb), 0.16), '#6aa24e', 0.16);
       const nx = Math.round(Math.abs(xb - xa) / 0.9), nz = Math.round(Math.abs(zb - za) / 0.9);
-      for (let i = 1; i < nx; i++) for (let j = 1; j < nz; j++) { if (fi >= 600 || rf() < 0.35) continue; d.position.set(Math.min(xa, xb) + (i + rf() * 0.5) * 0.9, 0.32, Math.min(za, zb) + (j + rf() * 0.5) * 0.9); d.scale.setScalar(0.7 + rf() * 0.5); d.updateMatrix(); fl.setMatrixAt(fi, d.matrix); fl.setColorAt(fi, cc.set(flowerC[Math.floor(rf() * flowerC.length)])); fi++; }
+      for (let i = 1; i < nx; i++) for (let j = 1; j < nz; j++) { if (fi >= fl.count || rf() < (low ? 0.65 : 0.35)) continue; d.position.set(Math.min(xa, xb) + (i + rf() * 0.5) * 0.9, 0.32, Math.min(za, zb) + (j + rf() * 0.5) * 0.9); d.scale.setScalar(0.7 + rf() * 0.5); d.updateMatrix(); fl.setMatrixAt(fi, d.matrix); fl.setColorAt(fi, cc.set(flowerC[Math.floor(rf() * flowerC.length)])); fi++; }
     }
     fl.count = fi; fl.instanceMatrix.needsUpdate = true; if (fl.instanceColor) fl.instanceColor.needsUpdate = true; api.group.add(fl);
     const hm = new THREE.Mesh(hedge.geometry(), trimMat); hm.castShadow = true; api.group.add(hm);

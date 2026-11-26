@@ -21,6 +21,20 @@ export function createParkMap(cfg) {
     const ellipse = (e, fill) => { c.fillStyle = fill; c.beginPath(); c.ellipse(X(e.center[0]), Z(e.center[1]), e.rx * scale, e.rz * scale, 0, 0, Math.PI * 2); c.fill(); };
     if (ell['サンライズ・プラザ']) ellipse(ell['サンライズ・プラザ'], '#f7eed9');
     if (ell['ムーンレイク']) { ellipse(ell['ムーンレイク'], '#8fc6ea'); }
+    // 城 (段階 9): 島・堤道・城壁・塔 (屋根の色)
+    if (cfg.castle) {
+      const K = cfg.castle, cs = Math.cos(K.yaw), sn = Math.sin(K.yaw), toW = (lx, lz) => [K.center[0] + lx * cs + lz * sn, K.center[1] - lx * sn + lz * cs];
+      c.fillStyle = '#a9d68c'; c.beginPath(); c.ellipse(X(K.center[0]), Z(K.center[1]), K.island.rx * scale, K.island.rz * scale, 0, 0, Math.PI * 2); c.fill();
+      const ln = (pts, w, col) => { c.strokeStyle = col; c.lineWidth = Math.max(1.2, w * scale); c.lineCap = 'butt'; c.beginPath(); pts.forEach(([lx, lz], i) => { const [x, z] = toW(lx, lz); i ? c.lineTo(X(x), Z(z)) : c.moveTo(X(x), Z(z)); }); c.stroke(); c.lineCap = 'round'; };
+      for (const cw of K.causeways) ln([[0, Math.sign(cw.to) * (Math.abs(cw.from) - 4)], [0, cw.to]], cw.width, '#ffffff');
+      for (const w of K.walls) for (const sd of [1, -1]) ln(w.pts.map(([x, z]) => [sd * x, z]), w.t, '#a99fbd');
+      for (const g of K.gates) ln([[-g.w, (g.z0 + g.z1) / 2], [g.w, (g.z0 + g.z1) / 2]], g.z1 - g.z0, '#cfc6dd');
+      for (const T of K.towers) for (const sd of (T.mirror === false ? [1] : [1, -1])) {
+        const [x, z] = toW(sd * T.x, T.z);
+        c.fillStyle = K.colors[T.roof.color] || '#9b7fd6'; c.strokeStyle = '#ffffff'; c.lineWidth = 1;
+        c.beginPath(); c.arc(X(x), Z(z), Math.max(1.5, T.tiers[0].r * scale), 0, Math.PI * 2); c.fill(); if (scale >= 0.3) c.stroke();
+      }
+    }
     // 道
     const line = (pts, w, col) => { c.strokeStyle = col; c.lineWidth = Math.max(1.5, w * scale); c.beginPath(); pts.forEach(([x, z], i) => (i ? c.lineTo(X(x), Z(z)) : c.moveTo(X(x), Z(z)))); c.stroke(); };
     if (cfg.promenade && ell[cfg.promenade.ellipse]) {

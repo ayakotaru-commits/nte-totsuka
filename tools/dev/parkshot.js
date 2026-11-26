@@ -1,5 +1,5 @@
 // フェアリー・リールパーク (舞浜の架空のテーマパーク。PARK_PLAN.md) の画面を撮る。視点はゲームの座標 (x, z) で書く。
-// 使い方: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--only 名前,名前] [--night|--dusk|--morning] [--touch] [--probe]   (1 枚 1〜2 分。--probe = 壁の柄の確かめの箱だけを撮る。--nopark = 修正前 = 実在のままの舞浜)
+// 使い方: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--nocastle] [--only 名前,名前] [--night|--dusk|--morning] [--touch] [--probe]   (1 枚 1〜2 分。--probe = 壁の柄の確かめの箱だけを撮る。--nopark = 修正前 = 実在のままの舞浜)
 // 視点 (VIEWS): at = キャラの位置 [x, z]、look = 見る向き [dx, dz]、pitch・dist = カメラ。キャラは地面に立つ (高さは地形から)
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -152,6 +152,7 @@ try {
   const morning = args.includes('--morning'); if (morning) args.splice(args.indexOf('--morning'), 1);
   const touch = args.includes('--touch'); if (touch) args.splice(args.indexOf('--touch'), 1);   // スマホの設定 (?touch。壁の柄なし・小物をまとめる・人を減らす)
   const nopark = args.includes('--nopark'); if (nopark) args.splice(args.indexOf('--nopark'), 1);
+  const nocastle = args.includes('--nocastle'); if (nocastle) args.splice(args.indexOf('--nocastle'), 1);   // 城だけ出さない (段階 9 の修正前の見た目。?nocastle)
   const only = flag('--only');
   const [out] = args;
   if (!out) { console.error('usage: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--only 名前,..] [--night|--dusk|--morning] [--touch]'); process.exit(1); }
@@ -175,7 +176,7 @@ try {
   });
   page.on('pageerror', e => console.log('ERR', e.message));
   page.on('console', m => { if (/rror/.test(m.text())) console.log('LOG', m.text()); });
-  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : ''), { timeout: 300000 });
+  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : '') + (nocastle ? '&nocastle' : ''), { timeout: 300000 });
   await page.waitForFunction(() => window.__g && window.__ride, null, { timeout: 300000 });
   await page.addStyleTag({ content: '#help{display:none!important}' });
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });

@@ -97,6 +97,12 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       });
       out.push(`== パーク: メッシュ ${meshes} 個 (描画の呼び出しの上限)、頂点 GPU ${MB(gpu)}、三角形 ${(tri / 1000).toFixed(0)}k (インスタンス込み)、粒 ${pts}、インスタンス計 ${inst}、テクスチャ ${ptex.size} 枚 ${MB(tb)}`);
       for (const [k, v] of Object.entries(byName).sort((a, b) => b[1].b - a[1].b).slice(0, 14)) out.push('   ' + MB(v.b).padStart(8) + '  ' + String(v.n).padStart(4) + ' 個  ' + k);
+      const ck = pk.getObjectByName('park_castle');   // 段階 9: 城だけの内訳 (描画の呼び出し = メッシュの数、三角形、頂点 GPU、テクスチャ)
+      if (ck) {
+        let m2 = 0, t2 = 0, b2 = 0, tb2 = 0; const sg = new Set(), st2 = new Set();
+        ck.traverse((o) => { if (!o.geometry) return; m2++; const gi = o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count; t2 += gi / 3 * (o.isInstancedMesh ? o.count : 1); if (!sg.has(o.geometry)) { sg.add(o.geometry); for (const k in o.geometry.attributes) { const at = o.geometry.attributes[k]; b2 += at.count * at.itemSize * 4; } } for (const m of [].concat(o.material || [])) for (const k in m) { const t = m[k]; if (t && t.isTexture && t.image && !st2.has(t)) { st2.add(t); tb2 += t.image.width * t.image.height * 4 * 1.33; } } });
+        out.push(`== 城 (park_castle): メッシュ ${m2} 個 (描画の呼び出し)、三角形 ${(t2 / 1000).toFixed(0)}k、頂点 GPU ${MB(b2)}、テクスチャ ${st2.size} 枚 ${MB(tb2)}`);
+      }
       const cr = g.scene.getObjectByName('crowd'); if (cr) out.push(`== 人の InstancedMesh: count ${cr.count}`);
     } else out.push('== パーク: 見つからない');
     return out.join('\n');
