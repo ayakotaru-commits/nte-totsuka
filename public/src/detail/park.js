@@ -12,6 +12,7 @@ import { buildAreas } from './parkareas.js';
 import { buildAvenuePaving, buildAreaPaving } from './parkpaving.js';
 import { buildShow, showClock as showClockNow } from './parkshow.js';
 import { buildCastle, castleLakeMask, castleFrame } from './parkcastle.js';
+import { buildEntrance } from './parkentrance.js';
 
 const bboxOf = (p) => {
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -239,8 +240,15 @@ export function buildPark(cfg, world, opts = {}) {
   function build() {
     built = true;
     const [gx, gz] = gate.at;
-    // ---- ゲートの看板 (柱 2 本 + 名前の板。柱の間は通れる) ----
-    {
+    // ---- 入口 (エントランス。園の顔。detail/parkentrance.js。?noentrance で、以前の看板だけの門に戻す = 確認用) ----
+    const useEntrance = cfg.entrance && !new URLSearchParams(location.search).has('noentrance');
+    if (useEntrance) {
+      const t0 = performance.now();
+      api.entrance = buildEntrance({ cfg, ground, std, glowMat, group, col, emissive, low: !!opts.low });
+      console.info(`[park] 入口: 三角形 約 ${Math.round(api.entrance.stats.tris)}・部品 ${api.entrance.stats.meshes}${api.entrance.stats.merged ? `・まとめて ${api.entrance.stats.merged.before} → ${api.entrance.stats.merged.after}` : ''}、${(performance.now() - t0).toFixed(0)} ms`);
+    }
+    // ---- ゲートの看板 (柱 2 本 + 名前の板。柱の間は通れる。入口が無いときの以前の門) ----
+    if (!useEntrance) {
       const fx = gate.face[0], fz = gate.face[1], yaw = Math.atan2(fx, fz), rx = fz, rz = -fx, half = gate.span / 2, H0 = gate.post, gy = ground(gx, gz);
       const sg = new THREE.Group(); sg.position.set(gx, gy, gz); sg.rotation.y = yaw;
       const post = std('#e9e2f5', 0.6);
@@ -492,11 +500,12 @@ export function buildPark(cfg, world, opts = {}) {
     console.info(`[park] ${cfg.name}: 土台を作った (柵 ${col.line.length} 本の線・当たり判定 円 ${col.circle.length}・線 ${col.line.length}・箱 ${col.box.length}、ゲートの地面 ${ground(gx, gz).toFixed(2)} m)`);
   }
   const api = {
-    group, emissive, beams: null, areas: null, show: null,
+    group, emissive, beams: null, areas: null, show: null, entrance: null,
     // カメラの位置。区間 (地形) を読み込めたら 1 回だけ作る (敷地の 1.5 km 以内のとき調べる)。光線は回す
     update(x, z, win = 0) {
       if (!built && logoFontReady && Math.hypot(x - gate.at[0], z - gate.at[1]) < 1500 && ready()) build();
       if (api.beams) api.beams.rotation.y = performance.now() / 1000 * 0.25;
+      api.entrance?.update(Date.now() / 1000, x, z);   // 入口の冠のリールが回る
       api.areas?.update?.(Date.now() / 1000, x, z);   // 旗のゆれ・煙突の煙・ネオンのまたたき (段階 7)
       api.areas?.rides?.update(Date.now() / 1000, x, z);   // 観覧車・メリーゴーラウンド・コースターの動き (近くのときだけ)
       api.show?.update(showClockNow(), x, z, win);          // 花火・パレード・水上ショー (win = 夜の度合い。time.js)

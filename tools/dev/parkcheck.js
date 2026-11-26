@@ -259,26 +259,32 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   const gh = await page.evaluate(([x, z]) => window.__groundH(x, z), g0);
   check('敷地に入る所から、駅からゲートへの道を歩いてゲートの手前に着く', second.out.length === park.paths[0].pts.length && second.out.every((q) => q.ok) && Math.abs(lastY - gh) < 0.6, { y: lastY, ground: +gh.toFixed(2) });
 
-  // 柱の間 (ゲートの中心を、道の向きに通る) と、柱にぶつかる
+  // 入口 (park.entrance。詳しい確認は tools/dev/entrancecheck.js)。中央の大門 (開き 16 m) の真ん中を、前庭から内庭まで通り抜けられ、開きの外側の柱にはぶつかる。
+  // 入口が無い設定 (古い看板だけの門) のときは、柱の間を通り抜けられ、柱の中心へ向かうと手前で止まる
   const fx = park.gate.face[0], fz = park.gate.face[1], half = park.gate.span / 2;
-  const rx = fz, rz = -fx;   // 柱の並ぶ向き
-  const pass = await page.evaluate((a) => window.__walkXZ(a, { maxT: 20, tol: 1.2 }), [[g0[0] + fx * 4, g0[1] + fz * 4], g0, [g0[0] - fx * 6, g0[1] - fz * 6]]);
+  const rx = fz, rz = -fx;   // 柱の並ぶ向き (局所 u)
+  const ent = park.entrance;
+  const EW = (u, v) => [g0[0] + rx * u + fx * v, g0[1] + rz * u + fz * v];
+  const pass = await page.evaluate((a) => window.__walkXZ(a, { maxT: 20, tol: 1.2 }), ent ? [EW(0, 40), EW(0, 18), EW(0, 4)] : [[g0[0] + fx * 4, g0[1] + fz * 4], g0, [g0[0] - fx * 6, g0[1] - fz * 6]]);
   console.log(JSON.stringify(pass));
-  check('ゲートの柱の間を通り抜けられる', pass.out.length === 3 && pass.out.every((q) => q.ok), pass.out.map((q) => q.ok));
-  const postX = g0[0] + rx * half, postZ = g0[1] + rz * half;
+  check(ent ? '入口の大門の開きを、前庭から内庭まで通り抜けられる' : 'ゲートの柱の間を通り抜けられる', pass.out.length === 3 && pass.out.every((q) => q.ok), pass.out.map((q) => q.ok));
+  const pu = ent ? (ent.hall.open + ent.hall.pylon) / 2 : half;   // 柱 (大門は開きの外側の柱) の局所 u
+  const [postX, postZ] = EW(pu, ent ? ent.hall.v : 0);
+  const [stX, stZ] = EW(pu, ent ? ent.hall.v + 20 : 4);
   const pgh = await page.evaluate(([x, z]) => window.__groundH(x, z), [postX, postZ]);
-  await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [postX + fx * 4, pgh + 0.1, postZ + fz * 4]);
+  await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [stX, pgh + 0.1, stZ]);
   await frames(page, 3);
   // 柱の中心に向かって歩く (円の柱は、斜めに当たると横へ滑って回り込める。中心へ向かえば、手前で止まるはず)
   const hit = await page.evaluate((a) => window.__walkXZ(a, { maxT: 10, walk: true, keepGoing: true, tol: 0.2 }), [[postX, postZ]]);
   console.log(JSON.stringify(hit));
   const stop = hit.out[0];
-  check('柱の中心に向かって歩くと、柱の手前で止まる (通り抜けない)', stop && !stop.ok && Math.hypot(stop.at[0] - postX, stop.at[1] - postZ) > 0.5 && Math.hypot(stop.at[0] - postX, stop.at[1] - postZ) < 1.8, stop);
+  const sd = stop ? Math.hypot(stop.at[0] - postX, stop.at[1] - postZ) : 0;
+  check(ent ? '大門の柱 (開きの外側) に向かって歩くと、手前で止まる (通り抜けない)' : '柱の中心に向かって歩くと、柱の手前で止まる (通り抜けない)', stop && !stop.ok && (ent ? sd > 5 && sd < 8.5 : sd > 0.5 && sd < 1.8), stop);
 
   // ゲートからネオン・アベニューを歩いて、広場の円の中心へ
   const pl = park.ellipses['サンライズ・プラザ'].center;
   const av = park.paths[1].pts;
-  const third = await page.evaluate((r) => window.__walkXZ(r, { maxT: 40, tol: 2 }), [...av.map((p) => [p[0], p[1]]), [pl[0], pl[1]]]);
+  const third = await page.evaluate((r) => window.__walkXZ(r, { maxT: 40, tol: 2 }), [...(ent ? [EW(16, -9)] : []), ...av.map((p) => [p[0], p[1]]).slice(ent ? 1 : 0), [pl[0], pl[1]]]);   // 入口があるとき: 内庭の花の築山のわき (u 16) を通ってアベニューへ
   console.log(JSON.stringify(third));
   const ph = await page.evaluate(([x, z]) => window.__groundH(x, z), pl);
   const ty = third.out.length ? third.out[third.out.length - 1].y : null;

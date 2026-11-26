@@ -1,5 +1,5 @@
 // 千葉ドリームランド (舞浜の架空のテーマパーク。PARK_PLAN.md) の画面を撮る。視点はゲームの座標 (x, z) で書く。
-// 使い方: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--nocastle] [--noreflect] [--only 名前,名前] [--night|--dusk|--morning] [--touch] [--probe]   (1 枚 1〜2 分。--probe = 壁の柄の確かめの箱だけを撮る。--nopark = 修正前 = 実在のままの舞浜)
+// 使い方: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--nocastle] [--noentrance] [--noreflect] [--only 名前,名前] [--night|--dusk|--morning] [--touch] [--probe]   (1 枚 1〜2 分。--probe = 壁の柄の確かめの箱だけを撮る。--nopark = 修正前 = 実在のままの舞浜)
 // 視点 (VIEWS): at = キャラの位置 [x, z]、look = 見る向き [dx, dz]、pitch・dist = カメラ。キャラは地面に立つ (高さは地形から)
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -108,6 +108,15 @@ const VIEWS = [
   { name: 't7_ts_to_lost', at: [31624, -25785], look: [0.63, -0.77], pitch: 0.12, dist: 14 },    // 広場からロストへの道 (門)
   { name: 't8_lost_side', at: [31690, -25840], look: [0.6, 0.8], pitch: 0.12, dist: 16 },        // ロストの側から見た境目
   { name: 't9_ts_neon_aerial', at: [31430, -25880], look: [0.8, 0.6], pitch: 0.55, dist: 120 },  // ネオンとの境目 (東の並びが切れる所)
+  { name: 'en1_front', at: [31304, -25980], look: [0.500, 0.866], pitch: 0.12, dist: 26 },      // 入口: 前庭の入り口 (柵の隙間の近く) から、広間と大門
+  { name: 'en2_front_close', at: [31307, -25959], look: [0.500, 0.866], pitch: 0.14, dist: 16 },      // 入口: 前庭の中ほどから、大門 (名前の板・冠)
+  { name: 'en3_aerial', at: [31320, -25936], look: [0.500, 0.866], pitch: 0.95, dist: 170 },      // 入口: 入口を上から (前庭・広間・内庭)
+  { name: 'en4_lanes', at: [31282, -25930], look: [0.500, 0.866], pitch: 0.12, dist: 12 },      // 入口: 右の改札の列 (屋根・番号・ガラスの仕切り) と切符売り場
+  { name: 'en5_inner', at: [31340, -25902], look: [-0.500, -0.866], pitch: 0.10, dist: 16 },      // 入口: 内庭から広間の裏 (Welcome の板) と花の築山
+  { name: 'en6_arch', at: [31315, -25945], look: [0.500, 0.866], pitch: 0.20, dist: 7 },      // 入口: 大門の開きの前 (歩いて入る人の目)
+  { name: 'en7_tower', at: [31336, -25961], look: [0.500, 0.866], pitch: 0.20, dist: 14 },      // 入口: 左の塔と改札の屋根
+  { name: 'en8_wall', at: [31263, -25938], look: [0.500, 0.866], pitch: 0.12, dist: 16 },      // 入口: 右の壁 (前庭を囲む) と切符売り場の列
+  { name: 'en9_pylon', at: [31303, -25989], look: [0.500, 0.866], pitch: 0.10, dist: 14 },      // 入口: 柵の隙間の門柱
 ];
 
 // 段階 2: 各エリアの視点を、設定 (public/data/park.json の gen) から作る。<n>_arch = 門の前から入る向き、<n>_aerial = 建物の中心を上から、<n>_street = 主な通りを歩く目の高さ
@@ -187,6 +196,7 @@ try {
   const nopark = args.includes('--nopark'); if (nopark) args.splice(args.indexOf('--nopark'), 1);
   const simple = args.includes('--simpletrees'); if (simple) args.splice(args.indexOf('--simpletrees'), 1);   // 木を以前の簡単な形に (?simpletrees)
   const noreflect = args.includes('--noreflect'); if (noreflect) args.splice(args.indexOf('--noreflect'), 1);   // 城の水面への映り込みを出さない (改善 2 の修正前。?noreflect)
+  const noentrance = args.includes('--noentrance'); if (noentrance) args.splice(args.indexOf('--noentrance'), 1);   // 入口を以前の看板だけの門に (入口の作り込みの修正前。?noentrance)
   const nocastle = args.includes('--nocastle'); if (nocastle) args.splice(args.indexOf('--nocastle'), 1);   // 城だけ出さない (段階 9 の修正前の見た目。?nocastle)
   const only = flag('--only');
   const [out] = args;
@@ -211,7 +221,7 @@ try {
   });
   page.on('pageerror', e => console.log('ERR', e.message));
   page.on('console', m => { if (/rror/.test(m.text())) console.log('LOG', m.text()); });
-  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : '') + (nocastle ? '&nocastle' : '') + (noreflect ? '&noreflect' : '') + (simple ? '&simpletrees' : ''), { timeout: 300000 });
+  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : '') + (nocastle ? '&nocastle' : '') + (noentrance ? '&noentrance' : '') + (noreflect ? '&noreflect' : '') + (simple ? '&simpletrees' : ''), { timeout: 300000 });
   await page.waitForFunction(() => window.__g && window.__ride, null, { timeout: 300000 });
   await page.addStyleTag({ content: '#help{display:none!important}' });
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });
