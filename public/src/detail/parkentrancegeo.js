@@ -74,15 +74,12 @@ export function entranceLayout(cfg) {
 // 歩く人 (園内) が重ならないよう、描く位置を外へ押し出す円 [[x, z, 半径]]。局所 (u, v) → ワールド
 export function entranceObstacles(cfg) {
   if (!cfg || !cfg.entrance) return [];
-  const E = cfg.entrance, F = entranceFrame(cfg), L = entranceLayout(cfg), H = E.hall, out = [];
+  const E = cfg.entrance, F = entranceFrame(cfg), H = E.hall, out = [];
   const c = (u, v, r) => { const w = F.W(u, v); out.push([w[0], w[1], r]); };
-  for (const s of [-1, 1]) {
-    c(s * ((H.open + H.pylon) / 2), H.v, 4.2); c(s * ((H.open + H.pylon) / 2), H.v - 4, 3.2); c(s * ((H.open + H.pylon) / 2), H.v + 4, 3.2);   // 大門の柱
-    c(s * H.towerU, H.v, H.towerR + 0.4);                                                                                              // 塔
-    for (let k = -1; k <= 1; k++) c(s * (H.half - 3), H.v + k * 4, 3.2);                                                                // 端の小屋
-  }
-  for (const b of L.booths) { c(b.u - 0.8, b.v, 1.8); c(b.u + 0.8, b.v, 1.8); }                                                           // 切符売り場
-  for (const k of E.kiosks) { c(k.u - k.w / 4, k.v, k.d / 2 + 0.3); c(k.u + k.w / 4, k.v, k.d / 2 + 0.3); }                               // 案内所
-  const m = E.berm; for (let i = -2; i <= 2; i++) c(i * m.rx / 2.4, m.v, m.rz + 0.8);                                                     // 花の築山
+  // 歩く人 (描く位置) を押し出す円。押し出された先で別の円の中に入らないよう、円どうしは人の半径ぶん (0.6 m) 以上あけて置く (parkcrowdcheck.mjs で確認)。
+  // 通り道 (park_crowd.py が足す入口の道) は、切符売り場・塔・端の小屋から離れているので、円は通り道の近くの物 (大門の柱・案内所・築山) だけ
+  for (const s of [-1, 1]) c(s * ((H.open + H.pylon) / 2), H.v, 3.3);   // 大門の柱 (幅 7 m)
+  for (const k of E.kiosks) c(k.u, k.v, Math.min(k.w, k.d) / 2 + 0.4);   // 案内所
+  const m = E.berm; for (const i of [-1, 1]) c(i * 5.4, m.v, 4.5);       // 花の築山 (幅 18 m)
   return out;
 }

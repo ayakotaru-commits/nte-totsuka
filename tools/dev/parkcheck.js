@@ -284,11 +284,11 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   // ゲートからネオン・アベニューを歩いて、広場の円の中心へ
   const pl = park.ellipses['サンライズ・プラザ'].center;
   const av = park.paths[1].pts;
-  const third = await page.evaluate((r) => window.__walkXZ(r, { maxT: 40, tol: 2 }), [...(ent ? [EW(16, -9)] : []), ...av.map((p) => [p[0], p[1]]).slice(ent ? 1 : 0), [pl[0], pl[1]]]);   // 入口があるとき: 内庭の花の築山のわき (u 16) を通ってアベニューへ
+  const third = await page.evaluate((r) => window.__walkXZ(r, { maxT: 40, tol: 2 }), [...(ent ? [EW(0, 34), EW(0, 10), EW(16, -9)] : []), ...av.map((p) => [p[0], p[1]]).slice(ent ? 1 : 0), [pl[0], pl[1]]]);   // 入口があるとき: 前庭 → 大門の開き → 内庭の花の築山のわき (u 16) を通ってアベニューへ
   console.log(JSON.stringify(third));
   const ph = await page.evaluate(([x, z]) => window.__groundH(x, z), pl);
   const ty = third.out.length ? third.out[third.out.length - 1].y : null;
-  check('ゲートからネオン・アベニューを歩いて広場の中心に着く (地面の上に立つ)', third.out.length === av.length + 1 && third.out.every((q) => q.ok) && Math.abs(ty - ph) < 0.6, { y: ty, ground: +ph.toFixed(2) });
+  check('ゲートからネオン・アベニューを歩いて広場の中心に着く (地面の上に立つ)', third.out.length === av.length + 1 + (ent ? 3 : 0) && third.out.every((q) => q.ok) && Math.abs(ty - ph) < 0.6, { y: ty, ground: +ph.toFixed(2) });
   check('NaN なし', !first.nan && !second.nan && !third.nan && !pass.nan);
 
   // ---- 段階 1: 地面・湖・塔・柵・案内 ----
