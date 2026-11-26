@@ -63,6 +63,16 @@ export function outfit(type, r) {
   return o;
 }
 
+// 園内の歩く人がよける物 (木の幹・街灯・ベンチ)。値は public/data/park.json の gen
+export function parkObstacles(park) {
+  const g = park && park.gen; if (!g) return null;
+  const out = [];
+  for (const t of g.trees || []) out.push([t[0], t[1], 0.4 * (t[3] || 1)]);
+  for (const l of g.lamps || []) out.push([l[0], l[1], 0.3]);
+  for (const b of g.benches || []) out.push([b[0], b[1], 1.0]);
+  return out;
+}
+
 export class CrowdSim {
   // crowd = props.crowd ({lanes, hubs})、opt = { cap, radius, seed, height: (x, z) => 地面の高さ (描画側が使う) }
   constructor(crowd, opt = {}) {
@@ -70,7 +80,10 @@ export class CrowdSim {
     this.R = opt.radius ?? 130;
     this.rnd = rng(opt.seed ?? 1);
     this.hubs = crowd.hubs || { st: [], pub: [] };
-    this.parkHubs = (crowd.parkHubs || []);   // 園内の人の出やすさの中心 (プラザ・ゲート・湖)
+    this.parkHubs = (crowd.parkHubs || []);
+    // 園内の木・街灯・ベンチ (opt.obstacles = [[x, z, 半径]])。歩く人が重ならないよう、描く位置だけ外へ押し出す (8 m 四方の格子)
+    this.obst = null;
+    if (opt.obstacles && opt.obstacles.length) { this.obst = new Map(); for (const o of opt.obstacles) { const k = Math.floor(o[0] / 8) * 65536 + Math.floor(o[1] / 8); let a = this.obst.get(k); if (!a) this.obst.set(k, a = []); a.push(o); } }   // 園内の人の出やすさの中心 (プラザ・ゲート・湖)
     this.ground = opt.ground || (() => 0);   // 地面の高さ (描画と同じ)
     this.peds = opt.peds || [];              // props.pedSignals
     this.busStops = (opt.busStops || []).map((b, i) => ({ id: i, x: b.x, z: b.z }));
@@ -276,6 +289,22 @@ export class CrowdSim {
   }
 
   // ---- 観客 (園内。フェアリー・リールパークのショー) ----
+  // 園内の障害物 (木の幹・街灯・ベンチ) の外へ押し出す。境目では動きがなく (押し出し 0)、奥へ入るほど強くなるので、位置は連続
+  pushOut(x, z) {
+    const cx = Math.floor(x / 8), cz = Math.floor(z / 8);
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+      const a = this.obst.get((cx + i) * 65536 + (cz + j)); if (!a) continue;
+      for (const o of a) {
+        const dx = x - o[0], dz = z - o[1], d2 = dx * dx + dz * dz, r = o[2] + 0.3;   // 0.3 = 人の半径
+        if (d2 >= r * r) continue;
+        const d = Math.sqrt(d2);
+        if (d < 1e-4) { x += r; continue; }
+        x = o[0] + dx / d * r; z = o[1] + dz / d * r;
+      }
+    }
+    return [x, z];
+  }
+
   // ショー (パレード・花火) の間だけ、決まった場所 (slots = [{ x, z, yaw, kind: 0 パレード / 1 花火, u: 0〜1 の決まった値 }]。parkcrowd.js が作る) に立つ人。
   // 歩く人 (people) とは別に持つ (通り道を持たない)。出し入れは周り R m・近い順に cap 人まで。出る・消えるときは背を 0 ↔ 1 に変える (急に現れて見えない)
   setViewSlots(slots, cap) { this.slots = slots; this.viewCap = cap; this.viewers = new Map(); this.viewSel = new Set(); this.viewAt = 0; }
@@ -413,6 +442,7 @@ export class CrowdSim {
     if (od > 1e-4) { const k = Math.max(0, 1 - Math.max(p.v, 0.6) * dt / od); p.ox *= k; p.oz *= k; }
     p.ax += (tx - p.ax) * (1 - Math.exp(-dt * 6)); p.az += (tz - p.az) * (1 - Math.exp(-dt * 6));
     x += p.ox + p.ax; z += p.oz + p.az;
+    if (this.obst && L.park) { const o = this.pushOut(x, z); x = o[0]; z = o[1]; }
     // 向きはなめらかに変える (立ち話は相手の方を向く)
     const mx = x - p.x, mz = z - p.z;
     const want = p.faceYaw !== null ? p.faceYaw : (Math.hypot(mx, mz) > 1e-4 && p.v > 0.1) ? Math.atan2(mx, mz) : p.hold ? p.yaw : Math.atan2(t0x, t0z);

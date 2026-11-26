@@ -3,7 +3,7 @@
 //   時間帯で人数が変わる / 同じ乱数なら同じ結果 / 観客 (パレードの道の両側・湖のまわりに、始まる前から集まり、終わると減る。顔は道・湖へ向く) /
 //   ショーの案内 (時計から次の開始までの秒・開催中の残り) / 地図の印 (道の上・建物の外・敷地の中)
 import fs from 'node:fs';
-import { CrowdSim, PARK_MIX, REF_SUMW } from '../../public/src/crowdsim.js';
+import { CrowdSim, PARK_MIX, REF_SUMW, parkObstacles } from '../../public/src/crowdsim.js';
 import { parkSchedule, viewWant, infoLine, fmtMin, makeViewSlots } from '../../public/src/parkinfo.js';
 import { paradeRoute, paradeSeconds } from '../../public/src/detail/parkroute.js';
 
@@ -179,6 +179,23 @@ const watch = (nowSec, center, preset = '昼', seconds = 30) => {
   const lanePt = (s) => lanes.some((l) => { for (let i = 0; i + 3 < l.p.length; i += 2) if (segD(s.x, s.z, [l.p[i], l.p[i + 1]], [l.p[i + 2], l.p[i + 3]]) < 1.5) return true; return false; });
   const offLane = sp.filter((s) => !lanePt(s)).map((s) => s.name);
   check('印は通り道の上 (ゲート・プラザの中心を除く)', offLane.every((n) => ['ゲート', 'サンライズ・プラザ'].includes(n)), offLane.join('・'));
+}
+
+// ---- 木・街灯・ベンチをよける (段階 6) ----
+{
+  const obs = parkObstacles(park), sim = new CrowdSim(crowd, { ...OPT, cap: 120, radius: 130, seed: 11, obstacles: obs });
+  const sim0 = new CrowdSim(crowd, { ...OPT, cap: 120, radius: 130, seed: 11 });
+  const spots = Object.values(SPOTS).concat([[31352, -25896], [31180, -25388], [31784, -25659]]);   // 各エリアの中心 (木の多い所を含む)
+  const cnt = (s) => { let inside = 0, tot = 0, jump = 0; const prev = new Map();
+    for (let t = 0; t < 1500; t++) { const [sx, sz] = spots[Math.floor(t / 250) % spots.length]; s.update(0.1, sx, sz, 0, 1, sx + 40, sz + 40, '昼');
+      if (t > 50) for (const p of s.people) { tot++; if (obs.some((o) => Math.hypot(p.x - o[0], p.z - o[1]) < o[2] + 0.3 - 0.01)) inside++; const q = prev.get(p.id); if (q && Math.hypot(p.x - q[0], p.z - q[1]) > 1.0) jump++; prev.set(p.id, [p.x, p.z]); } }
+    return { inside, tot, jump }; };
+  const a = cnt(sim0), b = cnt(sim);
+  check('障害物 (木・街灯・ベンチ) が 500 以上ある', obs.length >= 500, `${obs.length}`);
+  console.log(`  よけない: 障害物の中 ${a.inside}/${a.tot}  よける: ${b.inside}/${b.tot}  1 コマで 1 m 以上跳ぶ ${b.jump}`);
+  check('よけると、人が障害物の中に入らない (0)', b.inside === 0, `${b.inside}`);
+  check('よけない場合は入ってしまう (テストが効いている)', a.inside > 0, `${a.inside}`);
+  check('よけても 1 コマで 1 m 以上は跳ばない (よけない場合と同程度)', b.jump <= a.jump + 3, `${b.jump} / ${a.jump}`);
 }
 
 console.log(`\n${ok.length} 項目 OK / ${ng.length} 項目 NG`);

@@ -2,7 +2,7 @@
 // 脚と腕の振りは頂点シェーダで付けるので、1 人ごとの骨も画像も要らない (メモリはほとんど増えない)。
 // 近くの人だけ詳細なキャラにする (組み立て式キャラは重い) のは、第 2 段階以降。
 import * as THREE from 'three';
-import { CrowdSim } from './crowdsim.js';
+import { CrowdSim, parkObstacles } from './crowdsim.js';
 import { H } from './terrain.js';
 import { GROUND_LIFT } from './world.js';
 
@@ -84,7 +84,7 @@ export class Crowd {
     this.visibleNow = true;
     if (!this.enabled) return;
     const low = !!opt.low;
-    this.sim = new CrowdSim(crowd, { cap: opt.cap ?? (low ? 40 : 120), radius: low ? 90 : 130, seed: 1, ground: (x, z) => H(x, z) + GROUND_LIFT, peds: props.pedSignals, busStops: props.busStops });
+    this.sim = new CrowdSim(crowd, { cap: opt.cap ?? (low ? 40 : 120), radius: low ? 90 : 130, seed: 1, ground: (x, z) => H(x, z) + GROUND_LIFT, peds: props.pedSignals, busStops: props.busStops, obstacles: opt.park ? parkObstacles(opt.park) : null });
     const viewCap = low ? 36 : 90;   // 観客の最大 (ショーの間だけ。歩く人と同じ InstancedMesh)
     if (opt.viewSlots && opt.viewSlots.length) this.sim.setViewSlots(opt.viewSlots, viewCap);
     const cap = this.sim.cap + (this.sim.slots ? viewCap * 2 : 0) + 8;   // 観客は、消えていく途中の分 (背が 0 に縮むまで) も数えて 2 倍
