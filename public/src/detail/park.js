@@ -290,15 +290,15 @@ export function buildPark(cfg, world, opts = {}) {
         const A = av.pts[av.pts.length - 1], B = to.pts[0], axis = [A, [A[0] + (B[0] - A[0]) * 0.5, (A[1] + B[1]) / 2], B];
         group.add(flat(stripPos(axis, 11, 0.25), '#f6c6dc', 0.25));
         for (const sd of [-1, 1]) group.add(flat(stripPos(axis.map(([x, z]) => [x + sd * 5.4, z]), 0.5, 0.27), '#e9c26a', 0.27));
-        const len = Math.hypot(B[0] - A[0], B[1] - A[1]), n = Math.max(4, Math.round(len / 13)), poleG = new THREE.CylinderGeometry(0.1, 0.14, 5.4, 6).translate(0, 2.7, 0), flagG = new THREE.PlaneGeometry(1.6, 0.9).translate(0.8, 0, 0);
+        const len = Math.hypot(B[0] - A[0], B[1] - A[1]), n = Math.max(4, Math.round(len / 13)), poleG = new THREE.CylinderGeometry(0.09, 0.13, 4.6, 6).translate(0, 2.3, 0), flagG = new THREE.PlaneGeometry(1.15, 0.65).translate(0.575, 0, 0);
         const poleM = new THREE.InstancedMesh(poleG, std('#d6b25e', 0.4), n * 2), flagM = new THREE.InstancedMesh(flagG, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7, side: THREE.DoubleSide }), n * 2);
         const dd = new THREE.Object3D(), cc = new THREE.Color(), flagC = ['#3fb8b0', '#8a6bd6', '#f08cb4', '#ff9a7a', '#e9c26a'];
         let k = 0;
         for (let i = 0; i < n; i++) for (const sd of [-1, 1]) {
           const t = (i + 0.5) / n, x = A[0] + (B[0] - A[0]) * t + sd * 7.6, z = A[1] + (B[1] - A[1]) * t, y = ground(x, z);
           dd.position.set(x, y + 0.2, z); dd.rotation.set(0, 0, 0); dd.scale.set(1, 1, 1); dd.updateMatrix(); poleM.setMatrixAt(k, dd.matrix);
-          dd.position.set(x, y + 4.9, z); dd.rotation.set(0, sd > 0 ? 0 : Math.PI, 0); dd.updateMatrix(); flagM.setMatrixAt(k, dd.matrix); flagM.setColorAt(k, cc.set(flagC[k % flagC.length]));
-          col.circle.push([x, z, 0.2, y - 0.5, y + 5.5]); k++;
+          dd.position.set(x, y + 4.2, z); dd.rotation.set(0, sd > 0 ? 0 : Math.PI, 0); dd.updateMatrix(); flagM.setMatrixAt(k, dd.matrix); flagM.setColorAt(k, cc.set(flagC[k % flagC.length]));
+          col.circle.push([x, z, 0.2, y - 0.5, y + 4.8]); k++;
         }
         flagM.instanceColor.needsUpdate = true; poleM.castShadow = true; group.add(poleM, flagM);
       }
