@@ -472,7 +472,11 @@ export function buildCastle(ctx) {
     // 当たり判定 (円)
     const [wx, wz] = W(cx, cz);
     if (T.door) {   // 主塔: 1 段目は中に入れる (外壁の輪 = 扉のところだけ開ける。buildKeepInterior)。2 段目より上は円 (テラスの床より上)
-      col.circle.push([wx, wz, 10.7, y0 + KEEP.CEIL, y0 + top]);
+      {   // 2 段目より上の壁 = 薄い輪 (円盤にすると、階段の最後の数段で頭がつかえる)
+        const ln = [0.6, top - KEEP.CEIL], M = 40;
+        for (let k = 0; k <= M; k++) { const a = k / M * TAU, [qx, qz] = W(cx + Math.sin(a) * 9.5, cz + Math.cos(a) * 9.5); ln.push(qx, qz, y0 + KEEP.CEIL); }
+        col.line.push(ln);
+      }
       grandDoor(cx, cz + R0 - 0.2);
       buildKeepInterior({ Buf, NOUV, CELL, cellRect, tint, wall, trim, hall, gold, col, W, y0, lamps, lampWarm, goldC, cream, stone, Cs, low, group: api.group, cx, cz, yaw: Cf.yaw });
     } else col.circle.push([wx, wz, R0 + 0.7, y0 - 1, y0 + top]);
