@@ -14,6 +14,44 @@ const PARS = /* glsl */`
   uniform mat3 uStarRot;
   #define SKY_DISCS 1
 
+  uniform sampler2D uTrans;
+  uniform float uSkyI, uMie;
+
+  // ---- 大気 (単散乱。レイリー + ミー + オゾン) ----
+  // 太陽までの光学的な深さ (密度の積分) は、JS で作った表 (uTrans: 横 = 太陽の高さの余弦、縦 = 高さ) を引く
+  const float Re = 6360.0, Ra = 6420.0;                       // 地球の半径・大気の上端 (km)
+  const vec3 bR = vec3(5.8e-3, 13.5e-3, 33.1e-3);             // レイリー散乱 (/km)
+  const vec3 bO = vec3(0.65e-3, 1.881e-3, 0.085e-3) * 2.5;          // オゾンの吸収 (/km)
+  vec3 lutOD(float h, float mu) {
+    float u = 0.5 + 0.5 * sign(mu) * sqrt(abs(mu));
+    float v = sqrt(clamp(h / 60.0, 0.0, 1.0));
+    return texture2D(uTrans, vec2(u, v)).rgb;
+  }
+  vec3 skyAtmo(vec3 d, vec3 L) {
+    const float h0 = 0.05;
+    vec3 P0 = vec3(0.0, Re + h0, 0.0);
+    float b = dot(P0, d);
+    float tmax = -b + sqrt(b * b - dot(P0, P0) + Ra * Ra);
+    vec3 bM = vec3(21e-3) * uMie;
+    float odR = 0.0, odM = 0.0, odO = 0.0, tPrev = 0.0;
+    vec3 sR = vec3(0.0), sM = vec3(0.0);
+    for (int i = 0; i < 14; i++) {
+      float t1 = tmax * pow((float(i) + 1.0) / 14.0, 2.0);   // 手前を細かく
+      float t = 0.5 * (tPrev + t1), dt = t1 - tPrev; tPrev = t1;
+      vec3 p = P0 + d * t;
+      float r = length(p), h = r - Re;
+      float rR = exp(-h / 8.0) * dt, rM = exp(-h / 1.2) * dt, rO = max(0.0, 1.0 - abs(h - 25.0) / 15.0) * dt;
+      odR += rR; odM += rM; odO += rO;
+      vec3 od = lutOD(h, dot(p, L) / r);
+      vec3 T = exp(-(bR * (odR + od.r) + bM * 1.11 * (odM + od.g) + bO * (odO + od.b)));
+      sR += T * rR; sM += T * rM;
+    }
+    float c = dot(d, L), g = mieDirectionalG;
+    float phR = 0.05968 * (1.0 + c * c);
+    float phM = 0.07958 * (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * c, 1.5);
+    return uSkyI * (bR * sR * phR + bM * sM * phM);
+  }
+
   float h21(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
   vec3 h33(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
   float vn(vec2 p) {
@@ -117,7 +155,16 @@ const BODY = /* glsl */`
   float sunE = sd.y;
   float yy = max(direction.y, 0.0);
   float nightK = 1.0 - smoothstep(-0.10, 0.03, sunE);
-  vec3 col = retColor;
+  vec3 col = skyAtmo(normalize(vec3(direction.x, max(direction.y, 0.0008), direction.z)), sd);
+#if SKY_DISCS
+  {
+    // 太陽の円盤 (大気で赤く減る)
+    vec3 odS = lutOD(0.05, sunE);
+    vec3 Ts = exp(-(bR * odS.r + vec3(21e-3) * uMie * 1.11 * odS.g + bO * odS.b));
+    float disc = smoothstep(sunAngularDiameterCos, sunAngularDiameterCos + 0.00002, dot(direction, sd));
+    col += Ts * disc * 150.0 * step(0.0, direction.y);
+  }
+#endif
 
   // 夜の空: 地平線は霧の色、天頂ほど深い青
   vec3 nightSky = mix(uFog, vec3(0.0012, 0.0024, 0.0085), pow(yy, 0.45));
@@ -208,6 +255,32 @@ const BODY = /* glsl */`
   gl_FragColor = vec4( retColor, 1.0 );
 `;
 
+// 大気の表: 高さ h・太陽の高さの余弦 mu の点から太陽の向きへ、大気の上端までの密度の積分 (レイリー・ミー・オゾン。km)。
+// 地球に隠れる向きは大きな値 (光が届かない)。横軸 u = 0.5 + 0.5 sign(mu) sqrt|mu|、縦軸 v = sqrt(h / 60 km)
+function buildTransmittance(W = 256, H = 32) {
+  const RE = 6360, RA = 6420, data = new Uint16Array(W * H * 4), hf = THREE.DataUtils.toHalfFloat;
+  for (let j = 0; j < H; j++) {
+    const v = (j + 0.5) / H, r = RE + v * v * 60;
+    for (let i = 0; i < W; i++) {
+      const u = (i + 0.5) / W, s2 = 2 * u - 1, mu = Math.sign(s2) * s2 * s2;
+      let a = 0, m = 0, o = 0;
+      if (mu < 0 && r * Math.sqrt(1 - mu * mu) < RE) { a = m = o = 5000; }
+      else {
+        const b = r * mu, len = -b + Math.sqrt(b * b - r * r + RA * RA), N = 192, ds = len / N;
+        for (let k = 0; k < N; k++) {
+          const sk = (k + 0.5) * ds, hh = Math.sqrt(r * r + 2 * r * mu * sk + sk * sk) - RE;
+          a += Math.exp(-hh / 8) * ds; m += Math.exp(-hh / 1.2) * ds; o += Math.max(0, 1 - Math.abs(hh - 25) / 15) * ds;
+        }
+      }
+      const q = (j * W + i) * 4;
+      data[q] = hf(Math.min(a, 5000)); data[q + 1] = hf(Math.min(m, 5000)); data[q + 2] = hf(Math.min(o, 5000)); data[q + 3] = hf(1);
+    }
+  }
+  const t = new THREE.DataTexture(data, W, H, THREE.RGBAFormat, THREE.HalfFloatType);
+  t.minFilter = t.magFilter = THREE.LinearFilter; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.needsUpdate = true;
+  return t;
+}
+
 // Sky のシェーダに書き足し、時間帯 (time.js) が設定する uniform を足す
 export function patchSky(sky) {
   const m = sky.material, u = m.uniforms;
@@ -215,6 +288,7 @@ export function patchSky(sky) {
     uTime: { value: 0 }, uCover: { value: 0.45 }, uCirrus: { value: 0.45 }, uMoonPhase: { value: 0.5 },
     uFog: { value: new THREE.Color('#c9d6e3') }, uMoonDir: { value: new THREE.Vector3(0, 1, 0) },
     uGalN: { value: new THREE.Vector3(0, 1, 0) }, uStarRot: { value: new THREE.Matrix3() },
+    uTrans: { value: buildTransmittance() }, uSkyI: { value: 28 }, uMie: { value: 1 },
   });
   let f = m.fragmentShader;
   f = f.replace('void main() {', PARS + '\n void main() {');
