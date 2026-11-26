@@ -394,6 +394,22 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     }
     check(`${pr.k} (${aName[pr.a]}) の根元で止まる`, best && !best.ok && best.dd > pr.r * 0.6 && best.dd < pr.r + 3, { r: pr.r, dist: +best.dd.toFixed(1) });
   }
+  // 段階 10: 蒸気機関車の展示・広場の大時計と歯車は、中心へ向かうと手前で止まる (通り抜けない)
+  for (const pr of gen.props.filter((q) => q.k === 'locomotive' || q.k === 'clockwork')) {
+    const lim = pr.k === 'locomotive' ? [1.5, 11] : [1.2, 7.5];
+    let best = null;
+    for (const ang of [0.3, 1.9, 3.5, 5.1, 0.9, 2.5, 4.2, 5.8]) {
+      const sx1 = pr.x + Math.cos(ang) * 16, sz1 = pr.z + Math.sin(ang) * 16, sy1 = await hAt(sx1, sz1);
+      await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [sx1, sy1 + 0.2, sz1]);
+      await frames(page, 3); await extIdle(page); await frames(page, 2);
+      const h = await page.evaluate((a) => window.__walkXZ(a, { maxT: 12, walk: true, keepGoing: true, tol: 0.3 }), [[pr.x, pr.z]]);
+      allNaN = allNaN || !!h.nan;
+      const q = h.out[0], dd = q ? Math.hypot(q.at[0] - pr.x, q.at[1] - pr.z) : 99;
+      if (!best || dd < best.dd) best = { dd, ok: q && q.ok };
+      if (q && !q.ok && dd > lim[0] && dd < lim[1]) break;
+    }
+    check(`${pr.k} (${aName[pr.a]}) の手前で止まる (通り抜けない)`, best && !best.ok && best.dd > lim[0] && best.dd < lim[1], { dist: +best.dd.toFixed(1), lim });
+  }
   check('NaN なし (段階 2)', !allNaN);
 
   await stage3(page);
