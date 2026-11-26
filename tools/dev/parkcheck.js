@@ -288,7 +288,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   console.log(JSON.stringify(third));
   const ph = await page.evaluate(([x, z]) => window.__groundH(x, z), pl);
   const ty = third.out.length ? third.out[third.out.length - 1].y : null;
-  check('ゲートからネオン・アベニューを歩いて広場の中心に着く (地面の上に立つ)', third.out.length === av.length + 1 + (ent ? 3 : 0) && third.out.every((q) => q.ok) && Math.abs(ty - ph) < 0.6, { y: ty, ground: +ph.toFixed(2) });
+  check('ゲートからネオン・アベニューを歩いて広場の中心に着く (地面の上に立つ)', third.out.length === av.length + 1 + (ent ? 2 : 0) && third.out.every((q) => q.ok) && Math.abs(ty - ph) < 0.6, { y: ty, ground: +ph.toFixed(2) });
   check('NaN なし', !first.nan && !second.nan && !third.nan && !pass.nan);
 
   // ---- 段階 1: 地面・湖・塔・柵・案内 ----
