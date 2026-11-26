@@ -863,6 +863,41 @@ export function buildCastle(ctx) {
   hallMat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= diffuseColor.rgb;'); };
   const geoms = { wall: wall.geometry(), roof: roof.geometry(), trim: trim.geometry(), gold: gold.geometry(), hall: hall.geometry() };
   const meshes = [[geoms.wall, wallMat], [geoms.roof, roofMat], [geoms.trim, trimMat], [geoms.gold, goldMat], [geoms.hall, hallMat]].map(([g, m]) => { const mesh = new THREE.Mesh(g, m); mesh.castShadow = true; mesh.receiveShadow = true; api.group.add(mesh); return mesh; });
+  // ---------- 水面への映り込み (PC だけ。`?noreflect` で無効) ----------
+  // 城の壁・屋根・飾りを水面で上下反転した複製を、半透明で描く。複製は水面の下にあるので、そのままでは湖の底に隠れる。
+  // そこで画素ごとに「その画素の視線が水面と交わる点」の深さを書き込み (gl_FragDepth)、島・堤道・岸に隠れる所は隠し、水面が見える所だけに映す。
+  const reflect = !low && !(typeof location !== 'undefined' && /[?&]noreflect/.test(location.search));
+  if (reflect) {
+    const uVP = { value: new THREE.Matrix4() }, uT = { value: 0 }, uWY = { value: 0 };
+    const wyW = y0 + wy;   // 水面の高さ (ワールド)
+    uWY.value = wyW;
+    const mk = (base, selfLit) => {
+      const m = base.clone();
+      m.transparent = true; m.opacity = 1; m.depthWrite = false; m.side = THREE.DoubleSide; m.polygonOffset = false;
+      m.userData = Object.assign({}, base.userData);
+      if (base.userData.glow) emissive.push(m);
+      m.onBeforeCompile = (sh) => {
+        sh.uniforms.uVP = uVP; sh.uniforms.uT = uT; sh.uniforms.uWY = uWY;
+        sh.vertexShader = sh.vertexShader.replace('void main() {', 'uniform float uT; uniform float uWY; varying vec3 vMW;\nvoid main() {')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\n transformed.x += 0.45 * sin(transformed.y * 0.35 + uT * 1.3 + transformed.z * 0.2); transformed.z += 0.3 * sin(transformed.y * 0.4 - uT * 1.1 + transformed.x * 0.25);')
+          .replace('#include <project_vertex>', '#include <project_vertex>\n vMW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'uniform mat4 uVP; uniform float uWY; varying vec3 vMW;\nvoid main() {')
+          .replace('#include <alphamap_fragment>', '#include <alphamap_fragment>\n float hAbove = clamp((uWY - vMW.y) / 70.0, 0.0, 1.0); diffuseColor.a *= mix(0.5, 0.12, hAbove);')
+          .replace(/(#include <dithering_fragment>)/, '$1\n { vec3 cp = cameraPosition; vec3 dd = vMW - cp; float tt = (uWY - cp.y) / dd.y; vec4 cc = uVP * vec4(cp + dd * tt, 1.0); gl_FragDepth = cc.z / cc.w * 0.5 + 0.5; }');
+        if (selfLit) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance *= diffuseColor.rgb;');
+      };
+      return m;
+    };
+    const mirror = new THREE.Group(); mirror.name = 'castle_reflection';
+    [[geoms.wall, wallMat, false], [geoms.roof, roofMat, true], [geoms.trim, trimMat, false], [geoms.gold, goldMat, false]].forEach(([g, m, sl]) => {
+      const mm = new THREE.Mesh(g, mk(m, sl)); mm.renderOrder = -1; mm.frustumCulled = false;
+      mm.onBeforeRender = (r, sc, cam) => { uVP.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); };
+      mirror.add(mm);
+    });
+    mirror.position.y = 2 * wy; mirror.scale.y = -1;
+    api.group.add(mirror);
+    api.mirror = mirror; api.mirrorT = uT;
+  }
   api.stats.tris = Math.round(wall.tris + roof.tris + trim.tris + gold.tris + hall.tris);
   api.stats.top = Math.round(keepTop + 0) + (Cf.reel.y - 4) * 0;
   api.stats.towers = towerList.length;
@@ -935,6 +970,7 @@ export function buildCastle(ctx) {
     // 冠の回転 (遠くでも見えるので、1.5 km 以内は常に)
     if (d2 > 1500 * 1500) return;
     crown.rotation.y = now * 0.052;
+    if (api.mirrorT) api.mirrorT.value = now;
     wheels.forEach((w, i) => { w.wheel.rotation.z = now * w.rate * w.dir + i; });
     // 電球のまたたき (夜)
     const sh = api.showAmt(cyc);

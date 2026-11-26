@@ -1,5 +1,5 @@
 // フェアリー・リールパーク (舞浜の架空のテーマパーク。PARK_PLAN.md) の画面を撮る。視点はゲームの座標 (x, z) で書く。
-// 使い方: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--nocastle] [--only 名前,名前] [--night|--dusk|--morning] [--touch] [--probe]   (1 枚 1〜2 分。--probe = 壁の柄の確かめの箱だけを撮る。--nopark = 修正前 = 実在のままの舞浜)
+// 使い方: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--nocastle] [--noreflect] [--only 名前,名前] [--night|--dusk|--morning] [--touch] [--probe]   (1 枚 1〜2 分。--probe = 壁の柄の確かめの箱だけを撮る。--nopark = 修正前 = 実在のままの舞浜)
 // 視点 (VIEWS): at = キャラの位置 [x, z]、look = 見る向き [dx, dz]、pitch・dist = カメラ。キャラは地面に立つ (高さは地形から)
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -74,6 +74,8 @@ const VIEWS = [
   { name: 'k13_keep_hall', at: [31510, -25466], look: [0.3, -1], pitch: 0.25, dist: 7, dy: 0.4 },              // 主塔の大広間 (改善 1。扉から入った所)
   { name: 'k14_keep_up', at: [31510, -25466], look: [0.3, -1], pitch: -0.9, dist: 6, dy: 0.4 },              // 大広間を見上げる (階段・シャンデリア)
   { name: 'k15_keep_terrace', at: [31506, -25471], look: [0, -1], pitch: 0.2, dist: 8, dy: 22.7 },            // 屋上のテラス (正面側。プラザの方を見る = 扉の上)
+  { name: 'k16_castle_reflect', at: [31345, -25500], look: [1, 0.2], pitch: 0.1, dist: 14 },                // 湖の西の岸から島の城の横顔 (水面への映り込み。改善 2)
+  { name: 'k17_castle_reflect_n', at: [31345, -25500], look: [1, 0.2], pitch: 0.1, dist: 14, show: { idle: true } },   // 同じ場所の夜 (--night)
   { name: 'k10_castle_night', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { idle: true } },   // 夜 (--night)
   { name: 'k11_castle_show', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { castle: 30 } },    // 夜の映写のライトアップ (--night)
   { name: 'k12_castle_fw', at: [31490, -25640], look: [0.1, 1], pitch: 0.06, dist: 30, show: { fw: 'burst:20' } },  // 花火の夜 (--night)
@@ -155,6 +157,7 @@ try {
   const morning = args.includes('--morning'); if (morning) args.splice(args.indexOf('--morning'), 1);
   const touch = args.includes('--touch'); if (touch) args.splice(args.indexOf('--touch'), 1);   // スマホの設定 (?touch。壁の柄なし・小物をまとめる・人を減らす)
   const nopark = args.includes('--nopark'); if (nopark) args.splice(args.indexOf('--nopark'), 1);
+  const noreflect = args.includes('--noreflect'); if (noreflect) args.splice(args.indexOf('--noreflect'), 1);   // 城の水面への映り込みを出さない (改善 2 の修正前。?noreflect)
   const nocastle = args.includes('--nocastle'); if (nocastle) args.splice(args.indexOf('--nocastle'), 1);   // 城だけ出さない (段階 9 の修正前の見た目。?nocastle)
   const only = flag('--only');
   const [out] = args;
@@ -179,7 +182,7 @@ try {
   });
   page.on('pageerror', e => console.log('ERR', e.message));
   page.on('console', m => { if (/rror/.test(m.text())) console.log('LOG', m.text()); });
-  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : '') + (nocastle ? '&nocastle' : ''), { timeout: 300000 });
+  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : '') + (nocastle ? '&nocastle' : '') + (noreflect ? '&noreflect' : ''), { timeout: 300000 });
   await page.waitForFunction(() => window.__g && window.__ride, null, { timeout: 300000 });
   await page.addStyleTag({ content: '#help{display:none!important}' });
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });
