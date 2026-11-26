@@ -14,14 +14,16 @@ const AUTO_D = 6, AUTO_T = 4;
 export class DoorControl {
   constructor(world) {
     this.world = world;
-    for (const d of DOORS) {
-      // 閉じた扉の当たり判定: 扉の幅で、厚さ 0.3 m の板 (向き = 外向きの法線)
-      d.rec = world.addDoor(d.x - d.nx * 0.05, d.z - d.nz * 0.05, Math.atan2(d.nx, d.nz), d.w / 2, 0.15, d.y, d.y + d.h);
-      d.amt = d.target = 0; d.away = 0;
-    }
+    for (const d of DOORS) this.init(d);
     this.hint = document.getElementById('door-hint');
     this.btn = document.getElementById('tb-door');
     this.near = null;
+  }
+
+  // 閉じた扉の当たり判定: 扉の幅で、厚さ 0.3 m の板 (向き = 外向きの法線)。あとから作られる扉 (城の主塔) も update が登録する
+  init(d) {
+    d.rec = this.world.addDoor(d.x - d.nx * 0.05, d.z - d.nz * 0.05, Math.atan2(d.nx, d.nz), d.w / 2, 0.15, d.y, d.y + d.h);
+    d.amt = d.target = 0; d.away = 0;
   }
 
   // 扉の間 (開口の中) に人がいるか
@@ -33,6 +35,7 @@ export class DoorControl {
 
   update(dt, player, input) {
     if (!DOORS.length) return;
+    for (const d of DOORS) if (!d.rec) this.init(d);
     const p = player.pos;
     let near = null, best = REACH;
     for (const d of DOORS) {

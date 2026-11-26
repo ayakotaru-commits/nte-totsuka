@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import { setTerrainExt } from '../terrain.js';
 import { buildStation } from './station.js';
+import { buildStationSite, siteCut, siteBlocked } from './stationsite.js';
 import { canvasTexture } from './util.js';
 import { releaseGeometryAfterUpload } from '../lowmem.js';
 
@@ -48,6 +49,8 @@ function gridNormals(ni, nj, P, has) {
 
 export function buildRailExt(ext, world, mainBounds, opts = {}) {
   const low = !!opts.low;
+  const park = opts.park || null;   // フェアリー・リールパーク (detail/park.js の createParkCut)。敷地の中の実在の道路・木・橋脚・建物・歩道を、区間を読んだ後に省く
+  if (park && ext.overview && ext.overview.roads) ext.overview.roads = park.clipLines(ext.overview.roads);   // 全体の地図の下絵の道路も
   const base = opts.base || 'data/rail_ext/';
   const LOAD_R = opts.loadR || (low ? 2200 : 3000), UNLOAD_R = LOAD_R + 600;   // カメラから区間 (1 km 四方) までの距離
   const group = new THREE.Group();
@@ -453,6 +456,31 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       }
     }
 
+    // 歩道 (入園口へ歩く道。地形に沿わせた帯。道路より少し上。薄い舗装の色)
+    if (D.walks && D.walks.length) {
+      const pos = [], col = [], cl = new THREE.Color('#cbbfae');
+      for (const rd of D.walks) {
+        const hw = rd[0] / 2;
+        for (let k = 1; k + 3 < rd.length; k += 2) {
+          const ax = rd[k], az = rd[k + 1], bx = rd[k + 2], bz = rd[k + 3], L = Math.hypot(bx - ax, bz - az);
+          if (L < 0.1) continue;
+          const nx = -(bz - az) / L * hw, nz = (bx - ax) / L * hw, n = Math.ceil(L / 3);
+          for (let t = 0; t < n; t++) {
+            const x0 = ax + (bx - ax) * t / n, z0 = az + (bz - az) * t / n, x1 = ax + (bx - ax) * (t + 1) / n, z1 = az + (bz - az) * (t + 1) / n;
+            const P = [[x0 + nx, z0 + nz], [x0 - nx, z0 - nz], [x1 - nx, z1 - nz], [x1 + nx, z1 + nz]].map(([x, z]) => [x, (sampleAt(x, z) ?? 0) + 0.15, z]);
+            for (const i of [0, 1, 2, 0, 2, 3]) { pos.push(...P[i]); col.push(cl.r, cl.g, cl.b); }
+          }
+        }
+      }
+      if (pos.length) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+        geo.computeVertexNormals();
+        mesh(geo, MAT.road, 'ext_walks');
+      }
+    }
+
     // 木 (幹と、丸い葉のかたまり。位置は決まりで散らしたもの。色は通し番号で決める)
     if (D.trees.length) {
       const trunk = new THREE.InstancedMesh(GEO.trunk, MAT.trunk, D.trees.length);
@@ -522,7 +550,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     wanting = want.length;
     for (const q of want) {
       if (fetching.size >= 2) break;
-      fetching.set(q.key, fetch(base + 'c_' + q.key + '.json').then((r) => r.json()).then((D) => { ready.push([q, D]); }).catch((e) => console.warn('[detail] rail ext chunk', q.key, e)).finally(() => fetching.delete(q.key)));
+      fetching.set(q.key, fetch(base + 'c_' + q.key + '.json').then((r) => r.json()).then((D) => { if (park) park.cutChunk(D, q.a, q.b); ready.push([q, D]); }).catch((e) => console.warn('[detail] rail ext chunk', q.key, e)).finally(() => fetching.delete(q.key)));
     }
     if (ready.length) {
       ready.sort((p, q) => dist(p[0], x, z) - dist(q[0], x, z));
@@ -570,17 +598,21 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     const mid = (k) => [(pf.left[k][0] + pf.right[k][0]) / 2, (pf.left[k][1] + pf.right[k][1]) / 2];
     const dirYaw = (k) => { const p = mid(Math.max(0, k - 1)), q = mid(Math.min(n - 1, k + 1)); return Math.atan2(q[0] - p[0], q[1] - p[1]); };
     const columns = [], benches = [], nameSigns = [];
+    // 駅舎のある駅 (site。舞浜): ホームの床に階段の口の穴を抜く (cut)。穴の上・近くには屋根の柱・ベンチ・駅名標を置かない
+    const cut = st.site ? siteCut(st) : null, blocked = st.site ? siteBlocked(st, 1.2) : () => false;
     for (let k = 0; k < cn.left.length; k += 2) {
       const x = (cn.left[k][0] + cn.right[k][0]) / 2, z = (cn.left[k][1] + cn.right[k][1]) / 2;
-      columns.push([x, z, cn.y[k] - 3.4, cn.y[k]]);
+      if (!blocked(x, z)) columns.push([x, z, cn.y[k] - 3.4, cn.y[k]]);
     }
     for (let k = 6; k < n - 6; k += 12) {
       const [x, z] = mid(k), yaw = dirYaw(k);
+      if (blocked(x, z)) continue;
       benches.push({ x: x + Math.cos(yaw) * 1.2, y: pf.y[k], z: z - Math.sin(yaw) * 1.2, yaw: yaw + Math.PI / 2 });
       benches.push({ x: x - Math.cos(yaw) * 1.2, y: pf.y[k], z: z + Math.sin(yaw) * 1.2, yaw: yaw - Math.PI / 2 });
     }
     for (const k of [10, n >> 1, n - 11]) {
       const [x, z] = mid(k), yaw = dirYaw(k);
+      if (blocked(x, z)) continue;
       nameSigns.push({ x: x + Math.cos(yaw) * 2.6, y: pf.y[k], z: z - Math.sin(yaw) * 2.6, yaw: yaw + Math.PI / 2 });
       nameSigns.push({ x: x - Math.cos(yaw) * 2.6, y: pf.y[k], z: z + Math.sin(yaw) * 2.6, yaw: yaw - Math.PI / 2 });
     }
@@ -594,7 +626,9 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
           const [y0, y1, z0, z1] = e0 === pf.left[k] ? [t0, t1, b0, b1] : [t1, t0, b1, b0];
           pos.push(...P3(e0, z0), ...P3(e1, z1), ...P3(e1, y1), ...P3(e0, z0), ...P3(e1, y1), ...P3(e0, y0));
         }
-        pos.push(...P3(pf.left[k], b0), ...P3(pf.right[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k + 1], b1));
+        const parts = cut && cut(pf.left[k], pf.right[k], pf.left[k + 1], pf.right[k + 1]);
+        if (!parts) pos.push(...P3(pf.left[k], b0), ...P3(pf.right[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k], b0), ...P3(pf.right[k + 1], b1), ...P3(pf.left[k + 1], b1));
+        else for (const q of parts) { const [A, B, Cq, Dq] = q.map((v) => [v[0], b0 + (b1 - b0) * v[2], v[1]]); pos.push(...A, ...B, ...Cq, ...A, ...Cq, ...Dq); }
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -603,7 +637,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       m.name = 'ext_el_station'; m.castShadow = m.receiveShadow = true;
       group.add(m);
     }
-    const sb = buildStation({ rail: { platforms: [pf], canopies: box ? [] : [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns } },
+    const sb = buildStation({ rail: { platforms: [pf], canopies: box ? [] : [cn], columns, gantries: [], catenary: [], dims: { platH: 1.1, mastH: 7 }, benches, nameSigns, cut } },
       { kanji: [...st.name].join(' '), kana: st.kana, roman: st.roman });
     group.add(sb.group);
     // ホームが 2 面以上の駅 (横浜): ホームの中央の「のりかえ」の案内板 (ride.js がこの前で F / Q → ほかのホームへ移す。場所は ride.js と同じ式)
@@ -615,13 +649,17 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     const poly = [];
     for (let k = 0; k + 1 < n; k++) {
       const y = (pf.y[k] + pf.y[k + 1]) / 2;
-      poly.push([[pf.left[k], pf.left[k + 1], pf.right[k + 1], pf.right[k]], y - 1.1, y]);
+      const parts = cut && cut(pf.left[k], pf.right[k], pf.left[k + 1], pf.right[k + 1]);
+      if (parts) for (const q of parts) poly.push([q.map((v) => [v[0], v[1]]), y - 1.1, y]);
+      else poly.push([[pf.left[k], pf.left[k + 1], pf.right[k + 1], pf.right[k]], y - 1.1, y]);
     }
     const line = [];
     const edge = (pts) => { const l = [0.05, 1.2]; for (let k = 0; k < pts.length; k++) l.push(pts[k][0], pts[k][1], pf.y[Math.min(k, n - 1)]); line.push(l); };
     edge(pf.left); edge(pf.right);
     edge([pf.left[0], pf.right[0]]); edge([pf.left[n - 1], pf.right[n - 1]]);
     world.addColliders({ poly, line }, true);
+    // 駅舎と駅前 (site。舞浜: 高架の下の改札・ホームへの階段・北口の建物・デッキ・広場)。駅ごとに 1 回 (最初のホームのとき)
+    if (st.site && pi === 0) group.add(buildStationSite(st, world));
   });
 
   // 地下の駅の箱の形: 両側の壁 (タイルの腰壁と白い壁)、天井、床、両端の壁 (トンネルの口は抜く)、天井の照明の帯

@@ -81,6 +81,30 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       out.push(`== 線路の延長: メッシュ ${n} 個、頂点データ JS ${MB(b)} / GPU ${MB(gpu)}、インスタンス ${MB(inst)}、地図の下絵 ${MB(cv)}` + (st ? `、区間 ${st.loaded.length} 個 (読んだ計 ${MB(st.bytes)})` : ''));
       out.push(`== 位置 ${g.player.pos.x.toFixed(0)},${g.player.pos.z.toFixed(0)}`);
     }
+    // フェアリー・リールパーク (group 名 'park'): 頂点・インスタンス・描画の数・テクスチャ・名前ごとの上位
+    const pk = g.scene.getObjectByName('park');
+    if (pk) {
+      let gpu = 0, tri = 0, meshes = 0, inst = 0, pts = 0; const seen = new Set(), byName = {}, ptex = new Set(); let tb = 0;
+      pk.traverse((o) => {
+        if (o.isInstancedMesh) inst += o.count;
+        if (!o.geometry) return;
+        meshes++; const geo = o.geometry, gi = geo.index ? geo.index.count : geo.attributes.position.count, cnt = o.isInstancedMesh ? o.count : 1;
+        if (o.isPoints) pts += geo.attributes.position.count; else tri += gi / 3 * cnt;
+        if (seen.has(geo)) return; seen.add(geo);
+        let b = 0; for (const k in geo.attributes) { const at = geo.attributes[k]; b += at.count * at.itemSize * 4; } if (geo.index) b += geo.index.count * 4;
+        const nm = (o.name || (o.parent && o.parent.name ? o.parent.name + '/' : '') + o.type + '[' + Object.keys(geo.attributes).join(',') + ']').replace(/_\d+$/, '').replace(/[0-9]+/g, ''); byName[nm] = byName[nm] || { n: 0, b: 0 }; byName[nm].n++; byName[nm].b += b; gpu += b;
+        for (const m of [].concat(o.material || [])) for (const k in m) { const t = m[k]; if (t && t.isTexture && t.image && !ptex.has(t)) { ptex.add(t); tb += t.image.width * t.image.height * 4 * 1.33; } }
+      });
+      out.push(`== パーク: メッシュ ${meshes} 個 (描画の呼び出しの上限)、頂点 GPU ${MB(gpu)}、三角形 ${(tri / 1000).toFixed(0)}k (インスタンス込み)、粒 ${pts}、インスタンス計 ${inst}、テクスチャ ${ptex.size} 枚 ${MB(tb)}`);
+      for (const [k, v] of Object.entries(byName).sort((a, b) => b[1].b - a[1].b).slice(0, 14)) out.push('   ' + MB(v.b).padStart(8) + '  ' + String(v.n).padStart(4) + ' 個  ' + k);
+      const ck = pk.getObjectByName('park_castle');   // 段階 9: 城だけの内訳 (描画の呼び出し = メッシュの数、三角形、頂点 GPU、テクスチャ)
+      if (ck) {
+        let m2 = 0, t2 = 0, b2 = 0, tb2 = 0; const sg = new Set(), st2 = new Set();
+        ck.traverse((o) => { if (!o.geometry) return; m2++; const gi = o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count; t2 += gi / 3 * (o.isInstancedMesh ? o.count : 1); if (!sg.has(o.geometry)) { sg.add(o.geometry); for (const k in o.geometry.attributes) { const at = o.geometry.attributes[k]; b2 += at.count * at.itemSize * 4; } } for (const m of [].concat(o.material || [])) for (const k in m) { const t = m[k]; if (t && t.isTexture && t.image && !st2.has(t)) { st2.add(t); tb2 += t.image.width * t.image.height * 4 * 1.33; } } });
+        out.push(`== 城 (park_castle): メッシュ ${m2} 個 (描画の呼び出し)、三角形 ${(t2 / 1000).toFixed(0)}k、頂点 GPU ${MB(b2)}、テクスチャ ${st2.size} 枚 ${MB(tb2)}`);
+      }
+      const cr = g.scene.getObjectByName('crowd'); if (cr) out.push(`== 人の InstancedMesh: count ${cr.count}`);
+    } else out.push('== パーク: 見つからない');
     return out.join('\n');
   }));
   await browser.close(); server.close();

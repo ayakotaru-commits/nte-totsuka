@@ -1168,21 +1168,81 @@ function buildGround(city, bridges) {
   return { ground: drape(gb.geometry(), 3.5, 0.12, null, NO_UV), water: drape(water.geometry(), 3.5, 0.45, null, NO_UV), roads: drape(roadGB.geometry(), 3.5, 0.12, (x, z) => bridges.onVehicleBridge(x, z), NO_UV) };
 }
 
+
+// ---- 葉むらの木 (試作) ----
+// 葉の小さな板 (アルファ抜き) を球状に重ねる。板の法線は球の外向きに寄せて、全体としてやわらかく陰影が付く
+function leafTexture() {
+  const N = 128, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const g = cv.getContext('2d');
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const cx = N / 2, cy = N / 2;
+  for (let i = 0; i < 70; i++) {
+    const a = rnd() * 6.283, d = Math.sqrt(rnd()) * N * 0.38;
+    const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+    const L = 9 + rnd() * 7, rot = rnd() * 6.283, v = 150 + rnd() * 105;
+    g.save(); g.translate(x, y); g.rotate(rot);
+    g.fillStyle = `rgb(${v * 0.95 | 0},${v | 0},${v * 0.8 | 0})`;
+    g.beginPath(); g.ellipse(0, 0, L, L * 0.42, 0, 0, 6.283); g.fill();
+    g.strokeStyle = `rgba(0,0,0,0.25)`; g.lineWidth = 0.8; g.beginPath(); g.moveTo(-L, 0); g.lineTo(L, 0); g.stroke();
+    g.restore();
+  }
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+function leafCrownGeometry() {
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pos = [], nor = [], uv = [], col = [], idx = [];
+  const C = new THREE.Vector3(0, 3.3, 0), R = [1.55, 1.25, 1.55];
+  const n = 34;
+  for (let k = 0; k < n; k++) {
+    let d; do { d = new THREE.Vector3(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1); } while (d.lengthSq() > 1);
+    const ctr = new THREE.Vector3(d.x * R[0], d.y * R[1], d.z * R[2]).add(C);
+    const out = d.clone().normalize();
+    const nq = new THREE.Vector3(rnd() * 2 - 1, rnd() * 2 - 1, rnd() * 2 - 1).normalize();
+    // 板の向きは、外向きに寄せる
+    const nn = out.clone().multiplyScalar(0.7).add(nq.multiplyScalar(0.5)).normalize();
+    const t1 = new THREE.Vector3().crossVectors(nn, Math.abs(nn.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0)).normalize();
+    const t2 = new THREE.Vector3().crossVectors(nn, t1);
+    const half = 0.85 + rnd() * 0.5, rot = rnd() * 6.283;
+    const e1 = t1.clone().multiplyScalar(Math.cos(rot)).addScaledVector(t2, Math.sin(rot)).multiplyScalar(half);
+    const e2 = new THREE.Vector3().crossVectors(nn, e1).normalize().multiplyScalar(half);
+    const shade = 0.55 + 0.45 * Math.min(1, d.length()) + 0.18 * Math.max(0, out.y);  // 奥は暗く、上は明るく
+    const base = pos.length / 3;
+    for (const [a, b, u, v] of [[-1, -1, 0, 0], [1, -1, 1, 0], [1, 1, 1, 1], [-1, 1, 0, 1]]) {
+      const p = ctr.clone().addScaledVector(e1, a).addScaledVector(e2, b);
+      pos.push(p.x, p.y, p.z); nor.push(out.x, out.y, out.z); uv.push(u, v); col.push(shade, shade, shade);
+    }
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  return g;
+}
+function leafMaterial() {
+  return new THREE.MeshStandardMaterial({ color: '#ffffff', map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true });
+}
+
 // ---- 木 (公園・森・草地) ----
 // 位置は tools/build_props.py が計算した data/props.json の trees: [x, z, y, 大きさの倍率, 0〜1 の乱数]
 function buildTrees(props) {
   const spots = (props && props.trees) || [];
   if (!props) console.warn('data/props.json が無いので木を置きません (python tools/build_props.py で作る)');
   const trunkGeo = new THREE.CylinderGeometry(0.12, 0.18, 2.2, 6).translate(0, 1.1, 0);
-  const crownGeo = new THREE.IcosahedronGeometry(1.7, 0).translate(0, 3.2, 0);
+  const leafy = typeof location !== 'undefined' && new URLSearchParams(location.search).has('leaves');  // 試作: 葉むらの木 (?leaves)
+  const crownGeo = leafy ? leafCrownGeometry() : new THREE.IcosahedronGeometry(1.7, 0).translate(0, 3.2, 0);
   const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: '#6b5440', roughness: 1 }), spots.length);
-  const crowns = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, flatShading: true }), spots.length);
+  const crowns = new THREE.InstancedMesh(crownGeo, leafy ? leafMaterial() : new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, flatShading: true }), spots.length);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), c = new THREE.Color();
-  spots.forEach(([x, z, y, sc, r], i) => {
+  spots.forEach(([x, z, y, sc, r, rgb], i) => {
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r * 6.28);
     m.compose(p.set(x, y, z), q, s.set(sc, sc, sc));
     trunks.setMatrixAt(i, m); crowns.setMatrixAt(i, m);
-    crowns.setColorAt(i, c.setHSL(0.24 + r * 0.08, 0.45, 0.28 + r * 0.12));
+    if (leafy && rgb != null) crowns.setColorAt(i, c.setRGB((rgb >> 16 & 255) / 255, (rgb >> 8 & 255) / 255, (rgb & 255) / 255, THREE.SRGBColorSpace));  // 航空写真から読んだ葉の色 (build_props の trees の 6 番目)
+    else crowns.setColorAt(i, c.setHSL(0.24 + r * 0.08, 0.45, 0.28 + r * 0.12));
   });
   trunks.castShadow = crowns.castShadow = true;
   crowns.receiveShadow = true;

@@ -2,7 +2,7 @@
 // 脚と腕の振りは頂点シェーダで付けるので、1 人ごとの骨も画像も要らない (メモリはほとんど増えない)。
 // 近くの人だけ詳細なキャラにする (組み立て式キャラは重い) のは、第 2 段階以降。
 import * as THREE from 'three';
-import { CrowdSim } from './crowdsim.js';
+import { CrowdSim, parkObstacles } from './crowdsim.js';
 import { H } from './terrain.js';
 import { GROUND_LIFT } from './world.js';
 
@@ -71,16 +71,23 @@ function buildMaterial() {
   return m;
 }
 
+const NO_SHOW = { parade: 0, fw: 0, paradeOn: false, fwOn: false };
+
 export class Crowd {
-  // props = props.json (crowd を持つこと)。opt = { low: スマホなど (人数・範囲を減らす), cap }
+  // props = props.json (crowd を持つこと)。opt = { low: スマホなど (人数・範囲を減らす), cap, park: フェアリー・リールパークの設定 (public/data/park.json。園内の通り道と観客の場所を足す) }
   constructor(scene, props, opt = {}) {
-    this.enabled = !!(props && props.crowd && props.crowd.lanes && props.crowd.lanes.length);
+    let crowd = props && props.crowd;
+    // 園内の通り道 (park.json の crowd。k = 'p') を街の通り道に足す。足すだけで、街の通り道・人の動きは変えない
+    if (crowd && crowd.lanes && opt.park && opt.park.crowd) crowd = { ...crowd, lanes: crowd.lanes.concat(opt.park.crowd.lanes), parkHubs: opt.park.crowd.hubs };
+    this.enabled = !!(crowd && crowd.lanes && crowd.lanes.length);
     this.group = new THREE.Group(); this.group.name = 'crowd';
     this.visibleNow = true;
     if (!this.enabled) return;
     const low = !!opt.low;
-    this.sim = new CrowdSim(props.crowd, { cap: opt.cap ?? (low ? 40 : 120), radius: low ? 90 : 130, seed: 1, ground: (x, z) => H(x, z) + GROUND_LIFT, peds: props.pedSignals, busStops: props.busStops });
-    const cap = this.sim.cap + 8;
+    this.sim = new CrowdSim(crowd, { cap: opt.cap ?? (low ? 40 : 120), radius: low ? 90 : 130, seed: 1, ground: (x, z) => H(x, z) + GROUND_LIFT, peds: props.pedSignals, busStops: props.busStops, obstacles: opt.park ? parkObstacles(opt.park) : null });
+    const viewCap = low ? 36 : 90;   // 観客の最大 (ショーの間だけ。歩く人と同じ InstancedMesh)
+    if (opt.viewSlots && opt.viewSlots.length) this.sim.setViewSlots(opt.viewSlots, viewCap);
+    const cap = this.sim.cap + (this.sim.slots ? viewCap * 2 : 0) + 8;   // 観客は、消えていく途中の分 (背が 0 に縮むまで) も数えて 2 倍
     const geo = buildGeometry();
     const attr = (n, size) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * size), size); a.setUsage(THREE.DynamicDrawUsage); geo.setAttribute(n, a); return a; };
     this.A = { top: attr('iTop', 3), bottom: attr('iBottom', 3), hair: attr('iHair', 3), skin: attr('iSkin', 3), anim: attr('iAnim', 3) };
@@ -96,23 +103,26 @@ export class Crowd {
   }
 
   get count() { return this.enabled ? this.sim.people.length : 0; }
+  get viewers() { return this.enabled && this.sim.viewers ? this.sim.viewers.size : 0; }
 
   setVisible(v) { if (this.enabled) this.group.visible = v; }
 
   // camera = three のカメラ、player = {x, z} (よけるため)、preset = '朝' | '昼' | '夕方' | '夜'
-  update(dt, camera, px, pz, preset, clock) {
+  // want = ショーの観客の指定 ({ parade, fw, paradeOn, fwOn }。crowdsim.js の updateViewers)。園外・ショーが無いときは省く
+  update(dt, camera, px, pz, preset, clock, want) {
     if (!this.enabled || dt <= 0) return;
     camera.getWorldDirection(this._f);
     const fl = Math.hypot(this._f.x, this._f.z) || 1, fx = this._f.x / fl, fz = this._f.z / fl;
     const cx = camera.position.x + fx * 20, cz = camera.position.z + fz * 20;   // 出し入れの中心 = カメラの少し先
     this.sim.update(dt, cx, cz, fx, fz, px, pz, preset, clock);
-    const ppl = this.sim.people, n = Math.min(ppl.length, this.mesh.instanceMatrix.count);
+    if (this.sim.slots) this.sim.updateViewers(dt, cx, cz, want || NO_SHOW);
+    const ppl = this.sim.slots ? this.sim.people.concat(this.sim.viewerList()) : this.sim.people, n = Math.min(ppl.length, this.mesh.instanceMatrix.count);
     const A = this.A, c = this._c, m = this._m;
     for (let i = 0; i < n; i++) {
       const p = ppl[i];
       let cc = this.col.get(p.id);
       if (!cc) { cc = ['top', 'bottom', 'hair', 'skin'].map((k) => new THREE.Color(p.o[k])); this.col.set(p.id, cc); }
-      const co = Math.cos(p.yaw), si = Math.sin(p.yaw), s = p.scale, y = p.y;
+      const co = Math.cos(p.yaw), si = Math.sin(p.yaw), s = p.grow === undefined ? p.scale : p.scale * Math.max(0.001, p.grow * p.grow * (3 - 2 * p.grow)), y = p.y;
       m.set(co * s, 0, si * s, p.x, 0, s, 0, y, -si * s, 0, co * s, p.z, 0, 0, 0, 1);
       this.mesh.setMatrixAt(i, m);
       A.top.setXYZ(i, cc[0].r, cc[0].g, cc[0].b); A.bottom.setXYZ(i, cc[1].r, cc[1].g, cc[1].b);

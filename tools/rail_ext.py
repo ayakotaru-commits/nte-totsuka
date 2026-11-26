@@ -496,7 +496,8 @@ def build_station(st, ext_routes, tracks, grid):
     pc = plats[0]["center"]
     return {"name": st["name"], "kana": st.get("kana", ""), "roman": st.get("roman", ""), "ward": st.get("ward", ""), "city": st.get("city", "横浜市"),
             "center": [round(sum(q["center"][0] for q in plats) / len(plats), 2), round(sum(q["center"][1] for q in plats) / len(plats), 2)],
-            "platforms": [q["platform"] for q in plats], "canopies": [q["canopy"] for q in plats]}
+            "platforms": [q["platform"] for q in plats], "canopies": [q["canopy"] for q in plats],
+            **({"site": dict(st["site"])} if st.get("site") else {})}
 
 
 def make_platform(st, spec, A, ka, pairs, stop_routes):
@@ -982,6 +983,12 @@ def main(routes_only=None):
                 piers.append([round(x, 2), round(top, 2), round(z, 2), round(math.atan2(dx, dz), 3), round(dem0(x, z) - 0.5, 2), round(max(1.5, w - 1.0), 2)])
     if piers or cuts_pts:
         print(f"  高架の橋脚 {len(piers)} 本、掘割の点 {len(cuts_pts)}")
+    # 駅舎・駅前 (設定の site。舞浜): 駅の向きの座標 (frame) と地面の高さを決め、その範囲の橋脚を除く (駅舎の柱は railext の駅舎が描く)
+    sites = site_frames(stations)
+    if sites:
+        n0 = len(piers)
+        piers = [q for q in piers if not any(site_in(f, q[0], q[2], "under") for f in sites)]
+        print(f"  駅舎の範囲の橋脚を除いた: {n0 - len(piers)} 本")
 
     if routes_only:   # 道筋と駅だけ (確かめる用)
         pathlib.Path(routes_only).write_text(json.dumps({"routes": [{"route": er["route"], "line": er["line"], "P": er["P"]} for er in ext_routes],
@@ -1122,6 +1129,10 @@ def main(routes_only=None):
 
     # ---------- 建物 (PLATEAU) ----------
     buildings = plateau_buildings(near_track, allP, ext_routes, stations, cfg.get("gsi_buildings", ()))
+    if sites:
+        n0 = len(buildings)
+        buildings = [b for b in buildings if not any(site_in(f, sum(q[0] for q in b[0]) / len(b[0]), sum(q[1] for q in b[0]) / len(b[0]), "clear") for f in sites)]
+        print(f"  駅舎・駅前の範囲の建物を除いた: {n0 - len(buildings)} 棟")
     print(f"建物: {len(buildings)}")
 
     # ---------- 道路 (国土地理院の道路中心線。高架は除く。線路の近くで、地図の外だけ) ----------
@@ -1145,6 +1156,16 @@ def main(routes_only=None):
             out_roads.append([round(w, 1)] + cur)
     print(f"道路: {len(out_roads)}")
 
+    # 駅の site の promenade (入園口へ歩く道。駅の向きの座標 [幅, [s, t], ...] → 地図の座標): 道路と同じ形の帯 (歩道の色で描く)
+    out_walks = []
+    for st in stations:
+        site = st.get("site") or {}
+        f = site.get("frame")
+        for pr in site.get("promenade", []):
+            if f:
+                out_walks.append([pr[0]] + [round(v, 1) for s_, t_ in pr[1:] for v in (f["cx"] + f["sx"] * s_ + f["nx"] * t_, f["cz"] + f["sz"] * s_ + f["nz"] * t_)])
+    print(f"歩道: {len(out_walks)}")
+
     # ---------- 木: 建物・線路・道路から離れた所に、9 m 四方に 1 本くらい (決まりで散らす) ----------
     bgrid = set()
     for ring, _, _, _ in buildings:
@@ -1153,7 +1174,7 @@ def main(routes_only=None):
             for j in range(int((min(zs) - 6) // 5), int((max(zs) + 6) // 5) + 1):
                 bgrid.add((i, j))
     rgrid = set()
-    for rd in out_roads:
+    for rd in out_roads + out_walks:
         w = rd[0]
         pts = list(zip(rd[1::2], rd[2::2]))
         for (ax, az), (bx, bz) in zip(pts, pts[1:]):
@@ -1183,6 +1204,8 @@ def main(routes_only=None):
             z += (hsh % 89) / 89 * 6 - 3
             key = (int(x // 5), int(z // 5))
             if key in bgrid or key in rgrid or key in tgrid or inside_map(x, z, -10):
+                continue
+            if sites and any(site_in(f, x, z, "clear", 3.0) for f in sites):
                 continue
             v = dem(x, z)
             trees.append([round(x, 1), round(v or 0, 1), round(z, 1), round(0.75 + (hsh % 53) / 53 * 0.6, 2)])
@@ -1249,7 +1272,7 @@ def main(routes_only=None):
     OUT.write_text(json.dumps({
         "source": "国土地理院ベクトルタイル・標高タイル、国土交通省 PLATEAU 横浜市 (2024)・川崎市 (2022)・東京都 23 区 (2020)",
         "routes": out_routes, "stations": stations, "terrain": terrain, "coarse": coarse, "buildings": buildings,
-        "poles": poles, "roads": out_roads, "trees": trees, "portals": portals, **({"piers": piers} if piers else {}),
+        "poles": poles, "roads": out_roads, **({"walks": out_walks} if out_walks else {}), "trees": trees, "portals": portals, **({"piers": piers} if piers else {}),
         **({"lines": {L["id"]: {k: L[k] for k in ("name", "band", "cars", "period", "phase", "dirs") if k in L} for L in cfg["lines"]}} if cfg.get("lines") else {}),
     }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"-> {OUT} ({OUT.stat().st_size / 1e6:.2f} MB)")
@@ -1435,6 +1458,42 @@ def gsi_buildings(area, near_track, ext_routes, over_track):
                 out.append([[list(p) for p in ring_xz], round(gy, 2), h, lift])
     print(f"  {area.get('name', '国土地理院の建物')}: {len(out)} 棟 (高さは種類からの推定)")
     return out
+
+
+def site_frames(stations):
+    """設定の site (駅舎・駅前。舞浜) のある駅: 駅の向きの座標を決めて st["site"]["frame"] に書く。
+    s = ホームの中心線の始め → 終わりの向き (m)、t = それに直角で、進む向きの左 (m)。原点はホームの中央の点。
+    gy = 駅前の地面の高さ (範囲 clear の中の標高の中央値。地図の基準の高さから)。戻り値は frame の一覧"""
+    out = []
+    for st in stations:
+        site = st.get("site")
+        if not site:
+            continue
+        pf = st["platforms"][0]
+        mid = [((l[0] + r[0]) / 2, (l[1] + r[1]) / 2) for l, r in zip(pf["left"], pf["right"])]
+        dx, dz = mid[-1][0] - mid[0][0], mid[-1][1] - mid[0][1]
+        L = math.hypot(dx, dz)
+        sx, sz = dx / L, dz / L
+        cx, cz = mid[len(mid) // 2]
+        f = {"cx": round(cx, 2), "cz": round(cz, 2), "sx": round(sx, 6), "sz": round(sz, 6), "nx": round(sz, 6), "nz": round(-sx, 6)}
+        s0, s1, t0, t1 = site["clear"]
+        hs = sorted(dem0(cx + sx * s + f["nx"] * t, cz + sz * s + f["nz"] * t)
+                    for s in range(int(s0), int(s1) + 1, 5) for t in range(int(t0), int(t1) + 1, 5))
+        f["gy"] = round(hs[len(hs) // 2], 2)
+        f["py"] = pf["y"][len(pf["y"]) // 2]
+        site["frame"] = f
+        f["rects"] = {k: site[k] for k in ("clear", "clear2", "under") if k in site}
+        out.append(f)
+        print(f"  {st['name']}: 駅舎・駅前 (地面 {f['gy']} m、ホーム {f['py']} m)")
+    return out
+
+
+def site_in(f, x, z, key, pad=0.0):
+    """(x, z) が駅の site の範囲 key ([s0, s1, t0, t1]、駅の向きの座標) の中か"""
+    rs = [f["rects"][k] for k in ((key, "clear2") if key == "clear" else (key,)) if k in f["rects"]]   # clear = clear と clear2 (南口)
+    s = (x - f["cx"]) * f["sx"] + (z - f["cz"]) * f["sz"]
+    t = (x - f["cx"]) * f["nx"] + (z - f["cz"]) * f["nz"]
+    return any(r[0] - pad <= s <= r[1] + pad and r[2] - pad <= t <= r[3] + pad for r in rs)
 
 
 def platform_cover(ring_xz, stations):

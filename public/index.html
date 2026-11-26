@@ -25,6 +25,7 @@
 <canvas id="minimap" width="200" height="200"></canvas>
 <div id="hud-time">昼</div>
 <div id="hud-goal"></div>
+<div id="hud-park" hidden></div>
 <button id="menu-btn" class="tbtn">メニュー <b>Tab</b></button>
 <div id="menu" hidden></div>
 <div id="fps" hidden></div>
@@ -57,6 +58,7 @@
   <button class="tbtn round" id="tb-door" data-key="KeyF" hidden>開ける</button>
   <button class="tbtn round" id="tb-train" data-key="KeyF" hidden>乗る</button>
   <button class="tbtn round" id="tb-train2" data-key="KeyQ" hidden>下りへ</button>
+  <button class="tbtn round" id="tb-pride" data-key="KeyF" hidden>乗る</button>
   <button class="tbtn round" id="tb-view" data-key="KeyQ" hidden>視点</button>
 </div>
 <div id="swarm" hidden><div>うな○ー 残り <b id="swarm-left">100</b>　<span id="swarm-time">0:00</span></div><div id="swarm-hp"><i></i></div></div>
@@ -123,6 +125,8 @@
 </div>
 <div id="door-hint" hidden><b>F</b> 扉を開ける</div>
 <div id="train-hint" hidden></div>
+<div id="pride-hint" hidden></div>
+<div id="pride-info" hidden></div>
 <div id="train-info" hidden></div>
 <div id="train-toast" hidden></div>
 <div id="fade" hidden></div>

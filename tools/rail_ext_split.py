@@ -176,6 +176,19 @@ def split(E):
         if cur:
             chunk(key)["roads"].append(cur)
 
+    for rd in E.get("walks", []):   # 歩道 (入園口へ歩く道): 道路と同じように区間ごとに切る
+        w, pts = rd[0], list(zip(rd[1::2], rd[2::2]))
+        cur, key = None, None
+        for p, q in zip(pts, pts[1:]):
+            k = ck((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)
+            if k != key:
+                if cur:
+                    chunk(key).setdefault("walks", []).append(cur)
+                cur, key = [w, p[0], p[1]], k
+            cur += [q[0], q[1]]
+        if cur:
+            chunk(key).setdefault("walks", []).append(cur)
+
     for t in E["trees"]:   # 色・形の番号も位置から (同上)
         chunk(ck(t[0], t[2]))["trees"].append(t + [pos_hash(t[0], t[2]) % 100003])
     for p in E["poles"]:

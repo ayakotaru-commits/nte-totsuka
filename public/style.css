@@ -11,6 +11,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font-f
 #hud-time { position: fixed; right: 20px; top: 232px; width: 200px; text-align: center; font-size: 13px; text-shadow: 0 1px 3px #000; pointer-events: none; }
 
 #hud-goal { position: fixed; left: 24px; top: 82px; font-size: 14px; color: #ffd27a; text-shadow: 0 1px 3px #000; pointer-events: none; }
+/* フェアリー・リールパーク: 次のパレード・花火までの案内 (parkinfo.js。園の近くにいるときだけ。始まる 60 秒前・開催中は目立つ) */
+#hud-park { position: fixed; left: 24px; top: 110px; padding: 5px 14px; border-radius: 999px; background: rgba(48,24,92,.66); border: 1px solid rgba(255,206,255,.4); color: #fff; font-size: 13px; letter-spacing: .04em; text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap; }
+#hud-park.soon { background: linear-gradient(90deg, rgba(255,95,162,.82), rgba(143,123,255,.82)); animation: parkpulse 1s ease-in-out infinite; }
+@keyframes parkpulse { 50% { filter: brightness(1.28); } }
 .label.waypoint { font-size: 14px; font-weight: 700; color: #1b1405; background: rgba(255,200,90,.92); border-color: #fff; }
 .toast { position: fixed; left: 50%; top: 28%; transform: translateX(-50%); font-size: 26px; font-weight: 700; padding: 10px 28px; background: rgba(10,20,35,.75); border-top: 2px solid #ffb02e; border-bottom: 2px solid #ffb02e; pointer-events: none; animation: toast 3.5s ease forwards; }
 @keyframes toast { 0% { opacity: 0; } 10%, 80% { opacity: 1; } 100% { opacity: 0; } }
@@ -52,6 +56,7 @@ body.touch #help { display: none; }
 body.touch #hud-location { left: calc(12px + env(safe-area-inset-left)); top: 10px; }
 body.touch #hud-location .place { font-size: 17px; }
 body.touch #hud-goal { left: calc(12px + env(safe-area-inset-left)); top: 58px; font-size: 12px; }
+body.touch #hud-park { left: calc(12px + env(safe-area-inset-left)); top: 84px; font-size: 11px; padding: 4px 10px; }
 body.touch #minimap { width: 120px; height: 120px; right: calc(12px + env(safe-area-inset-right)); top: 12px; pointer-events: auto; }
 body.touch #hud-time { width: 120px; right: calc(12px + env(safe-area-inset-right)); top: 138px; font-size: 12px; }
 body.touch #credit { left: 8px; right: 8px; bottom: 2px; font-size: 8px; text-align: center; opacity: .6; }
@@ -69,16 +74,16 @@ body.touch #overlay h1 { font-size: 36px; }
 #door-hint b { display: inline-block; min-width: 1.4em; margin-right: 4px; padding: 0 4px; border: 1px solid rgba(255,255,255,.7); border-radius: 4px; text-align: center; }
 body.touch #door-hint { display: none; }
 /* 電車の乗り降り (ride.js) */
-#tb-train { width: 70px; height: 70px; right: calc(112px + env(safe-area-inset-right)); bottom: calc(110px + env(safe-area-inset-bottom)); z-index: 5; background: rgba(30,90,160,.6); }
+#tb-train, #tb-pride { width: 70px; height: 70px; right: calc(112px + env(safe-area-inset-right)); bottom: calc(110px + env(safe-area-inset-bottom)); z-index: 5; background: rgba(30,90,160,.6); }
 #tb-view { width: 62px; height: 62px; right: calc(192px + env(safe-area-inset-right)); bottom: calc(114px + env(safe-area-inset-bottom)); z-index: 5; background: rgba(40,40,60,.55); }
 #tb-train2 { width: 70px; height: 70px; right: calc(192px + env(safe-area-inset-right)); bottom: calc(110px + env(safe-area-inset-bottom)); z-index: 5; background: rgba(30,90,160,.6); }
-#tb-train[hidden], #tb-train2[hidden], #tb-view[hidden] { display: none; }
-#train-hint { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); z-index: 6; padding: 6px 14px; border-radius: 8px; background: rgba(10,20,35,.6); color: #fff; font-size: 15px; text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap; }
-#train-hint b { display: inline-block; min-width: 1.4em; margin: 0 4px 0 6px; padding: 0 4px; border: 1px solid rgba(255,255,255,.7); border-radius: 4px; text-align: center; }
-body.touch #train-hint b { display: none; }
-#train-info { position: fixed; left: 50%; top: calc(56px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 6; padding: 8px 14px; border-radius: 10px; background: rgba(12,22,38,.72); color: #fff; font-size: 14px; line-height: 1.6; pointer-events: none; white-space: nowrap; }
-#train-info .tt { font-weight: bold; margin-bottom: 2px; }
-#train-info b { color: #ffe08a; }
+#tb-train[hidden], #tb-pride[hidden], #tb-train2[hidden], #tb-view[hidden] { display: none; }
+#train-hint, #pride-hint { position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); z-index: 6; padding: 6px 14px; border-radius: 8px; background: rgba(10,20,35,.6); color: #fff; font-size: 15px; text-shadow: 0 1px 3px #000; pointer-events: none; white-space: nowrap; }
+#train-hint b, #pride-hint b { display: inline-block; min-width: 1.4em; margin: 0 4px 0 6px; padding: 0 4px; border: 1px solid rgba(255,255,255,.7); border-radius: 4px; text-align: center; }
+body.touch #train-hint b, body.touch #pride-hint b { display: none; }
+#train-info, #pride-info { position: fixed; left: 50%; top: calc(56px + env(safe-area-inset-top)); transform: translateX(-50%); z-index: 6; padding: 8px 14px; border-radius: 10px; background: rgba(12,22,38,.72); color: #fff; font-size: 14px; line-height: 1.6; pointer-events: none; white-space: nowrap; }
+#train-info .tt, #pride-info .tt { font-weight: bold; margin-bottom: 2px; }
+#train-info b, #pride-info b { color: #ffe08a; }
 .tl { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: bold; color: #fff; }
 .tl.tokaido { background: #f08a1c; } .tl.yokosuka { background: #1f5fae; }
 #train-toast { position: fixed; left: 50%; top: 38%; transform: translateX(-50%); z-index: 7; padding: 10px 18px; border-radius: 10px; background: rgba(12,22,38,.8); color: #fff; font-size: 15px; pointer-events: none; text-align: center; max-width: 90vw; }
