@@ -81,6 +81,24 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       out.push(`== 線路の延長: メッシュ ${n} 個、頂点データ JS ${MB(b)} / GPU ${MB(gpu)}、インスタンス ${MB(inst)}、地図の下絵 ${MB(cv)}` + (st ? `、区間 ${st.loaded.length} 個 (読んだ計 ${MB(st.bytes)})` : ''));
       out.push(`== 位置 ${g.player.pos.x.toFixed(0)},${g.player.pos.z.toFixed(0)}`);
     }
+    // フェアリー・リールパーク (group 名 'park'): 頂点・インスタンス・描画の数・テクスチャ・名前ごとの上位
+    const pk = g.scene.getObjectByName('park');
+    if (pk) {
+      let gpu = 0, tri = 0, meshes = 0, inst = 0, pts = 0; const seen = new Set(), byName = {}, ptex = new Set(); let tb = 0;
+      pk.traverse((o) => {
+        if (o.isInstancedMesh) inst += o.count;
+        if (!o.geometry) return;
+        meshes++; const geo = o.geometry, gi = geo.index ? geo.index.count : geo.attributes.position.count, cnt = o.isInstancedMesh ? o.count : 1;
+        if (o.isPoints) pts += geo.attributes.position.count; else tri += gi / 3 * cnt;
+        if (seen.has(geo)) return; seen.add(geo);
+        let b = 0; for (const k in geo.attributes) { const at = geo.attributes[k]; b += at.count * at.itemSize * 4; } if (geo.index) b += geo.index.count * 4;
+        const nm = (o.name || (o.parent && o.parent.name ? o.parent.name + '/' : '') + o.type + '[' + Object.keys(geo.attributes).join(',') + ']').replace(/_\d+$/, '').replace(/[0-9]+/g, ''); byName[nm] = byName[nm] || { n: 0, b: 0 }; byName[nm].n++; byName[nm].b += b; gpu += b;
+        for (const m of [].concat(o.material || [])) for (const k in m) { const t = m[k]; if (t && t.isTexture && t.image && !ptex.has(t)) { ptex.add(t); tb += t.image.width * t.image.height * 4 * 1.33; } }
+      });
+      out.push(`== パーク: メッシュ ${meshes} 個 (描画の呼び出しの上限)、頂点 GPU ${MB(gpu)}、三角形 ${(tri / 1000).toFixed(0)}k (インスタンス込み)、粒 ${pts}、インスタンス計 ${inst}、テクスチャ ${ptex.size} 枚 ${MB(tb)}`);
+      for (const [k, v] of Object.entries(byName).sort((a, b) => b[1].b - a[1].b).slice(0, 14)) out.push('   ' + MB(v.b).padStart(8) + '  ' + String(v.n).padStart(4) + ' 個  ' + k);
+      const cr = g.scene.getObjectByName('crowd'); if (cr) out.push(`== 人の InstancedMesh: count ${cr.count}`);
+    } else out.push('== パーク: 見つからない');
     return out.join('\n');
   }));
   await browser.close(); server.close();

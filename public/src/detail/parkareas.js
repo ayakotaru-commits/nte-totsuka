@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { makeWallPatcher } from './textures.js';
 import { buildRides } from './parkrides.js';
+import { mergeStaticMeshes } from './mergestatic.js';
 
 const C = (s) => new THREE.Color(s);
 const mulberry = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -293,12 +294,14 @@ export function buildAreas(ctx) {
 
   // ---------- 植え込み・街灯・ベンチ ----------
   const M4 = new THREE.Matrix4(), PV = new THREE.Vector3(), Q = new THREE.Quaternion(), S1 = new THREE.Vector3(1, 1, 1), YA = new THREE.Vector3(0, 1, 0), tmpC = new THREE.Color();
+  let smallProps = false;   // 植え込み・街灯・ベンチ (背が低い・細い物): スマホは影を落とさない (影の描画の負担を減らす)
   const inst = (geo, mat, list, f, color) => {
     if (!list.length) return null;
     const m = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach((p, i) => { m.setMatrixAt(i, f(p, i)); if (color) m.setColorAt(i, color(p, i)); });
-    m.castShadow = true; m.receiveShadow = true; m.computeBoundingSphere(); api.group.add(m); return m;
+    m.castShadow = !(low && smallProps); m.receiveShadow = true; m.computeBoundingSphere(); api.group.add(m); return m;
   };
+  smallProps = true;
   {
     const accent = (b) => A[b[6]].kind;
     const FL = { avenue: ['#ff7fb5', '#3fc8ff', '#ffd36b'], town: ['#e0585b', '#f2b632', '#ffffff'], valley: ['#e9803a', '#d94f6a', '#f2d24a'], forest: ['#ff9ecb', '#c7a6ff', '#ffe08a'], harbor: ['#ffffff', '#4fa0e8', '#ffd36b'], sweet: ['#ff7fb5', '#7fd6b8', '#ffd36b'], night: ['#8f6bd6', '#c0443c', '#e8e0c8'] };
@@ -318,6 +321,7 @@ export function buildAreas(ctx) {
     inst(back, std('#6f5238', 0.7), G.benches, (p) => M4.compose(PV.set(p[0], ground(p[0], p[1]), p[1]), Q.setFromAxisAngle(YA, p[2]), S1));
     for (const b of G.benches) col.box.push([b[0], b[1], b[2], 1.1, 0.4, ground(b[0], b[1]), ground(b[0], b[1]) + 1.1]);
   }
+  smallProps = false;
 
   // ---------- 木 ----------
   {
@@ -434,6 +438,9 @@ export function buildAreas(ctx) {
     }
     api.group.add(g);
   }
+
+  // スマホ: 動かない小物のメッシュを材質 × 区画でまとめる (描画の呼び出しを減らす。PC は今までどおり)
+  if (low) api.stats.merged = mergeStaticMeshes(api.group, { skip: (o) => !o.visible || /^park_(walls|trim|signs|clocks)/.test(o.name) });
 
   // ---------- 乗り物 (段階 3。観覧車・メリーゴーラウンド・コースター) ----------
   api.rides = buildRides({ cfg, ground, std, glowMat, group, col, emissive });
