@@ -280,7 +280,6 @@ export function buildCastle(ctx) {
   const lamps = [];       // 灯 [x, y, z, 種類]
   const spires = [];      // 光線を出す塔の先 [x, y, z]
   const tint = (c, k) => new THREE.Color(c.r * k, c.g * k, c.b * k);
-  const N0 = low ? 0.55 : 1;
   const rngC = mulberry(20261126);
 
   // ---------- 円筒の壁 (窓の区画の四角を、階 × 区画で並べる) ----------
@@ -577,9 +576,9 @@ export function buildCastle(ctx) {
       wall.quad(...(sd > 0 ? [B, A, D, Cc] : [A, B, Cc, D]), nn, vault, C('#cfc7dc'));
     }
     for (let k = 0; k + 1 < arch.length; k++) {
-      const a = arch[k], b = arch[k + 1], nn = norm([-(a[0] + b[0]) / 2 * 0.0 - (b[1] - a[1]) * 0 , 0, 0]);
-      const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), nrm = [dy / l * -1 * Math.sign(1), -dx / l, 0];
-      const inN = (mx > 0 ? [-Math.abs(dy) / l, -Math.abs(dx) / l, 0] : [Math.abs(dy) / l, -Math.abs(dx) / l, 0]);
+      const a = arch[k], b = arch[k + 1], mx = (a[0] + b[0]) / 2, dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy);
+      const inN =   // 丸天井の内側 (トンネルの中心の側) を向く法線
+      (mx > 0 ? [-Math.abs(dy) / l, -Math.abs(dx) / l, 0] : [Math.abs(dy) / l, -Math.abs(dx) / l, 0]);
       wall.quad([a[0], a[1], z0], [b[0], b[1], z0], [b[0], b[1], z1], [a[0], a[1], z1], inN, vault, C('#cbc2d9'));
     }
     // 丸天井のリブと灯り
@@ -607,11 +606,6 @@ export function buildCastle(ctx) {
       const base = C(Cs[g.roof] || Cs.sky), ov = 1.1;
       for (const sd of [-1, 1]) {
         const A = [sd * (w + ov), h - 0.4, z0 - 0.6], B = [sd * (w + ov), h - 0.4, z1 + 0.6], Cc = [0, h + gable + 0.1, z1 + 0.3], D = [0, h + gable + 0.1, z0 - 0.3], nn = norm([sd * gable, w, 0]);
-        for (let s = 0; s < 6; s++) {
-          const t0 = s / 6, t1 = (s + 1) / 6, p = (t, tt) => [A[0] + (D[0] - A[0]) * tt, A[1] + (D[1] - A[1]) * tt, A[2] + (B[2] - A[2]) * t + (D[2] - A[2]) * tt * 0 ];
-          const q = (t, tt) => [A[0] + (Cc[0] - A[0]) * tt, A[1] + (Cc[1] - A[1]) * tt, A[2] + (B[2] - A[2] - 0.3 * tt) * t + (D[2] - A[2]) * tt];
-          void p; void q;
-        }
         const nu = Math.round((z1 - z0) / 1.0), nv = 5;
         for (let u = 0; u < nu; u++) for (let v = 0; v < nv; v++) {
           const f = (uu, vv) => [A[0] + (D[0] - A[0]) * vv, A[1] + (D[1] - A[1]) * vv, (z0 - 0.6) + (z1 - z0 + 1.2) * uu];
@@ -640,7 +634,7 @@ export function buildCastle(ctx) {
     // 角の見張り塔 (小塔)
     if (g.bartizans) for (const sx of [-1, 1]) for (const [zz, fc] of [[z0, -1], [z1, 1]]) bartizan(sx * w, h - 3.6, zz + fc * 0.3, 1.95, sx);
     // 当たり判定: 袖と門塔の肩 (トンネルの幅は通れる)
-    for (const sd of [-1, 1]) { const [bx, bz] = W(sd * (hw + w) / 2, (z0 + z1) / 2); col.box.push([bx, bz, Cf.yaw, (w - hw) / 2, (z1 - z0) / 2, y0 - 1, y0 + h + gable]); void bx; void bz; }
+    for (const sd of [-1, 1]) { const [bx, bz] = W(sd * (hw + w) / 2, (z0 + z1) / 2); col.box.push([bx, bz, Cf.yaw, (w - hw) / 2, (z1 - z0) / 2, y0 - 1, y0 + h + gable]) }
   }
   const bannerList = [];
   function lathe3(buf, x, y, z, r0, r1, fo, c) {   // 正面向きの平らな輪 (z 一定)
@@ -772,12 +766,11 @@ export function buildCastle(ctx) {
     for (let k = 0; k < wr.length; k++) {
       const a = wr[k], b = wr[(k + 1) % wr.length], mx = (a[0] + b[0]) / 2, mz = (a[1] + b[1]) / 2;
       if (inGate(mx, mz)) { wallPts.push(null); continue; }
-      const L = Math.hypot(b[0] - a[0], b[1] - a[1]), nx = (b[1] - a[1]) / L, nz = -(b[0] - a[0]) / L, o = norm([a[0] / I.rx ** 2, 0, a[1] / I.rz ** 2]);
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]), o = norm([a[0] / I.rx ** 2, 0, a[1] / I.rz ** 2]);
       const n = [o[0], 0, o[2]], uu = L / 4.5;
       seawall.quad([a[0], -3, a[1]], [b[0], -3, b[1]], [b[0], 0.28, b[1]], [a[0], 0.28, a[1]], n, [plainRect[0], plainRect[1], plainRect[0] + (plainRect[2] - plainRect[0]) * Math.min(1, uu), plainRect[1] + (plainRect[3] - plainRect[1]) * 0.55], stone, [shade, shade, tint(shade, 1.1), tint(shade, 1.1)]);
       const a2 = [a[0] * 0.985, a[1] * 0.985], b2 = [b[0] * 0.985, b[1] * 0.985];
       curb.quad([a[0] * 1.004, 0.3, a[1] * 1.004], [b[0] * 1.004, 0.3, b[1] * 1.004], [b2[0], 0.3, b2[1]], [a2[0], 0.3, a2[1]], [0, 1, 0], NOUV, cream);
-      void nx; void nz;
       wallPts.push([a, b]);
     }
     {
