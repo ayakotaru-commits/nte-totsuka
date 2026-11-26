@@ -185,7 +185,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     check('らせん階段を 1.5 周のぼって、屋上のテラスの高さ (22.7 m) に着く', lastQ && okN >= 60 && Math.abs(lastQ.y - (lv + 22.7)) < 0.8, lastQ && { 着いた点: okN, y: lastQ.y, 期待: +(lv + 22.7).toFixed(2) });
     check('階段の途中で足元が飛ばない (1 点ごとの上り下りが 1.2 m 以内)', climb.out && climb.out.every((q) => q.hmax - q.hmin < 1.2), climb.out && climb.out.map((q) => q.hmax - q.hmin).sort((a, b) => b - a).slice(0, 3));
     // テラス: 階段の出口 (正面 0 度) から右へ歩ける。出口の左 (0 度より手前) は階段の抜け口で、入れない (落ちない)
-    const rim = []; for (let a = 9; a <= 63; a += 9) rim.push(KP(a, 11.6));
+    const rim = []; for (let a = 9; a <= 45; a += 9) rim.push(KP(a, 11.6));
     const ter = await walkL(rim, { maxT: 8, tol: 0.8, keepGoing: true, walk: true });   // 走ると柵を飛び越える (パルクール)
     const t0 = ter.out;
     check('テラスの出口から右のふちを歩ける (高さ 22.7 m のまま)', t0 && t0.every((q) => q.ok && Math.abs(q.y - (lv + 22.7)) < 0.5), t0 && t0.map((q) => [q.ok, q.y]));

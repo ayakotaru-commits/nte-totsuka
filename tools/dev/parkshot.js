@@ -71,6 +71,9 @@ const VIEWS = [
   { name: 'k7_castle_rear', at: [31510, -25392], look: [0, -1], pitch: 0.12, dist: 30 },                  // 城の裏 (北の岸) から
   { name: 'k8_castle_aerial', at: [31510, -25464], look: [0, 1], pitch: 1.05, dist: 260 },                // 上から (島と堤道)
   { name: 'k9_castle_side', at: [31310, -25470], look: [1, 0], pitch: 0.1, dist: 40 },                    // 湖の西の岸から横顔
+  { name: 'k13_keep_hall', at: [31510, -25466], look: [0.3, -1], pitch: 0.25, dist: 7, dy: 0.4 },              // 主塔の大広間 (改善 1。扉から入った所)
+  { name: 'k14_keep_up', at: [31510, -25466], look: [0.3, -1], pitch: -0.9, dist: 6, dy: 0.4 },              // 大広間を見上げる (階段・シャンデリア)
+  { name: 'k15_keep_terrace', at: [31506, -25471], look: [0, -1], pitch: 0.2, dist: 8, dy: 22.7 },            // 屋上のテラス (正面側。プラザの方を見る = 扉の上)
   { name: 'k10_castle_night', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { idle: true } },   // 夜 (--night)
   { name: 'k11_castle_show', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { castle: 30 } },    // 夜の映写のライトアップ (--night)
   { name: 'k12_castle_fw', at: [31490, -25640], look: [0.1, 1], pitch: 0.06, dist: 30, show: { fw: 'burst:20' } },  // 花火の夜 (--night)
@@ -193,7 +196,7 @@ try {
     await page.evaluate(([x, z, face]) => window.__ride.place(x, -11, z, face), [x, z, face]);
     await frames(3); await extIdle();
     const gy = await page.evaluate(async ([x, z]) => (await import('/src/terrain.js')).H(x, z), [x, z]);
-    await page.evaluate(([x, y, z, face, v]) => { window.__ride.place(x, y, z, face); const c = window.__g.cam; c.yaw = face + Math.PI; c.pitch = v.pitch; c.dist = v.dist; }, [x, gy + 0.1, z, face, v]);
+    await page.evaluate(([x, y, z, face, v]) => { window.__ride.place(x, y + (v.dy || 0), z, face); const c = window.__g.cam; c.yaw = face + Math.PI; c.pitch = v.pitch; c.dist = v.dist; }, [x, gy + 0.1, z, face, v]);
     if (v.probe && !probed) {   // 箱を並べる (左端 = 元の材質のまま、あとは matId 0〜5 = 吹き付け・サイディング・タイル・打ち放し・角波・ALC)
       probed = true;
       await page.evaluate(async () => {
