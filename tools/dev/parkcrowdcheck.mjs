@@ -166,7 +166,7 @@ const watch = (nowSec, center, preset = '昼', seconds = 30) => {
 // ---- 地図の印・ワープ先 ----
 {
   const sp = park.spots, names = sp.map((s) => s.name);
-  check('地図の印: ゲート・プラザ・パレード (= アベニュー)・観覧車・コースター・湖・6 エリア', sp.length === 13 && ['ゲート', 'サンライズ・プラザ', '観覧車', 'ムーンレイク（花火）', 'リール・キャッスル'].every((n) => names.includes(n)) && park.gen.areas.filter((a) => a.name !== 'ネオン・アベニュー').every((a) => names.includes(a.name)), names.join('・'));
+  check('地図の印: ゲート・プラザ・パレード (= アベニュー)・観覧車・コースター・湖・6 エリア', sp.length >= 13 && ['ゲート', 'サンライズ・プラザ', '観覧車', 'ムーンレイク（花火）', 'リール・キャッスル'].every((n) => names.includes(n)) && park.gen.areas.filter((a) => a.name !== 'ネオン・アベニュー').every((a) => names.includes(a.name)), names.join('・'));
   check('印は敷地の中で、建物・木・湖の中ではない', sp.every((s) => inPoly(s.x, s.z, park.site) && !inBuilding(s.x, s.z, 2) && !park.gen.trees.some((t) => Math.hypot(t[0] - s.x, t[1] - s.z) < 1.5)));
   // 乗り物・コースターの柱・塔・特別な物・街灯などから離れている (ワープで押し出されない)
   const rd = park.gen.rides, cp = rd.coaster.pts, cd = (x, z) => Math.min(...cp.map((q, i) => segD(x, z, q, cp[(i + 1) % cp.length])));

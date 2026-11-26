@@ -138,7 +138,7 @@ def generate(cfg):
 
     def ell_hit(x, z, grow=0.0):
         for n, e in ellipses.items():
-            g = grow + (prom["offset"] + prom["width"] + 6 if "lake" in e else 6)
+            g = grow + (prom.get("keepOut", prom["offset"] + prom["width"] + 6) if "lake" in e else 6)
             if ((x - e["center"][0]) / (e["rx"] + g)) ** 2 + ((z - e["center"][1]) / (e["rz"] + g)) ** 2 < 1:
                 return True
         return False

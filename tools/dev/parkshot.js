@@ -75,6 +75,11 @@ const VIEWS = [
   { name: 'k14_keep_up', at: [31510, -25466], look: [0.3, -1], pitch: -0.9, dist: 6, dy: 0.4 },              // 大広間を見上げる (階段・シャンデリア)
   { name: 'k15_keep_terrace', at: [31506, -25471], look: [0, -1], pitch: 0.2, dist: 8, dy: 22.7 },            // 屋上のテラス (正面側。プラザの方を見る = 扉の上)
   { name: 'k16_castle_reflect', at: [31345, -25500], look: [1, 0.2], pitch: 0.1, dist: 14 },                // 湖の西の岸から島の城の横顔 (水面への映り込み。改善 2)
+  // 湖の縁 (石垣の土手・柵・外側に沿う散歩道)
+  { name: 'w1_wall_west', at: [31318, -25470], look: [1, 0], pitch: 0.1, dist: 9 },                      // 西の岸の散歩道から土手と柵 (水際の石垣)
+  { name: 'w2_wall_north_gap', at: [31545, -25541], look: [-0.7, 0.7], pitch: 0.18, dist: 20 },           // 北の堤道が岸を越える所 (土手の切れ目のふた)
+  { name: 'w3_wall_aerial', at: [31420, -25520], look: [0.9, 0.4], pitch: 0.55, dist: 70 },              // 湖の北西の岸を上から (土手・散歩道・広場からの 2 本の道)
+  { name: 'w4_wall_south', at: [31600, -25395], look: [0, -1], pitch: 0.12, dist: 16 },                   // 南の岸 (ハーバーの側) から湖を見る
   { name: 'k17_castle_reflect_n', at: [31345, -25500], look: [1, 0.2], pitch: 0.1, dist: 14, show: { idle: true } },   // 同じ場所の夜 (--night)
   { name: 'k18_castle_garden', at: [31476, -25548], look: [0, 1], pitch: 0.25, dist: 10 },      // 湖の南の岸から、島の前の芝の花壇・噴水 (改善 3)
   { name: 'k19_avenue_exit', at: [31470, -25756], look: [0.65, 0.76], pitch: 0.08, dist: 14 },      // ネオン・アベニューの出口 (広場の手前)。歩いて出てきた人の見え方 (改善 4)
