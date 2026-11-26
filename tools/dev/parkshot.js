@@ -74,9 +74,29 @@ try {
         const cx = bs.reduce((s, b) => s + b.x, 0) / bs.length, cz = bs.reduce((s, b) => s + b.z, 0) / bs.length;
         VIEWS.push({ name: nm + '_aerial', at: [cx, cz], look: [0, 1], pitch: 0.95, dist: 170 });
       }
+      if (a.detail) {   // 段階 7: 建物の細部があるエリア。店先・上の階・横を、建物 4 棟ぶん
+        const dbs = bs.filter((b) => b.det);
+        [3, 8, 14, 19].forEach((k, n) => {   // 名前は d<エリアの番号>_<n>_front・_upper・_shop・_side
+          const b = dbs[Math.min(k, dbs.length - 1)]; if (!b) return;
+          const ux = Math.sin(b.yaw), uz = Math.cos(b.yaw), r = b.d / 2 + 6;
+          VIEWS.push({ name: 'd' + i + '_' + n + '_front', at: [b.x + ux * r, b.z + uz * r], look: [-ux, -uz], pitch: 0.1, dist: 9 });
+          VIEWS.push({ name: 'd' + i + '_' + n + '_upper', at: [b.x + ux * (r + 4), b.z + uz * (r + 4)], look: [-ux, -uz], pitch: 0.28, dist: 13 });
+          VIEWS.push({ name: 'd' + i + '_' + n + '_shop', at: [b.x + ux * (b.d / 2 + 3), b.z + uz * (b.d / 2 + 3)], look: [-ux, -uz], pitch: 0.06, dist: 4.5 });
+          VIEWS.push({ name: 'd' + i + '_' + n + '_side', at: [b.x + ux * r - uz * 9, b.z + uz * r + ux * 9], look: [-ux * 0.6 + uz * 0.8, -uz * 0.6 - ux * 0.8], pitch: 0.12, dist: 12 });
+        });
+      }
       const mp = park.gen.paths.find((p2) => p2.a === i);
       if (mp) { const q = mp.pts[Math.floor(mp.pts.length / 2)], r = mp.pts[Math.floor(mp.pts.length / 2) + 1] || mp.pts[0]; const d = Math.hypot(r[0] - q[0], r[1] - q[1]) || 1; VIEWS.push({ name: nm + '_street', at: [q[0], q[1]], look: [(r[0] - q[0]) / d, (r[1] - q[1]) / d], pitch: 0.1, dist: 10 }); }
     });
+    // 段階 7: 通りの小物 (屋台のワゴン・案内標識・ごみ箱)。種類ごとに最初の 3 つ (f_<種類>_<n>)。ちょうちんは旗の綱 (b4_avenue・c1_town_street で見える)
+    {
+      const seen = {};
+      for (const [kind, fx, fz, fyaw, fa] of park.gen.furn || []) {
+        const n = seen[kind + fa] = (seen[kind + fa] || 0) + 1; if (n > 1) continue;
+        const ck = Math.cos(fyaw), sk = Math.sin(fyaw), kn = park.gen.areas[fa].kind;
+        VIEWS.push({ name: 'f_' + kind + '_' + kn, at: [fx + sk * 5, fz + ck * 5], look: [-sk, -ck], pitch: 0.12, dist: kind === 'wagon' ? 6 : 5 });   // 前 (局所 +Z) から見る
+      }
+    }
     // 段階 3: 乗り物 (観覧車 = のりばの側から・近くから、メリーゴーラウンド = 近く・上から、コースター = 上から・のりばの近く)
     const rd = park.gen.rides || {}, W = (o, lx, lz) => [o.x + lx * Math.cos(o.yaw) + lz * Math.sin(o.yaw), o.z - lx * Math.sin(o.yaw) + lz * Math.cos(o.yaw)];
     if (rd.ferris) {

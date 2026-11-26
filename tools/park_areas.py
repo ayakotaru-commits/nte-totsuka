@@ -178,7 +178,7 @@ def generate(cfg):
     info = {}
     for ai, (name, poly) in enumerate(areas.items()):
         th = themes[name]
-        out["areas"].append({"name": name, "kind": th["kind"], "lamp": th.get("lamp", "warm"), "trim": th.get("trim", "#ffffff")})
+        out["areas"].append({"name": name, "kind": th["kind"], "lamp": th.get("lamp", "warm"), "trim": th.get("trim", "#ffffff"), **({"detail": th["detail"].get("style", th["kind"]), "terrace": th["detail"].get("terrace", 0), "lod": th["detail"].get("lod", "full"), **({"bunting": th["detail"]["bunting"]["colors"]} if th["detail"].get("bunting") else {})} if th.get("detail") else {})})
         rng = random.Random(f"{name}/{th['seed']}")
         inf = {"ai": ai, "name": name, "poly": poly, "th": th, "rng": rng, "paths": [], "plazas": [], "far": None}
         info[name] = inf
@@ -360,6 +360,53 @@ def generate(cfg):
                 if got < cnt:
                     print(f"警告: {name} の {kind} が {got}/{cnt} しか置けなかった")
 
+    # ---- 建物の細部 (テーマの "detail" があるエリアだけ。段階 7)。乱数は建物の位置から作る (ほかの乱数の列を動かさない = 既存の出力は変わらない) ----
+    def make_detail(inf, b):
+        th = inf["th"]; dt = th["detail"]
+        rng = random.Random(f"{inf['name']}/det/{b['x']}/{b['z']}")
+        hx, hz = b["w"] / 2, b["d"] / 2
+        floors = max(1, round(b["h"] / b["fh"]))
+        nb = int((b["w"] / b["bay"]) - 0.78 + 1e-6) + 1            # 前の面に入る窓の列の数 (壁の模様の窓の位置と合わせる)
+        d = {"win": pick(rng, dt["windows"])}
+        shop = bool(b.get("shop"))
+        if shop:
+            d["goods"] = rng.randrange(dt.get("goods", 4))
+        else:
+            d["door"] = dt.get("door", th.get("door", "#4a3320"))
+        if b["roof"] == "flat":
+            if dt.get("crowns"):
+                d["crown"] = pick(rng, dt["crowns"])
+        else:
+            if b["roof"] in ("gable", "hip") or "chimneyChance" not in dt:
+                if "chimneyChance" not in dt or rng.random() < dt["chimneyChance"]:
+                    d["chim"] = rl(rng.uniform(-hx * 0.5, hx * 0.5))
+            if "dormerChance" in dt and (b["roof"] == "gable" or (b["roof"] == "hip" and hx >= hz)) and b["rh"] >= 2.0 and hx >= 3.0 and rng.random() < dt["dormerChance"]:
+                d["dorm"] = rl(rng.uniform(-hx * 0.45, hx * 0.45))
+        d["shut"] = rng.choice(dt["shutters"]); d["flower"] = rng.choice(dt["flowers"])
+        used = set()
+        if floors >= 3 and nb >= 3 and rng.random() < dt.get("bayChance", 0):
+            k = rng.randrange(1, nb - 1); used.add(k)
+            d["bay"] = [k, 2 if floors >= 4 and rng.random() < 0.5 else 1]          # [列, 階の数 (2 階から)]
+        if floors >= 3 and nb >= 3 and rng.random() < dt.get("balconyChance", 0):
+            ks = [k for k in range(nb) if k not in used]
+            if ks:
+                d["balc"] = rng.choice(ks)
+        d["sconce"] = rng.random() < dt.get("sconceChance", 0.8)
+        if shop:
+            d["blade"] = rng.choice([-1, 1]) if rng.random() < dt.get("bladeChance", 0.75) else 0
+        d["neon"] = pick(rng, dt["neon"]) if dt.get("neon") else "none"
+        if shop:
+            d["planters"] = rng.random() < dt.get("plantersChance", 0.7)
+        if dt.get("deco"):   # 店先・玄関わきの小物 (樽・木箱・植木鉢)。[種類, 横 (面の中心から), 外へ]
+            dc = dt["deco"]; ds = []
+            for sd in (-1, 1):
+                if rng.random() < dc.get("chance", 0.4):
+                    kind = pick(rng, dc["kinds"])
+                    ds.append([kind, rl(sd * (hx - rng.uniform(1.3, 2.2) - (0 if shop else -0.2))), rl(rng.uniform(0.45, 0.8)), rng.randrange(1, 3) if kind == "crate" else 1])
+            if ds:
+                d["deco"] = ds
+        return d
+
     # ---- 建物 ----
     def make_building(inf, x, z, yaw, w, d, h, wall=None, color=None, roof=None, rcol=None, rh=None, nm=None, shop=None, lm=None, rows_roof_sign=True):
         th, rng = inf["th"], inf["rng"]
@@ -398,6 +445,8 @@ def generate(cfg):
             b["roofSign"] = b.get("roofSign") if lm.get("clock") else None
             if b["roofSign"] is None:
                 del b["roofSign"]
+        if th.get("detail") and not lm:
+            b["det"] = make_detail(inf, b)
         return b
 
     def add(b, inf):
@@ -536,6 +585,86 @@ def generate(cfg):
             tree_pts.append((x, z))
             out["trees"].append([rl(x), rl(z), pick(rng, tr["kinds"]), rl(rng.uniform(0.8, 1.3)), inf["ai"]])
             got += 1
+
+    # ---- 旗の飾り (段階 7。通りをまたいで、両側の建物の壁にかける。乱数は使わない) ----
+    out["bunting"] = []
+    for name, inf in info.items():
+        th = inf["th"]; bt = (th.get("detail") or {}).get("bunting")
+        if not bt:
+            continue
+        bl = [b for b in out["buildings"] if b["a"] == inf["ai"]]
+
+        def hit(px, pz, nx, nz, t0, t1):
+            t = t0
+            while t <= t1:
+                x, z = px + nx * t, pz + nz * t
+                for b in bl:
+                    c, sn = math.cos(b["yaw"]), math.sin(b["yaw"])
+                    dx, dz = x - b["x"], z - b["z"]
+                    lx, lz = c * dx - sn * dz, sn * dx + c * dz
+                    if abs(lx) <= b["w"] / 2 - 0.8 and abs(lz) <= b["d"] / 2 and b["h"] >= bt.get("minH", 8) and lz > 0:
+                        return (x - nx * 0.3, z - nz * 0.3, b)
+                t += 0.1
+            return None
+        for pth in inf["paths"]:
+            if not pth["main"] or pth["pts"] is None:
+                continue
+            Lt = polyline_len(pth["pts"]); s_ = bt.get("start", 24.0)
+            while s_ < Lt - 10:
+                P, T = point_at(pth["pts"], s_)
+                nx, nz = -T[1], T[0]
+                hl, hr = hit(P[0], P[1], nx, nz, pth["w"] / 2, pth["w"] / 2 + th["setback"] + 3), hit(P[0], P[1], -nx, -nz, pth["w"] / 2, pth["w"] / 2 + th["setback"] + 3)
+                if hl and hr:
+                    out["bunting"].append([rl(hl[0]), rl(hl[1]), rl(hr[0]), rl(hr[1]), rl(min(bt.get("y", 7.0), min(hl[2]["h"], hr[2]["h"]) - 1.2)), inf["ai"]])
+                s_ += bt.get("every", 18.0)
+
+    # ---- 通りの小物 (段階 7。屋台のワゴン・案内標識・ごみ箱。乱数は使わない) ----
+    out["furn"] = []
+    for name, inf in info.items():
+        th = inf["th"]; fz = (th.get("detail") or {}).get("furn")
+        if not fz:
+            continue
+        ai = inf["ai"]; poly = inf["poly"]
+        lamps = [(l[0], l[1]) for l in out["lamps"] if l[2] == ai] + [(b[0], b[1]) for b in out["benches"] if b[3] == ai]
+
+        def free(x, z, hx, hz, yaw, gap=2.5):
+            return inside(x, z, poly, 3) and not any(obb_overlap((x, z, yaw, hx, hz), q, 0.8) for q in placed) and all(math.hypot(x - lx, z - lz) > gap for lx, lz in lamps) and not any(math.hypot(x - f[1], z - f[2]) < 3.0 for f in out["furn"])
+        # ワゴン: 主な通りの縁ぞいに、決まった間隔で左右交互に
+        if fz.get("wagon"):
+            for pth in inf["paths"]:
+                if not pth["main"] or pth["pts"] is None:
+                    continue
+                Lt = polyline_len(pth["pts"]); s_, side = fz.get("start", 42.0), 1
+                while s_ < Lt - 12:
+                    P, T = point_at(pth["pts"], s_)
+                    nx, nz = -T[1], T[0]
+                    x, z = P[0] + nx * side * (pth["w"] / 2 - 2.0), P[1] + nz * side * (pth["w"] / 2 - 2.0)
+                    yaw = math.atan2(T[0], T[1])
+                    if free(x, z, 0.7, 1.1, yaw):
+                        out["furn"].append(["wagon", rl(x), rl(z), rl(yaw), ai])
+                    side = -side
+                    s_ += fz["wagon"]
+        # 案内標識: 枝の道の入口のわきに (枝の向きを指す)
+        if fz.get("signpost"):
+            for pth in inf["paths"]:
+                if pth["main"] or pth["pts"] is None or pth.get("exist") or len(pth["pts"]) < 2:
+                    continue
+                a0, a1 = pth["pts"][0], pth["pts"][1]
+                dx, dz = a1[0] - a0[0], a1[1] - a0[1]; l_ = math.hypot(dx, dz) or 1
+                tx, tz = dx / l_, dz / l_
+                for sd in (1, -1):
+                    x, z = a0[0] - tz * sd * (pth["w"] / 2 + 1.0) + tx * 1.5, a0[1] + tx * sd * (pth["w"] / 2 + 1.0) + tz * 1.5
+                    if free(x, z, 0.3, 0.3, 0, 1.5):
+                        out["furn"].append(["signpost", rl(x), rl(z), rl(math.atan2(-tz, tx)), ai])
+                        break
+        # ごみ箱: ベンチのわきに
+        if fz.get("bin"):
+            for b in out["benches"]:
+                if b[3] != ai:
+                    continue
+                x, z = b[0] + math.cos(b[2]) * 1.6, b[1] - math.sin(b[2]) * 1.6
+                if free(x, z, 0.3, 0.3, 0, 0.8):
+                    out["furn"].append(["bin", rl(x), rl(z), 0.0, ai])
 
     # ---- 乗り物 (段階 3)。乱数は使わない (ここより前の出力は変わらない) ----
     out["rides"] = make_rides(cfg, A.get("rides"), info, out, site, ellipses, circles, inner, park_paths, ell_hit, path_clear)
