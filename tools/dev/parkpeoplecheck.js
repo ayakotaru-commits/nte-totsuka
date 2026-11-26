@@ -136,7 +136,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     const plaza = spots.find((s) => s.kind === 'plaza');
     const px = await page.evaluate((s) => { const b = window.__bigmap; b.show(s.x, s.z); b.cx = s.x; b.cz = s.z; b.scale = 0.35; return null; }, plaza);   // 0.35 px/m: プラザ半径 96 m = 34 px、湖の中心は南へ 208 m = 73 px、敷地の東の外 480 m = 168 px
     await frames(4);
-    const col = await page.evaluate(() => { const b = window.__bigmap, c = b.ctx, d = b.dpr || 1, g = (x, y) => Array.from(c.getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data.slice(0, 3)); return { plaza: g(innerWidth / 2 + 12, innerHeight / 2 + 8), lake: g(innerWidth / 2, innerHeight / 2 + 70), outside: g(innerWidth / 2 + 168, innerHeight / 2) }; });
+    const col = await page.evaluate(() => { const b = window.__bigmap, c = b.ctx, d = b.dpr || 1, g = (x, y) => Array.from(c.getImageData(Math.round(x * d), Math.round(y * d), 1, 1).data.slice(0, 3)); return { plaza: g(innerWidth / 2 + 12, innerHeight / 2 + 8), lake: g(innerWidth / 2 + 45, innerHeight / 2 + 70), outside: g(innerWidth / 2 + 168, innerHeight / 2) }; });
     const lum = (c) => c[0] + c[1] + c[2];
     check('大きい地図: プラザは明るい色・湖は青 (青が赤より強い)・敷地の外は別の色', lum(col.plaza) > 600 && col.lake[2] > col.lake[0] + 40 && JSON.stringify(col.outside) !== JSON.stringify(col.plaza), col);
     await page.evaluate(() => window.__bigmap.hide());
