@@ -2,6 +2,8 @@
 // 通り道 (lanes) は tools/build_props.py の build_crowd() が props.json の crowd に書く。人はプレイヤーの周りだけに出し入れする
 // (街全体は動かさない)。当たり判定は持たず、プレイヤーが近づくと減速して横へよける (押しも止めもしない)。
 
+import { entranceObstacles } from './detail/parkentrancegeo.js';
+
 export const KIND_W = { f: 0.8, s: 1.0, r: 0.35, d: 0.9, t: 0.55, p: 2.6 };   // 通り道の種類ごとの人の出やすさ (歩道・小道 / 幹線の歩道 / 歩道の無い道の端 / デッキ・坂 / 階段 / 園内 = 千葉ドリームランドの道。tools/park_crowd.py)
 const SAMPLE = 6;          // 出る場所の候補の間隔 (m)
 const CELL = 50;           // 候補を入れる区画の大きさ (m)
@@ -70,6 +72,7 @@ export function parkObstacles(park) {
   for (const t of g.trees || []) out.push([t[0], t[1], 0.4 * (t[3] || 1)]);
   for (const l of g.lamps || []) out.push([l[0], l[1], 0.3]);
   for (const b of g.benches || []) out.push([b[0], b[1], 1.0]);
+  for (const o of entranceObstacles(park)) out.push(o);   // 入口 (大門の柱・塔・端の小屋・切符売り場・案内所・花の築山)
   return out;
 }
 

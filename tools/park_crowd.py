@@ -115,6 +115,20 @@ def generate(out):
         add([CW(0, 86), CW(0, 60), CW(0, 40), CW(0, 28), CW(0, 14)], 8, "castle")        # 前の堤道 → 門のトンネル → 中庭
         add([CW(-36, 14), CW(0, 14), CW(36, 14)], 6, "castle")                           # 中庭を横切る道
         add([CW(0, -86), CW(0, -60), CW(0, -40), CW(0, -27)], 8, "castle")                # 裏の堤道 → 裏の門 (裏庭)
+    # 入口 (entrance): 柵の隙間から前庭の中央の通路 (切符売り場の間) を通り、改札のレーンを通って内庭の入口の中心 (gate.at) へ。左右 3 レーンずつ。
+    # 局所座標 (u = 右、v = 外) → ワールドは detail/parkentrancegeo.js と同じ。道が切符売り場・案内所・築山を通らないよう、waypoint を決めてある
+    ent = out.get("entrance")
+    EW = None
+    if ent:
+        gx0, gz0 = out["gate"]["at"]
+        fx0, fz0 = out["gate"]["face"]
+        EW = lambda u, v: (gx0 + fz0 * u + fx0 * v, gz0 - fx0 * u + fz0 * v)
+        Hh = ent["hall"]
+        gap = out["fence"]["gaps"][0]
+        for s in (-1, 1):
+            for k in (2, 7, 12):
+                u = s * (Hh["laneFrom"] + (k + 0.5) * Hh["pitch"])
+                add([tuple(gap), EW(-4, 44), EW(0, 31), EW(u, 29), EW(u, 20), EW(u, 8), EW(u * 0.5, 8), EW(0, 0)], 1.6, "entrance")
     lanes = weave(lanes)
     lanes = [L for L in lanes if poly_len(L["p"]) >= 3]
     lane_out = []
@@ -174,7 +188,10 @@ def generate(out):
     def spot(name, kind, x, z, tx, tz, tier, glyph, color):
         spots.append({"name": name, "kind": kind, "x": rl(x), "z": rl(z), "face": face_to(x, z, tx, tz), "tier": tier, "glyph": glyph, "color": color})
 
-    spot("ゲート", "gate", gate[0] - fx * 6, gate[1] - fz * 6, gate[0] - fx * 60, gate[1] - fz * 60, 0, "門", "#9b5de5")
+    if EW:   # 入口: ワープ先は前庭の中央 (改札の手前。大門の名前の板を見上げる)
+        spot("ゲート", "gate", *EW(0, 44), *EW(0, -30), 0, "門", "#9b5de5")
+    else:
+        spot("ゲート", "gate", gate[0] - fx * 6, gate[1] - fz * 6, gate[0] - fx * 60, gate[1] - fz * 60, 0, "門", "#9b5de5")
     spot("サンライズ・プラザ", "plaza", c[0], c[1], lk["center"][0], lk["center"][1], 1, "広", "#f15bb5")
     # パレード: ネオン・アベニューの中ほど (山車はここを通る。出発の少し前から地図の印が点滅する)
     av = next(p for p in out["paths"] if p["name"] == out["show"]["parade"]["avenue"])
