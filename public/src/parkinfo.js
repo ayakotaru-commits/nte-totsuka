@@ -11,8 +11,9 @@ const ev = (ph, cyc, start, dur) => {
 export function parkSchedule(cfg, nowSec, paradeSec) {
   const S = cfg.show, cyc = S.cycle, ph = ((nowSec % cyc) + cyc) % cyc;
   const parade = ev(ph, cyc, S.parade.start, paradeSec), fw = ev(ph, cyc, S.fireworks.start, S.fireworks.duration + 8);
+  const castle = cfg.castle && cfg.castle.show ? ev(ph, cyc, cfg.castle.show.start, cfg.castle.show.duration) : null;   // 段階 9: 城のライトアップ (映写)
   const next = parade.startsIn <= fw.startsIn ? 'parade' : 'fw';
-  return { phase: ph, parade, fw, next, nextIn: Math.min(parade.startsIn, fw.startsIn) };
+  return { phase: ph, parade, fw, castle, next, nextIn: Math.min(parade.startsIn, fw.startsIn) };
 }
 
 // 「m:ss」
@@ -20,15 +21,16 @@ export const fmtMin = (sec) => { const s = Math.max(0, Math.ceil(sec)); return `
 
 // 画面に出す 1 行 (HUD)。ショーが近いほど目立たせる (soon = 始まる 60 秒前から)。{ text, soon, on }
 export function infoLine(sch) {
-  const p = sch.parade, f = sch.fw;
-  if (p.on || f.on) {
+  const p = sch.parade, f = sch.fw, c = sch.castle;
+  if (p.on || f.on || (c && c.on)) {
     const parts = [];
     if (p.on) parts.push(`パレード開催中！（あと ${fmtMin(p.left)}）`);
+    if (c && c.on) parts.push(`城のライトアップ中！（あと ${fmtMin(c.left)}）`);
     if (f.on) parts.push(`花火 開催中！（あと ${fmtMin(f.left)}）`);
     return { text: parts.join('　'), soon: true, on: true };
   }
-  const soon = sch.nextIn <= 60;
-  return { text: `パレードまで ${fmtMin(p.startsIn)}　花火まで ${fmtMin(f.startsIn)}`, soon, on: false };
+  const soon = sch.nextIn <= 60 || !!(c && c.startsIn <= 60);
+  return { text: `パレードまで ${fmtMin(p.startsIn)}　花火まで ${fmtMin(f.startsIn)}` + (c && c.startsIn <= 90 ? `　城のライトアップまで ${fmtMin(c.startsIn)}` : ''), soon, on: false };
 }
 
 // 観客の指定 (crowdsim.js の updateViewers に渡す)。ショーの pre 秒前から人が集まり (0 → 0.8)、始まると 1、終わって post 秒かけて減る

@@ -10,6 +10,7 @@ import { canvasTexture } from './util.js';
 import { buildAreas } from './parkareas.js';
 import { buildAvenuePaving, buildAreaPaving } from './parkpaving.js';
 import { buildShow, showClock as showClockNow } from './parkshow.js';
+import { buildCastle, castleLakeMask, castleFrame } from './parkcastle.js';
 
 const bboxOf = (p) => {
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -47,11 +48,12 @@ export function parkGround(cfg) {
     return w;
   };
   const [lcx, lcz] = lake.center;
+  const castleMask = cfg.castle ? castleLakeMask(cfg.castle) : null;   // 段階 9: 城の島・堤道の上は湖を掘らない
   const lakeDepth = (x, z) => {
     const dx = x - lcx, dz = z - lcz, rho = Math.hypot(dx / lake.rx, dz / lake.rz);
     if (rho >= 1) return 0;
     const rr = Math.hypot(dx, dz), edge = rho > 1e-6 ? (1 - rho) * rr / rho : Math.min(lake.rx, lake.rz);   // 岸までの距離 (中心から見た向きで)
-    return L.depth * smooth(edge / L.shore);
+    return L.depth * smooth(edge / L.shore) * (castleMask ? castleMask(x, z) : 1);
   };
   // 実在の地形の高さ real のところの、パークの地面の高さ。実在の施設の出っ張り・水の穴は level ± 2.5 m に抑えてから混ぜる
   const height = (x, z, real) => {
@@ -286,10 +288,14 @@ export function buildPark(cfg, world, opts = {}) {
       const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.12, metalness: 0.15 });
       group.add(ellipseMesh(lakeE.center, lakeE.rx, lakeE.rz, 0, mat, (r) => [0.22 - 0.08 * (1 - r), 0.55 - 0.15 * (1 - r), 0.86 - 0.18 * (1 - r)], () => wy));
       const rimPts = ellPts(lakeE.center, lakeE.rx + 0.4, lakeE.rz + 0.4, 160);
-      const curb = flat(stripPos(rimPts, 1.2, 0.3, true), '#f6f1e8', 0.3); group.add(curb);
-      const wall = ellPts(lakeE.center, lakeE.rx + 2.2, lakeE.rz + 2.2, 120), ln = [0.3, 1.4];
-      for (let k = 0; k <= wall.length; k++) { const q = wall[k % wall.length]; ln.push(q[0], q[1], ground(q[0], q[1])); }
-      col.line.push(ln);
+      // 城の堤道が岸を越える所は、縁石も見えない柵も切る (castle の causeways)
+      const cf = cfg.castle && castleFrame(cfg.castle);
+      const onCauseway = (x, z) => { if (!cf) return false; const [lx, lz] = cf.toLocal(x, z); return cfg.castle.causeways.some((c) => Math.abs(lx) < c.width / 2 + 2.6 && lz * c.to > 0 && Math.abs(lz) > Math.min(Math.abs(c.from), Math.abs(c.to)) - 8); };
+      const runsOf = (pts) => { const runs = []; let cur = null; for (let k = 0; k <= pts.length; k++) { const q = pts[k % pts.length]; if (onCauseway(q[0], q[1])) { cur = null; continue; } if (!cur) { cur = []; runs.push(cur); } cur.push(q); } return runs; };
+      if (cf) { for (const run of runsOf(rimPts)) if (run.length > 1) group.add(flat(stripPos(run, 1.2, 0.3, false), '#f6f1e8', 0.3)); }
+      else group.add(flat(stripPos(rimPts, 1.2, 0.3, true), '#f6f1e8', 0.3));
+      const wall = ellPts(lakeE.center, lakeE.rx + 2.2, lakeE.rz + 2.2, 120);
+      for (const run of cf ? runsOf(wall) : [wall.concat([wall[0]])]) { const ln = [0.3, 1.4]; for (const q of run) ln.push(q[0], q[1], ground(q[0], q[1])); if (ln.length > 8) col.line.push(ln); }
     }
 
     // ---- 外周の柵 (パステルの板と白い柱。駅からゲートへの道が入る所は切る) ----
@@ -386,6 +392,12 @@ export function buildPark(cfg, world, opts = {}) {
       api.areas = ar;
       console.info(`[park] 各エリア: 建物 ${ar.stats.buildings} (壁・縁取り・看板の三角形 ${ar.stats.trisAll}、店の窓・ネオンなど ${ar.stats.facadeTris})・木 ${ar.stats.trees}・看板 ${ar.stats.signs}・乗り物の三角形 ${ar.rides.stats.tris}、${(performance.now() - t0).toFixed(0)} ms`);
     }
+    // ---- 段階 9: 象徴の城「リール・キャッスル」(ムーンレイクの島。?nocastle で無効 = 確認用) ----
+    if (cfg.castle && !new URLSearchParams(location.search).has('nocastle')) {
+      const t0 = performance.now();
+      api.castle = buildCastle({ cfg, ground, glowMat, group, col, emissive, low: !!opts.low });
+      console.info(`[park] ${cfg.castle.name}: 三角形 ${api.castle.stats.tris}・塔 ${api.castle.stats.towers}・灯 ${api.castle.stats.lamps}・高さ約 ${api.castle.maxTop.toFixed(0)} m (冠まで ${cfg.castle.reel.y + cfg.castle.reel.R} m)、${(performance.now() - t0).toFixed(0)} ms`);
+    }
     // ---- 段階 4: ショー (花火・パレード・水上ショー・夜の光)。public/data/park.json の show ----
     if (cfg.show) {
       const t0 = performance.now();
@@ -404,6 +416,7 @@ export function buildPark(cfg, world, opts = {}) {
       api.areas?.update?.(Date.now() / 1000, x, z);   // 旗のゆれ・煙突の煙・ネオンのまたたき (段階 7)
       api.areas?.rides?.update(Date.now() / 1000, x, z);   // 観覧車・メリーゴーラウンド・コースターの動き (近くのときだけ)
       api.show?.update(showClockNow(), x, z, win);          // 花火・パレード・水上ショー (win = 夜の度合い。time.js)
+      if (api.castle) { const ck = showClockNow(); api.castle.update(ck, x, z, win, ck % cfg.show.cycle); }   // 城の冠・旗・夜のライトアップ
     },
     get built() { return built; },
     cfg,

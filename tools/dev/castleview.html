@@ -1,0 +1,57 @@
+<!doctype html>
+<!-- リール・キャッスル (public/src/detail/parkcastle.js) だけを素早く確かめるページ (街・地形を読み込まない。ヘッドレス Chrome でも数秒〜十数秒)。
+  撮る: node tools/dev/charshot.js <出力フォルダ> "cam=0,30,150&look=0,25,0" --page castleview ...
+    cam・look = 城の局所座標 (x 右・y 上・z 前 = プラザの側) の位置と見る先。fov = 画角 (度)。night=1 で夜 (窓・灯・光線を光らせる)、show=1 で映写のライトアップ、low=1 でスマホ向けの軽い版。
+    nolake=1 で水・島を描かない。t = 時計 (秒。冠・旗の動き)。 -->
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>castleview</title>
+<style>html, body { margin: 0; overflow: hidden; background: #9fb8d4; }</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { buildCastle } from '../../public/src/detail/parkcastle.js';
+const q = new URLSearchParams(location.search), num = (k, d) => (q.has(k) ? q.get(k).split(',').map(Number) : d);
+const cfg = await (await fetch('../../data/park.json')).json();
+const night = q.get('night') === '1', low = q.get('low') === '1', t = +(q.get('t') || 10);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(innerWidth, innerHeight); renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const sky = night ? ['#0a1030', '#1c2850'] : ['#8fb8e8', '#dcecf8'];
+scene.background = new THREE.Color(sky[1]); scene.fog = new THREE.Fog(sky[1], 500, 2400);
+const hemi = new THREE.HemisphereLight(night ? '#4a5a9a' : '#cfe4ff', night ? '#1a1a30' : '#8a9a70', night ? 0.5 : 1.0); scene.add(hemi);
+const sun = new THREE.DirectionalLight(night ? '#8fa0ff' : '#fff4e0', night ? 0.5 : 2.4); sun.position.set(-120, 220, 160); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -160, right: 160, top: 160, bottom: -160, near: 10, far: 700 }); sun.shadow.bias = -0.0004; scene.add(sun);
+const y0 = -9.5, emissive = [];
+const glowMat = (color, glow = 1) => { const m = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: color, emissiveIntensity: 0, roughness: 0.5 }); m.userData.glow = glow; emissive.push(m); return m; };
+const root = new THREE.Group(); scene.add(root);
+const ground = () => y0;
+if (q.get('nolake') !== '1') {
+  const lake = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#3a7fb8', roughness: 0.12, metalness: 0.15 }));
+  const wy = cfg.ground.level + cfg.ellipses['ムーンレイク'].lake.water; lake.position.set(cfg.castle.center[0], wy, cfg.castle.center[1]); lake.receiveShadow = true; scene.add(lake);
+  const land = new THREE.Mesh(new THREE.CircleGeometry(cfg.castle.island.rx, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#79b45a' }));
+  land.position.set(cfg.castle.center[0], y0 - 0.02, cfg.castle.center[1]); land.receiveShadow = true; scene.add(land);
+  const shore = new THREE.Mesh(new THREE.RingGeometry(150, 900, 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#79b45a' })); shore.position.set(cfg.castle.center[0], y0 - 0.1, cfg.castle.center[1] - 260); scene.add(shore);
+}
+const col = { circle: [], line: [], box: [] };
+const t0 = performance.now();
+const castle = buildCastle({ cfg, ground, std: null, glowMat, group: root, col, emissive, low });
+console.log('castle', JSON.stringify(castle.stats), (performance.now() - t0).toFixed(0), 'ms', 'colliders', col.circle.length, col.line.length, col.box.length);
+const nightAmt = night ? 1 : 0;
+for (const m of emissive) { const g = m.userData.glow || 1; if (m.userData.opacityOnly) m.opacity = nightAmt * g; else m.emissiveIntensity = nightAmt * g; }
+castle.update(t, cfg.castle.center[0], cfg.castle.center[1], nightAmt, q.get('show') === '1' ? cfg.castle.show.start + 30 : -999);
+const cam = new THREE.PerspectiveCamera(+(q.get('fov') || 45), innerWidth / innerHeight, 0.5, 6000);
+const L = (a) => castle.group.localToWorld(new THREE.Vector3(a[0], a[1], a[2]));
+cam.position.copy(L(num('cam', [0, 30, 150]))); cam.lookAt(L(num('look', [0, 25, 0])));
+renderer.render(scene, cam);
+document.title = 'done';
+</script>
+</body>
+</html>

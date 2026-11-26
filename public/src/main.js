@@ -248,7 +248,7 @@ async function main() {
     ...(!ride.disabled && ride.gates.length ? [{ name: '電車の乗り場（戸塚駅 改札）', x: ride.gates[0].top.x, z: ride.gates[0].top.z, color: '#1f5fae', glyph: '電', active: () => !!ride.riding }] : []),
     // フェアリー・リールパーク (park.json の spots。tools/park_crowd.py)。印を選んでワープすると、その場所へ (warpTo)。パレード・花火の印は、始まる 40 秒前から最中まで点滅する
     ...parkSpots.map((q) => ({ name: q.name, x: q.x, z: q.z, color: q.color, glyph: q.glyph, minScale: [0, 0.5, 0.9][q.tier] || 0,
-      active: () => !!parkInfo?.sch && (q.kind === 'parade' ? parkInfo.sch.parade.on || parkInfo.sch.parade.startsIn < 40 : q.kind === 'lake' ? parkInfo.sch.fw.on || parkInfo.sch.fw.startsIn < 40 : false) })),
+      active: () => !!parkInfo?.sch && (q.kind === 'parade' ? parkInfo.sch.parade.on || parkInfo.sch.parade.startsIn < 40 : q.kind === 'lake' ? parkInfo.sch.fw.on || parkInfo.sch.fw.startsIn < 40 : q.kind === 'castle' ? !!parkInfo.sch.castle && (parkInfo.sch.castle.on || parkInfo.sch.castle.startsIn < 40) : false) })),
     // 延ばした先の駅 (rail_ext.json の stations)。印を選んでワープすると、その駅のホームの上に立つ (warpTo)。駅舎のある駅 (舞浜) は北口の広場の印も
     ...ride.stationSpots().map((q) => ({ name: q.label || `${q.name}駅（${q.sub ? q.sub + 'ホーム' : 'ホーム'}）`, x: q.x, z: q.z, color: '#1f5fae', glyph: '電', active: () => false })),
   ].filter((e) => !e.off);

@@ -1,5 +1,5 @@
 // フェアリー・リールパーク (舞浜の架空のテーマパーク。PARK_PLAN.md) の画面を撮る。視点はゲームの座標 (x, z) で書く。
-// 使い方: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--only 名前,名前] [--night|--dusk|--morning] [--touch] [--probe]   (1 枚 1〜2 分。--probe = 壁の柄の確かめの箱だけを撮る。--nopark = 修正前 = 実在のままの舞浜)
+// 使い方: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--nocastle] [--only 名前,名前] [--night|--dusk|--morning] [--touch] [--probe]   (1 枚 1〜2 分。--probe = 壁の柄の確かめの箱だけを撮る。--nopark = 修正前 = 実在のままの舞浜)
 // 視点 (VIEWS): at = キャラの位置 [x, z]、look = 見る向き [dx, dz]、pitch・dist = カメラ。キャラは地面に立つ (高さは地形から)
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -61,6 +61,19 @@ const VIEWS = [
   { name: 'g1_av_long', at: [31340, -25905], look: [0.656, 0.755], pitch: 0.06, dist: 8 },       // 入口から奥を見る (通りが長く見えるか)
   { name: 'g2_av_back', at: [31480, -25746], look: [-0.656, -0.755], pitch: 0.06, dist: 8 },    // プラザの側から入口を見る
   { name: 'g3_av_side', at: [31365, -25789], look: [0.755, -0.656], pitch: 0.05, dist: 34 },     // 通りの横から (階の縮み・奥ほど低い)
+  // 段階 9: 象徴の城 (リール・キャッスル。ムーンレイクの島。中心 (31510, -25464)、前 = ワールドの -z)
+  { name: 'k1_castle_avenue', at: [31440, -25794], look: [0.2, 0.98], pitch: 0.06, dist: 12 },            // ネオン・アベニューの途中から城を遠くに
+  { name: 'k2_castle_plaza', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24 },                 // プラザの北の縁から (湖越しに正面)
+  { name: 'k3_castle_shore', at: [31510, -25550], look: [0, 1], pitch: 0.12, dist: 16 },                  // 湖の岸 (堤道の入口)
+  { name: 'k4_castle_causeway', at: [31510, -25518], look: [0, 1], pitch: 0.18, dist: 12 },               // 堤道の途中から門を見上げる
+  { name: 'k5_castle_tunnel', at: [31510, -25486], look: [0, 1], pitch: 0.08, dist: 7 },                  // 門塔のトンネルの中 (奥の中庭の方を見る)
+  { name: 'k6_castle_bailey', at: [31510, -25474], look: [0, 1], pitch: 0.22, dist: 10 },                 // 門を抜けた中庭から主塔を見上げる
+  { name: 'k7_castle_rear', at: [31510, -25392], look: [0, -1], pitch: 0.12, dist: 30 },                  // 城の裏 (北の岸) から
+  { name: 'k8_castle_aerial', at: [31510, -25464], look: [0, 1], pitch: 1.05, dist: 260 },                // 上から (島と堤道)
+  { name: 'k9_castle_side', at: [31310, -25470], look: [1, 0], pitch: 0.1, dist: 40 },                    // 湖の西の岸から横顔
+  { name: 'k10_castle_night', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { idle: true } },   // 夜 (--night)
+  { name: 'k11_castle_show', at: [31490, -25640], look: [0.1, 1], pitch: 0.1, dist: 24, show: { castle: 30 } },    // 夜の映写のライトアップ (--night)
+  { name: 'k12_castle_fw', at: [31490, -25640], look: [0.1, 1], pitch: 0.06, dist: 30, show: { fw: 'burst:20' } },  // 花火の夜 (--night)
   { name: 'a8_station_side', at: [31730, -25950], look: [-1, 0.2], pitch: 0.4, dist: 60 },      // 駅の南口のロータリー (敷地の縁。省いた所と残した所の境目)
 ];
 
@@ -139,6 +152,7 @@ try {
   const morning = args.includes('--morning'); if (morning) args.splice(args.indexOf('--morning'), 1);
   const touch = args.includes('--touch'); if (touch) args.splice(args.indexOf('--touch'), 1);   // スマホの設定 (?touch。壁の柄なし・小物をまとめる・人を減らす)
   const nopark = args.includes('--nopark'); if (nopark) args.splice(args.indexOf('--nopark'), 1);
+  const nocastle = args.includes('--nocastle'); if (nocastle) args.splice(args.indexOf('--nocastle'), 1);   // 城だけ出さない (段階 9 の修正前の見た目。?nocastle)
   const only = flag('--only');
   const [out] = args;
   if (!out) { console.error('usage: node tools/dev/parkshot.js <出力フォルダ> [--nopark] [--only 名前,..] [--night|--dusk|--morning] [--touch]'); process.exit(1); }
@@ -162,7 +176,7 @@ try {
   });
   page.on('pageerror', e => console.log('ERR', e.message));
   page.on('console', m => { if (/rror/.test(m.text())) console.log('LOG', m.text()); });
-  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : ''), { timeout: 300000 });
+  await page.goto(base + '/?shot&novrm' + (night ? '&t=2' : dusk ? '&t=1' : morning ? '&t=3' : '') + (touch ? '&touch' : '') + (nopark ? '&nopark' : '') + (nocastle ? '&nocastle' : ''), { timeout: 300000 });
   await page.waitForFunction(() => window.__g && window.__ride, null, { timeout: 300000 });
   await page.addStyleTag({ content: '#help{display:none!important}' });
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });
@@ -220,6 +234,7 @@ try {
         const F = cfg.fireworks, RISE = 1.8;
         let phase = 100;   // ショーの無い時刻 (パレード 20 秒〜のあと、花火の前)
         if (sh.parade !== undefined) phase = cfg.parade.start + sh.parade / cfg.parade.speed;
+        else if (sh.castle !== undefined) phase = window.__pride.park.cfg.castle.show.start + sh.castle;
         else if (sh.fw !== undefined) {
           if (typeof sh.fw === 'number') phase = F.start + sh.fw;
           else if (sh.fw.startsWith('burst:')) phase = F.start + S.plan[+sh.fw.slice(6)].t + RISE + 1.0;

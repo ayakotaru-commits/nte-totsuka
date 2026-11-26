@@ -107,6 +107,14 @@ def generate(out):
         if q["r"] >= 9.5:
             for a0, a1 in ((0, math.pi), (math.pi, 2 * math.pi)):
                 add(ell((q["x"], q["z"]), 5.0, 5.0, a0, a1, 10), 6, "square")
+    # 段階 9: 城 (リール・キャッスル)。堤道 → 門塔のトンネル → 中庭 → 裏の門 → 裏の堤道を歩ける。局所座標 (lx 右・lz 前) をワールドに直す
+    cas = out.get("castle")
+    if cas:
+        cyaw, ccx, ccz = cas["yaw"], cas["center"][0], cas["center"][1]
+        CW = lambda lx, lz: (ccx + lx * math.cos(cyaw) + lz * math.sin(cyaw), ccz - lx * math.sin(cyaw) + lz * math.cos(cyaw))
+        add([CW(0, 86), CW(0, 60), CW(0, 40), CW(0, 28), CW(0, 14)], 8, "castle")        # 前の堤道 → 門のトンネル → 中庭
+        add([CW(-36, 14), CW(0, 14), CW(36, 14)], 6, "castle")                           # 中庭を横切る道
+        add([CW(0, -86), CW(0, -60), CW(0, -40), CW(0, -27)], 8, "castle")                # 裏の堤道 → 裏の門 (裏庭)
     lanes = weave(lanes)
     lanes = [L for L in lanes if poly_len(L["p"]) >= 3]
     lane_out = []
@@ -182,6 +190,10 @@ def generate(out):
         sx, sz = k["pts"][k["stationIdx"][0]][:2]
         q = near(sx, sz, 12)
         spot(k["name"], "coaster", q[0], q[1], sx, sz, 1, "速", "#ff6b35")
+    # 城: 前の堤道の入口 (門の前の前庭。湖の中なので歩ける点を直接決める)
+    if cas:
+        sx, sz = CW(0, 56)
+        spot("リール・キャッスル", "castle", sx, sz, cas["center"][0], cas["center"][1], 1, "城", "#6a55b8")
     # 湖: 北の岸の散歩道 (プラザ側)
     ring = ell(lk["center"], lk["rx"] + pr["offset"], lk["rz"] + pr["offset"], 0, 2 * math.pi, 144)
     nq = min(ring, key=lambda q: q[1])

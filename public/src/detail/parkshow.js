@@ -22,9 +22,9 @@ const NP = 120;   // 1 発の粒の数 (うち 6 つは打ち上げの尾)
 export function planFireworks(F, lake) {
   const rng = rngOf(F.seed), out = [];
   const [lx, lz] = lake.center, add = (t, big) => {
-    const [u, v] = F.launch[Math.floor(rng() * F.launch.length)];
+    const L = F.launchAbs || F.launch, [u, v] = L[Math.floor(rng() * L.length)];   // launchAbs = 湖の中心からの [dx, dz] m (城の島をよけて水面から上げる。段階 9)。無ければ湖の楕円の中の位置
     const [h0, h1] = F.height, h = h0 + (h1 - h0) * rng();
-    out.push({ t, x: lx + u * lake.rx * 0.75 + (rng() - 0.5) * 16, z: lz + v * lake.rz * 0.7 + (rng() - 0.5) * 12, h: h * (big ? 1.08 : 1), type: TYPES[Math.floor(rng() * TYPES.length)], pal: Math.floor(rng() * PAL.length), size: big ? 1.35 : 0.9 + rng() * 0.3, rot: rng() * TAU, tilt: (rng() - 0.5) * 1.0, big });
+    out.push({ t, x: lx + (F.launchAbs ? u : u * lake.rx * 0.75) + (rng() - 0.5) * 16, z: lz + (F.launchAbs ? v : v * lake.rz * 0.7) + (rng() - 0.5) * 12, h: h * (big ? 1.08 : 1), type: TYPES[Math.floor(rng() * TYPES.length)], pal: Math.floor(rng() * PAL.length), size: big ? 1.35 : 0.9 + rng() * 0.3, rot: rng() * TAU, tilt: (rng() - 0.5) * 1.0, big });
   };
   let t = 3;
   while (t < F.duration * 0.72) { add(t, false); if (rng() < 0.4) add(t + 0.35, false); t += 2.3 + rng() * 1.6; }
@@ -98,13 +98,16 @@ export function buildShow(ctx) {
   });
   const sheen = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: sheenTex, color: '#9fd8ff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
   sheen.scale.set(lakeE.rx * 2.1, 1, lakeE.rz * 2.1); sheen.position.set(lakeE.center[0], wy + 0.06, lakeE.center[1]); sheen.renderOrder = 3; sheen.frustumCulled = false; api.group.add(sheen);
-  const NJ = S.fountain?.jets || 0, jets = [];
+  const NJ = S.fountain?.at ? S.fountain.at.length : (S.fountain?.jets || 0), jets = [];
   let jetMesh = null, drops = null;
   if (NJ) {
     const jg = new THREE.CylinderGeometry(0.2, 0.7, 1, 10, 1, true).translate(0, 0.5, 0);
     jetMesh = new THREE.InstancedMesh(jg, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }), NJ);
     jetMesh.frustumCulled = false; jetMesh.renderOrder = 4;
-    for (let k = 0; k < NJ; k++) { const u = (k / (NJ - 1)) * 2 - 1; jets.push({ x: lakeE.center[0] + u * lakeE.rx * 0.66, z: lakeE.center[1] + 14 + Math.cos(u * 2.2) * 10, ph: k * 0.7 }); }
+    for (let k = 0; k < NJ; k++) {
+      if (S.fountain.at) { jets.push({ x: lakeE.center[0] + S.fountain.at[k][0], z: lakeE.center[1] + S.fountain.at[k][1], ph: k * 0.7 }); continue; }   // at = 湖の中心からの [dx, dz] (城の島の前後の堀)
+      const u = (k / (NJ - 1)) * 2 - 1; jets.push({ x: lakeE.center[0] + u * lakeE.rx * 0.66, z: lakeE.center[1] + 14 + Math.cos(u * 2.2) * 10, ph: k * 0.7 });
+    }
     api.group.add(jetMesh);
     const ND = 22, dg = new THREE.BufferGeometry();
     dg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(NJ * ND * 3), 3));

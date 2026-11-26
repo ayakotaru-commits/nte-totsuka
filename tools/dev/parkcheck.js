@@ -288,7 +288,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   // ---- 段階 1: 地面・湖・塔・柵・案内 ----
   const lake = park.ellipses['ムーンレイク'], lc = lake.center, lv = park.ground.level;
   const hAt = (x, z) => page.evaluate(([x, z]) => window.__groundH(x, z), [x, z]);
-  const gg = await hAt(g0[0], g0[1]), pp = await hAt(pl[0], pl[1]), lcH = await hAt(lc[0], lc[1] - 1), rimH = await hAt(lc[0], lc[1] - lake.rz - 6);
+  const gg = await hAt(g0[0], g0[1]), pp = await hAt(pl[0], pl[1]), lcH = await hAt(lc[0] + 100, lc[1] - 1), rimH = await hAt(lc[0], lc[1] - lake.rz - 6);
   check('パークの地面は平ら (ゲート・広場が level の ±0.1 m)', Math.abs(gg - lv) < 0.1 && Math.abs(pp - lv) < 0.1, { gate: +gg.toFixed(2), plaza: +pp.toFixed(2), level: lv });
   check('湖の中心が深さ分 (2.5 m) 掘れている', Math.abs((lv - lcH) - lake.lake.depth) < 0.3 && Math.abs(rimH - lv) < 0.1, { center: +lcH.toFixed(2), rim: +rimH.toFixed(2) });
   const names = await page.evaluate(() => window.__g.scene.getObjectByName('park').children.length);
@@ -297,7 +297,10 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   const toLake = await page.evaluate((r) => window.__walkXZ(r, { maxT: 40, tol: 2 }), [[pl[0], pl[1] + 70], [lc[0], lc[1] - lake.rz - 12]]);
   console.log(JSON.stringify(toLake));
   check('広場から湖の北の散歩道まで歩ける', toLake.out.length === 2 && toLake.out.every((q) => q.ok), toLake.out.map((q) => q.ok));
-  const dive = await page.evaluate((a) => window.__walkXZ(a, { maxT: 20, walk: true, keepGoing: true, tol: 0.3 }), [[lc[0], lc[1]]]);
+  // (段階 9: 湖の北南の岸の軸 = 城の堤道は歩いて入れるので、軸から 80 m 離れた所から湖の中へ向かう)
+  await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [lc[0] + 80, lv + 0.2, lc[1] - lake.rz - 12]);
+  await frames(page, 2);
+  const dive = await page.evaluate((a) => window.__walkXZ(a, { maxT: 20, walk: true, keepGoing: true, tol: 0.3 }), [[lc[0] + 80, lc[1]]]);
   console.log(JSON.stringify(dive));
   const dd = dive.out[0], dEdge = Math.hypot((dd.at[0] - lc[0]) / lake.rx, (dd.at[1] - lc[1]) / lake.rz);
   check('湖の中心へ向かって歩いても、岸の手前で止まる (落ちない)', dd && !dd.ok && dEdge > 1.0 && Math.abs(dd.y - lv) < 0.7, { rho: +dEdge.toFixed(3), y: dd && dd.y });
