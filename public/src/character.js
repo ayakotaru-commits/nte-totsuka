@@ -9,6 +9,7 @@ import { shrinkTextures } from './lowmem.js';
 import { samplePose, trailOn, LEGS, LEGS_UNTIL, TRAIL_STYLE, FX, TWIRL, MOCAP } from './attack.js';
 import { sampleMotion, loadMotion, getMotion } from './motion.js';
 import { Outfitter } from './outfit.js';
+import { Hairdresser } from './hair.js';
 
 // 歩き・走り・待機・空中・着地を、動きのデータ (Quaternius の Universal Animation Library、CC0) で動かす。
 // URL に ?handmade で、以前の手作りの動きに戻す。階段は手作りのまま (データに階段の動きが無いため)
@@ -956,6 +957,9 @@ export function makeCharacter(opt = {}) {
   // 着せ替え: setOutfits({ tops, bottoms, shoes, onepiece }) 各値は服のファイルの URL か null (= いつもの)。VRM の読み込み前に呼ばれたら、読み込み後に着る
   let outfitter = null, wantOutfits = null;
   const setOutfits = (slots) => { wantOutfits = slots; return outfitter ? outfitter.set(slots) : Promise.resolve(); };
+  // 髪型 (キャラメイク): setHair(entry) entry は models/hairs/hairs.json の 1 件か null (= いつもの髪)。VRM の読み込み前に呼ばれたら、読み込み後に付ける
+  let hairdresser = null, wantHair = null;
+  const setHair = (entry) => { wantHair = entry || null; return hairdresser ? hairdresser.set(wantHair) : Promise.resolve(); };
 
   async function loadVRM(url) {
     try {
@@ -1008,6 +1012,8 @@ export function makeCharacter(opt = {}) {
       root.add(vrm.scene);
       outfitter = new Outfitter(vrm); // 着せ替え (VRM のときだけ。ほかの人の組み立て式のキャラは対象外)
       if (wantOutfits) outfitter.set(wantOutfits);
+      hairdresser = new Hairdresser(vrm);
+      if (wantHair) hairdresser.set(wantHair);
       console.info('VRM を読み込みました: ' + url);
     } catch (e) {
       console.warn('VRM を読み込めなかったので、組み立て式のキャラのままにします:', e);
@@ -1027,5 +1033,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair };
 }

@@ -88,13 +88,61 @@ function scalpMaterial(src, color) {
 export async function fitHair(src, vrm, playerFit, { scalp = true, scalpLift = 0.004, adjust = true, keepWidth = 0.5, puff = 1, forward = 0, width = 1 } = {}) {
   const sfit = src.parser.json.extras?.fit;
   const head = adjust && sfit && playerFit?.metrics ? headAdjust(sfit, playerFit.metrics, { keepWidth, puff, width }) : null;
-  if (head) head.off[2] += forward; // 前 (+z) へずらす量 (m)。髪ごとの調整 (public/models/hairs/hairs.json の tune)
+  if (head) {
+    // ずらす量は、キャラの元の大きさ (m) で測った値。ゲームの中ではキャラに縮尺がかかっている (character.js) ので、その倍率をかける
+    const k = vrm.scene.scale.x;
+    head.off[2] += forward; // 前 (+z) へずらす量 (m)。髪ごとの調整 (public/models/hairs/hairs.json の tune)
+    head.off = head.off.map((v) => v * k);
+  }
   const { group, used } = await fitOutfit(src, vrm, { parts: /./, scale: 1.04, head });
   vrm.scene.add(group);
   let caps = [], capMat = null;
   if (scalp && playerFit?.scalp && sfit?.color) { capMat = scalpMaterial(src, sfit.color); caps = makeScalp(vrm, playerFit.scalp, capMat, scalpLift); }
   return {
     group, caps, capMat, used,
-    dispose() { vrm.scene.remove(group); group.traverse(o => { o.geometry?.dispose?.(); }); for (const c of caps) { c.parent?.remove(c); c.geometry.dispose(); } capMat?.dispose?.(); },
+    dispose() {
+      vrm.scene.remove(group);
+      const mats = new Set(capMat ? [capMat] : []);
+      group.traverse((o) => { o.geometry?.dispose?.(); for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) mats.add(m); });
+      for (const c of caps) { c.parent?.remove(c); c.geometry.dispose(); }
+      for (const m of mats) { for (const v of Object.values(m)) if (v && v.isTexture) v.dispose(); m.dispose?.(); } // 模様 (GPU) も手放す
+    },
   };
+}
+
+// 髪の付け替え (キャラメイクの髪型)。set(entry) の entry は models/hairs/hairs.json の 1 件。null = いつもの髪。
+//   読み込んだ髪は覚えない (切り替えのたびに前の髪を手放す。スマホのメモリのため)。ブラウザが 2 回目からはキャッシュから読む。
+//   今のキャラ自身の髪 (材質名に HAIR) は、髪を付けている間だけ隠す (Outfitter と同じく、材質ごとに見え方を切り替える)。
+//   同時に呼ばれても順番に処理する。
+export class Hairdresser {
+  constructor(vrm) {
+    this.vrm = vrm;
+    this.cur = null;
+    this.fit = null;        // player_fit.json (今のキャラの顔の数字と頭皮)
+    this.loader = null;
+    this.own = [];          // 今のキャラの髪の材質
+    vrm.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (/HAIR/.test(m.name) && !this.own.includes(m)) this.own.push(m);
+    });
+    this.busy = Promise.resolve();
+  }
+
+  set(entry) {
+    this.busy = this.busy.then(() => this._set(entry)).catch((e) => console.warn('髪型の変更に失敗:', e));
+    return this.busy;
+  }
+
+  async _set(entry) {
+    if (this.cur) { this.cur.dispose(); this.cur = null; }
+    if (!entry) { for (const m of this.own) m.visible = true; return; }
+    if (!this.loader) {
+      const [{ GLTFLoader }, { VRMLoaderPlugin }] = await Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('@pixiv/three-vrm')]);
+      this.loader = new GLTFLoader(); this.loader.register((p) => new VRMLoaderPlugin(p));
+    }
+    if (!this.fit) this.fit = await fetch(new URL('../models/hairs/player_fit.json', import.meta.url)).then((r) => r.json());
+    const src = await this.loader.loadAsync(new URL('../models/hairs/' + entry.id + '.glb', import.meta.url).href);
+    this.cur = await fitHair(src, this.vrm, this.fit, entry.tune || {});
+    for (const m of this.own) m.visible = false;
+  }
 }

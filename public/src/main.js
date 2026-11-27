@@ -32,6 +32,7 @@ import { openStreetView } from './streetview.js';
 import { setTerrain, setCover, setLowMemory } from './terrain.js';
 import { TOUCH, setupTouch } from './touch.js';
 import { loadWardrobe } from './wardrobe.js';
+import { loadHairStyle } from './hairstyle.js';
 import { Menu } from './menu.js';
 import { PhotoMode } from './photo.js';
 import { loadShops, ShopTrigger } from './shop.js';
@@ -151,6 +152,8 @@ async function main() {
   const player = new Player(world, scene);
   const wardrobe = await loadWardrobe();                       // お金・買った服・着ている服 (端末に保存)
   player.model.setOutfits(wardrobe.urls());                     // 着ていた服を着る (キャラの読み込み後)
+  const hairStyle = await loadHairStyle();                      // キャラメイクの髪型 (端末に保存)
+  player.model.setHair(hairStyle.entry());                      // 選んでいた髪にする (キャラの読み込み後)
   let menu = null;                                              // メニュー (下で作る)
   let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
@@ -334,7 +337,7 @@ async function main() {
   document.addEventListener('pointerlockchange', () => { if (!TOUCH && photo.active && document.pointerLockElement !== renderer.domElement) photo.exit(); });
   if (TOUCH) setupTouch({ dom: renderer.domElement, input, cam, streetView, warp: () => bigmap.warp(), photo });
   menu = new Menu({
-    wardrobe, player, cam, dom: renderer.domElement, lock, unlock,
+    wardrobe, hairStyle, player, cam, dom: renderer.domElement, lock, unlock,
     actions: { photo: () => photo.enter(), map: () => { rhythm.stop(); toggleMap(); }, time: () => { $('hud-time').textContent = tod.next(); }, help: () => { $('help').hidden = !$('help').hidden; } },
   });
   $('menu-btn').addEventListener('click', () => { if (!bigmap.open && !arcade.active) menu.toggle(); });
