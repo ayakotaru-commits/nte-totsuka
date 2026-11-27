@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { fontCss } from './parkfont.js';
 import { Geo } from './parkrides.js';
-import { buildGeometry as personGeometry, buildMaterial as personMaterial } from '../crowd.js';
+import { createTier, STYLE } from '../crowdfigure.js';
 
 export function buildLive(ctx) {
   const { cfg, ground, std, glowMat, group, col, emissive, low } = ctx;
@@ -325,19 +325,18 @@ export function buildLive(ctx) {
     { x: -6.5, z: zFront - 4.2, sc: 1.0, mode: 9, top: '#ff9ccf', bottom: '#fff6e6', hair: '#f08cb4', skin: '#f2c9a6', name: 'dancer' },
     { x: 6.5, z: zFront - 4.2, sc: 1.0, mode: 9, top: '#9fd8ee', bottom: '#fff6e6', hair: '#5a7fd6', skin: '#e5b594', name: 'dancer' },
   ];
-  const pgeo = personGeometry(), NP = PE.length;
-  const pattr = (n, size) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(NP * size), size); a.setUsage(THREE.DynamicDrawUsage); pgeo.setAttribute(n, a); return a; };
-  const PA = { top: pattr('iTop', 3), bottom: pattr('iBottom', 3), hair: pattr('iHair', 3), skin: pattr('iSkin', 3), anim: pattr('iAnim', 3) };
-  const performers = new THREE.InstancedMesh(pgeo, personMaterial(), NP);
-  performers.instanceMatrix.setUsage(THREE.DynamicDrawUsage); performers.frustumCulled = false; performers.castShadow = true; performers.count = 0; performers.name = 'park_live_performers';
-  g.add(performers);
+  const NP = PE.length;
+  const tier = createTier(NP, true, true), PA = tier.A, performers = tier.mesh;   // 街の人と同じ人形 (crowdfigure.js。近い形)
+  performers.frustumCulled = false; performers.name = 'park_live_performers';
+  g.add(performers, tier.outline);
+  const PSTYLE = PE.map((q) => (q.name === 'vocal' || q.name === 'dancer' ? STYLE.skirt | STYLE.shorts : q.name === 'drums' || q.name === 'keys' ? STYLE.sleeve : 0) | STYLE.whiteShoe);
   { const c = new THREE.Color(); PE.forEach((q, i) => { for (const k of ['top', 'bottom', 'hair', 'skin']) { c.set(q[k]); PA[k].setXYZ(i, c.r, c.g, c.b); } }); for (const k of ['top', 'bottom', 'hair', 'skin']) PA[k].needsUpdate = true; }
   let grow = 0;   // 出る・引っこむ (0 → 1。3 秒)
   const pm4 = new THREE.Matrix4();
   const updatePerformers = (nowSec, dt) => {
     const st = LS, target = st && (st.on || (st.phase === 'wait' && st.startsIn < 15)) ? 1 : 0;
     grow += clamp(target - grow, -dt / 3, dt / 3);
-    perfProps.visible = grow > 0.02; performers.count = grow > 0.002 ? NP : 0;
+    perfProps.visible = grow > 0.02; performers.count = tier.outline.count = grow > 0.002 ? NP : 0;
     if (!performers.count) return;
     const song = st && st.phase === 'song' ? st.song : null, beat = song ? (song.energy >= 3 ? 2.3 : song.energy === 2 ? 1.9 : 1.5) : 1.2;
     const s2 = grow * grow * (3 - 2 * grow);
@@ -348,7 +347,7 @@ export function buildLive(ctx) {
       pm4.set(sc, 0, 0, x, 0, sc, 0, SH + (q.y || 0), 0, 0, sc, z, 0, 0, 0, 1);
       performers.setMatrixAt(i, pm4);
       const dancing = song && (q.name !== 'dancer' || song.energy >= 2);
-      PA.anim.setXYZ(i, nowSec * Math.PI * 2 * beat + i * 0.7, dancing && q.name === 'dancer' ? 0.5 : song && (q.name === 'vocal') ? 0.25 : 0, dancing ? q.mode : 3);
+      PA.anim.setXYZW(i, nowSec * Math.PI * 2 * beat + i * 0.7, dancing && q.name === 'dancer' ? 0.5 : song && (q.name === 'vocal') ? 0.25 : 0, dancing ? q.mode : 3, PSTYLE[i]);
     });
     performers.instanceMatrix.needsUpdate = true; PA.anim.needsUpdate = true;
   };
