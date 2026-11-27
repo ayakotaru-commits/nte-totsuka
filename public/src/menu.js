@@ -5,7 +5,7 @@
 // キャラメイクの画面は、タブで 髪型の一覧・髪色・目の色の色見本 (hairstyle.js)。選ぶとすぐ変わる。
 // カメラは、着替え・キャラメイクの画面で、キャラの正面へ寄せる。
 import { yen, SLOTS } from './wardrobe.js';
-import { PALETTE, EYE_PALETTE, SKIN_PALETTE, HEIGHTS, BODIES } from './hairstyle.js';
+import { PALETTE, EYE_PALETTE, SKIN_PALETTE, HEIGHTS, BODIES, FACE_ITEMS } from './hairstyle.js';
 
 export class Menu {
   constructor({ wardrobe, hairStyle, player, cam, dom, lock, unlock, actions }) {
@@ -33,6 +33,17 @@ export class Menu {
     // 好きな色 (色の選択枠): 動かしている間は、枠を作り直さずに髪色だけ変える。決めたら描き直す
     this.el.addEventListener('input', (e) => { if (e.target.id === 'mn-color') { this.quiet = true; this.pickColor(e.target.value); this.quiet = false; } });
     this.el.addEventListener('change', (e) => { if (e.target.id === 'mn-color') this.render(); });
+    // 顔のスライダー: 動かしている間は作り直さず、値の文字だけ変える
+    this.el.addEventListener('input', (e) => {
+      const k = e.target.dataset?.face; if (!k) return;
+      const i = FACE_ITEMS.findIndex((it) => it.key === k), v = +e.target.value / 10;
+      this.quiet = true; this.pickFace(k, v); this.quiet = false;
+      this.sel = i + 1; this.msg = '';
+      const t = this.el.querySelector(`[data-faceval="${i}"]`); if (t) t.textContent = this.faceText(i, v);
+      const rb = this.el.querySelector('[data-do=facereset]'); // 動かしたら「元に戻す」を有効に見せる
+      if (rb) { const ch = FACE_ITEMS.some((it) => this.faceVal(it.key) !== 0); rb.classList.toggle('locked', !ch); rb.querySelector('small').textContent = ch ? 'すべての項目を 0 へ' : 'いまは元の顔です'; }
+      this.el.querySelectorAll('.mn-slide').forEach((el, j) => el.classList.toggle('sel', j === i));
+    });
   }
 
   toggle() { this.open ? this.close() : this.show(); }
@@ -139,7 +150,7 @@ export class Menu {
   heightList() { const n = this.hairStyle.naturalHeight(); return [{ cm: null, name: `元の身長（約 ${n} cm）` }, ...HEIGHTS.filter((c) => c !== n).map((c) => ({ cm: c, name: c + ' cm' }))]; }
   curHeight() { const c = this.hairStyle?.height || null; return c === this.hairStyle?.naturalHeight() ? null : c; }
   heightIndex() { const c = this.curHeight(); return Math.max(0, this.heightList().findIndex((o) => o.cm === c)); }
-  cmIndex() { return this.cmTab === 'body' ? Math.max(0, BODIES.findIndex((o) => o.id === this.hairStyle?.body)) : this.cmTab === 'style' ? this.hairIndex() : this.cmTab === 'height' ? this.heightIndex() : this.colorIndex(); }
+  cmIndex() { return this.cmTab === 'face' ? Math.min(this.sel || 0, FACE_ITEMS.length) : this.cmTab === 'body' ? Math.max(0, BODIES.findIndex((o) => o.id === this.hairStyle?.body)) : this.cmTab === 'style' ? this.hairIndex() : this.cmTab === 'height' ? this.heightIndex() : this.colorIndex(); }
   // 体を選ぶ (読み込みが済むまで少しかかる。髪・服・色・身長は引き継ぐ)
   pickBody(id) {
     if (!this.hairStyle || id === this.hairStyle.body || !this.hairStyle.setBody(id)) return;
@@ -157,6 +168,23 @@ export class Menu {
     if (!this.hairStyle || !this.hairStyle.setHeight(cm)) return;
     this.player.model.setHeight(this.hairStyle.heightScale());
     this.msg = ''; this.sel = this.heightIndex(); this.render();
+  }
+
+  // 顔のパーツ: スライダー 1 本 = 1 項目 (sel 0 は「顔を元に戻す」、1〜 が項目)。ドラッグ中は作り直さない (つかんでいるスライダーが消えるため)
+  faceVal(k) { return this.hairStyle?.face?.[k] || 0; }
+  faceText(i, v) { const g = FACE_ITEMS[i]; return v === 0 ? '元' : (v > 0 ? (g.hi || '大きい') : (g.lo || '小さい')) + ' ' + Math.round(Math.abs(v) * 10); }
+  pickFace(key, v) {
+    if (!this.hairStyle || !this.hairStyle.setFace(key, v)) return;
+    this.player.model.setFace(this.hairStyle.face);
+  }
+  resetFace() {
+    if (!this.hairStyle) return;
+    this.hairStyle.resetFace(); this.player.model.setFace(this.hairStyle.face);
+    this.msg = '顔を元に戻しました'; this.sel = 0; this.render();
+  }
+  focusFace() { // 選んでいる行のスライダーへキーボードの操作を移す (← → で値を変えられる)
+    const el = this.sel > 0 ? this.el.querySelector(`input[data-face="${FACE_ITEMS[this.sel - 1].key}"]`) : null;
+    if (el) el.focus({ preventScroll: false });
   }
 
   setCmTab(t) { this.cmTab = t; this.sel = this.cmIndex(); this.msg = ''; this.render(); }
@@ -216,7 +244,7 @@ export class Menu {
       h += `</div><div class="mn-msg">${this.msg || (items.length ? '' : 'いまは売っている服がありません')}</div><button class="mn-item mn-close" data-do="place">もどる<small>Esc</small></button>`;
     } else if (this.screen === 'charmake') {
       // キャラメイク: タブ (髪型 / 髪色) + 一覧
-      const tabs = [['body', '体'], ['style', '髪型'], ['color', '髪色'], ['eye', '目の色'], ['skin', '肌の色'], ['height', '身長']];
+      const tabs = [['body', '体'], ['style', '髪型'], ['color', '髪色'], ['eye', '目の色'], ['skin', '肌の色'], ['face', '顔'], ['height', '身長']];
       h += '<div class="mn-tabs">' + tabs.map(([k, n]) => `<button class="mn-tab${k === this.cmTab ? ' on' : ''}" data-cmtab="${k}">${n}</button>`).join('') + '</div>';
       if (this.cmTab === 'body') {
         h += '<div class="mn-list">';
@@ -225,6 +253,16 @@ export class Menu {
           h += `<button class="mn-item${on ? ' on' : ''}${i === this.sel ? ' sel' : ''}" data-body="${o.id}">${o.name}<small>${on ? '選んでいる' : ''}</small></button>`;
         });
         h += `</div><div class="mn-msg">${this.msg || '体を変えると、髪・服・色は引き継がれます。合わない服は脱ぎます（体を戻すとまた着られます）'}</div>`;
+      } else if (this.cmTab === 'face') {
+        const changed = FACE_ITEMS.some((it) => this.faceVal(it.key) !== 0);
+        h += `<div class="mn-list mn-faces"><button class="mn-item${this.sel === 0 ? ' sel' : ''}${changed ? '' : ' locked'}" data-do="facereset">顔を元に戻す<small>${changed ? 'すべての項目を 0 へ' : 'いまは元の顔です'}</small></button>`;
+        let grp = '';
+        FACE_ITEMS.forEach((it, i) => {
+          if (it.grp !== grp) { grp = it.grp; h += `<div class="mn-grp">${grp}</div>`; }
+          const v = this.faceVal(it.key);
+          h += `<label class="mn-item mn-slide${i + 1 === this.sel ? ' sel' : ''}">${it.name}<small data-faceval="${i}">${this.faceText(i, v)}</small><input type="range" min="-10" max="10" step="1" value="${Math.round(v * 10)}" data-face="${it.key}" aria-label="${it.name}"></label>`;
+        });
+        h += `</div><div class="mn-msg">${this.msg || 'スライダーを動かすとすぐ顔が変わります（←→ でも動かせます。↑↓ で項目を移動）。ドラッグでキャラを回せます'}</div>`;
       } else if (this.cmTab === 'height') {
         const cur = this.curHeight();
         h += '<div class="mn-list">';
@@ -267,6 +305,7 @@ export class Menu {
       h += `</div><div class="mn-msg">${this.msg || note || (this.list().length > 1 ? '' : '買った服はここに並びます。洋服屋で買えます')}</div><button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>`;
     }
     this.el.innerHTML = h;
+    if (this.screen === 'charmake' && this.cmTab === 'face') this.focusFace();
   }
 
   applyOutfit() { this.player.model.setOutfits(this.wardrobe.urls()); }
@@ -312,6 +351,7 @@ export class Menu {
     const d = b.dataset.do;
     if (d === 'wardrobe') this.go('wardrobe');
     else if (d === 'charmake') this.go('charmake');
+    else if (d === 'facereset') this.resetFace();
     else if (d === 'back') this.go('main');
     else if (d === 'enter') this.enter();
     else if (d === 'decline') this.decline();
@@ -326,7 +366,8 @@ export class Menu {
   key(e) {
     if (e.code === 'Tab' && !(e.target && e.target.tagName === 'INPUT')) e.preventDefault(); // 画面の中のフォーカス移動を起こさない
     if (!this.open) return;
-    if (e.target && e.target.tagName === 'INPUT' && e.code !== 'Escape') return; // 色の選択枠の操作は、そのまま通す
+    const faceSlider = e.target && e.target.dataset && e.target.dataset.face && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(e.code); // 顔のスライダーは ← → をそのまま通し、↑↓・PageUp/Down はメニューが使う
+    if (e.target && e.target.tagName === 'INPUT' && e.code !== 'Escape' && !faceSlider) return; // 色の選択枠の操作は、そのまま通す
     if (e.code === 'Escape') {
       if (this.screen === 'wardrobe' || this.screen === 'charmake') this.go('main');
       else if (this.screen === 'ask') this.decline();
@@ -345,7 +386,15 @@ export class Menu {
       this.setSlot(SLOTS[(i + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return;
     }
     // キャラメイクのタブは ← → で切り替える
-    if (this.screen === 'charmake' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { const T = ['body', 'style', 'color', 'eye', 'skin', 'height'], n = T.length; this.setCmTab(T[(T.indexOf(this.cmTab) + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return; }
+    if (this.screen === 'charmake' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { const T = ['body', 'style', 'color', 'eye', 'skin', 'face', 'height'], n = T.length; this.setCmTab(T[(T.indexOf(this.cmTab) + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return; }
+    if (this.screen === 'charmake' && (e.code === 'PageUp' || e.code === 'PageDown')) { const T = ['body', 'style', 'color', 'eye', 'skin', 'face', 'height'], n = T.length; this.setCmTab(T[(T.indexOf(this.cmTab) + (e.code === 'PageDown' ? 1 : n - 1)) % n]); e.preventDefault(); return; }
+    if (this.screen === 'charmake' && this.cmTab === 'face') { // 顔のタブ: ↑↓ で行を移動 (0 = 元に戻す)、Enter は 0 の行のとき元に戻す
+      const n = FACE_ITEMS.length + 1;
+      if (e.code === 'ArrowDown') this.sel = (this.sel + 1) % n; else if (e.code === 'ArrowUp') this.sel = (this.sel + n - 1) % n;
+      else if (e.code === 'Enter' && this.sel === 0) return this.resetFace();
+      else return;
+      e.preventDefault(); this.render(); return;
+    }
     // 一覧 (着替え・店・服) の選び方: ↑↓ で動かし、Enter で決める
     const rows = this.screen === 'wardrobe' ? this.list() : this.screen === 'charmake' ? (this.cmTab === 'body' ? BODIES : this.cmTab === 'style' ? this.hairList() : this.cmTab === 'height' ? this.heightList() : this.colorList()) : this.screen === 'place' ? this.place.shops : this.screen === 'shop' ? this.stock(this.shop) : null;
     if (!rows || !rows.length) return;

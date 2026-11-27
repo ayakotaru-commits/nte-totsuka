@@ -47,7 +47,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await page.keyboard.press('Tab'); await frames(3);
   await page.click('[data-do=charmake]'); await frames(4);
   const tabs = await page.evaluate(() => [...document.querySelectorAll('.mn-tab')].map(b => b.textContent).join());
-  ok(tabs === '体,髪型,髪色,目の色,肌の色,身長', 'タブ: ' + tabs);
+  ok(tabs === '体,髪型,髪色,目の色,肌の色,顔,身長', 'タブ: ' + tabs);
   await page.click('[data-cmtab=body]'); await frames(3);
   ok(await page.evaluate(() => document.querySelectorAll('[data-body]').length) === 2, '体の選択肢が 2 つ');
   await page.click('[data-body=male]'); await waitBody('M00_'); await frames(6);

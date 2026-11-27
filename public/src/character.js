@@ -12,6 +12,7 @@ import { Outfitter } from './outfit.js';
 import { Hairdresser } from './hair.js';
 import { Eyedresser } from './eyes.js';
 import { Skindresser } from './skin.js';
+import { Facedresser } from './face.js';
 import { BODIES, savedBody } from './hairstyle.js';
 
 // 歩き・走り・待機・空中・着地を、動きのデータ (Quaternius の Universal Animation Library、CC0) で動かす。
@@ -968,6 +969,8 @@ export function makeCharacter(opt = {}) {
   let wantHairColor = null;
   let eyedresser = null, wantEyeColor = null;
   const setEyeColor = (hex) => { wantEyeColor = hex || null; eyedresser?.setColor(wantEyeColor); }; // 目の色 ('#rrggbb'。null = 元の色)
+  let facedresser = null, wantFace = null;
+  const setFace = (q) => { wantFace = q || null; facedresser?.set(wantFace || {}); }; // 顔のパーツ (キャラメイク): face.js の FACE_KEYS の -1〜+1。null = 元の顔
   let skindresser = null, wantSkinColor = null;
   const setSkinColor = (hex) => { wantSkinColor = hex || null; skindresser?.setColor(wantSkinColor); }; // 肌の色 ('#rrggbb'。null = 元の色)
   // 身長 (キャラメイク): setHeight(倍率)。1 = 今のキャラ (約 1.60 m)。体 (頭から下) を同じ倍率で拡大し、頭は半分の倍率だけ (頭が大きくなりすぎない)。
@@ -1049,6 +1052,8 @@ export function makeCharacter(opt = {}) {
       if (wantEyeColor) eyedresser.setColor(wantEyeColor);
       skindresser = new Skindresser(vrm);
       if (wantSkinColor) skindresser.setColor(wantSkinColor);
+      facedresser = new Facedresser(vrm);
+      if (wantFace) facedresser.set(wantFace);
       applyHeight();
       hairdresser = new Hairdresser(vrm);
       if (wantHairColor) hairdresser.setColor(wantHairColor);
@@ -1073,5 +1078,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor, setHeight, setBody };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor, setFace, setHeight, setBody };
 }
