@@ -32,7 +32,7 @@ import { openStreetView } from './streetview.js';
 import { setTerrain, setCover, setLowMemory } from './terrain.js';
 import { TOUCH, setupTouch } from './touch.js';
 import { loadWardrobe } from './wardrobe.js';
-import { loadHairStyle } from './hairstyle.js';
+import { loadHairStyle, savedBody } from './hairstyle.js';
 import { Menu } from './menu.js';
 import { PhotoMode } from './photo.js';
 import { loadShops, ShopTrigger } from './shop.js';
@@ -151,6 +151,7 @@ async function main() {
   const input = new Input();
   const player = new Player(world, scene);
   const wardrobe = await loadWardrobe();                       // お金・買った服・着ている服 (端末に保存)
+  wardrobe.setBody(savedBody(), false);                          // 選んでいた体に合う服だけ着る
   player.model.setOutfits(wardrobe.urls());                     // 着ていた服を着る (キャラの読み込み後)
   const hairStyle = await loadHairStyle();                      // キャラメイクの髪型 (端末に保存)
   player.model.setHair(hairStyle.entry());                      // 選んでいた髪にする (キャラの読み込み後)

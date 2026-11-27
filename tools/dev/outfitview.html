@@ -3,6 +3,7 @@
   node tools/dev/charshot.js out --page outfitview "tops=lyla_hoodie&bottoms=nona_shorts&shoes=nishi_shoes&pose=0"
     tops / bottoms / shoes / onepiece = public/models/outfits/ のファイル名 (.glb は省く。省いた枠は いつもの服)、
     pose = 0 基準の姿勢 / 1 腕を上げて膝を曲げた姿勢 / 2 腕を上げて脚を開いた姿勢、none=1 で服を着せない (比較用)。
+  body=male で男性の体 (既定は今のキャラ)。
   画面は 正面 / 横 / 後ろ / 上半身のアップ。-->
 <html lang="ja"><head><meta charset="utf-8"><title>outfitview</title>
 <style>html,body{margin:0;overflow:hidden;background:#8fa3b8}</style>
@@ -22,7 +23,7 @@ renderer.setScissorTest(true);
 const scene = new THREE.Scene(); scene.background = new THREE.Color('#8fa3b8');
 scene.add(new THREE.HemisphereLight('#ffffff', '#778', 2.2)); const sun = new THREE.DirectionalLight('#fff', 2); sun.position.set(2, 4, 3); scene.add(sun);
 const loader = new GLTFLoader(); loader.register(p => new VRMLoaderPlugin(p));
-const g = await loader.loadAsync('../../public/models/player.vrm');
+const g = await loader.loadAsync(qs.get('body') === 'male' ? '../../public/models/bodies/male.vrm' : '../../public/models/player.vrm');
 const vrm = g.userData.vrm; VRMUtils.rotateVRM0(vrm); scene.add(vrm.scene);
 vrm.scene.updateMatrixWorld(true);
 if (!qs.has('none')) {

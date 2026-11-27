@@ -28,3 +28,8 @@ OpenGameArt の「VRoid Studio CC0 models」(https://opengameart.org/content/vro
 - `hairsample_female`・`hairsample_male` (HairSample_Female / Male)、`avatar_d`・`avatar_d_darkness`・`avatar_e`・`avatar_f`・`avatar_g` (AvatarSample_D〜G。今の VRoid Studio の同名のものとは別物)、`sakurada` (Sakurada Fumiriya)、`shino` (Sendagaya Shino)。
 - 条件: OpenGameArt の説明では CC0。出どころに挙げられた VRoid のヘルプ本文は、この環境から読めていない (未確認)。AvatarSample_A〜C (今のキャラ) は対象外。
 - Base_Female / Base_Male (頭の殻だけの短髪) は、額が出てしまうので使わないことにした (2026-11-27、持ち主の判断)。一覧は `hairs/hairs.json`。
+
+## 男性の体 (`bodies/male.vrm`、2026-11、キャラメイク用)
+OpenGameArt の「VRoid Studio CC0 models」(https://opengameart.org/content/vroid-studio-cc0-models) の `Base_Male` (VRoid プロジェクト。VRM 0.x。VRM の利用条件にも licenseName = CC0、改変・再配布・商用 OK、クレジット不要と書いてある) を、`python tools/slim_vrm.py data/raw/bodies/Base_Male.vrm public/models/bodies/male.vrm` で軽くしたもの (17.9MB → 9.0MB)。
+- 男性の体用の髪の合わせ (顔の数字) は `hairs/male_fit.json` (`python tools/hairs.py --player data/raw/bodies/Base_Male.vrm 0.55 male_fit.json`)。この体は頭皮の三角形がほとんど無いので、体自身の髪 (頭の殻 HairBack) を残したまま別の髪を重ねる (`keepOwn`)。
+- 男性向きの服: `outfits/hairsample_male_tops.glb` (HairSample_Male = 同じ体の別の服。CC0)。`python tools/hairs.py data/raw/bodies/HairSample_Male.vrm hairsample_male_tops --parts Tops --outdir outfits`。一覧は `public/data/outfits.json` の `body` (female / male。無ければ female)。

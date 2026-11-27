@@ -128,7 +128,8 @@ export class Hairdresser {
   constructor(vrm) {
     this.vrm = vrm;
     this.cur = null;
-    this.fit = null;        // player_fit.json (今のキャラの顔の数字と頭皮)
+    this.body = 'female';   // 体 (character.js が決める)。顔の数字・頭皮は体ごと: female = player_fit.json、male = male_fit.json
+    this.fit = null;        // その体の顔の数字と頭皮
     this.loader = null;
     this.own = [];          // 今のキャラの髪の材質
     vrm.scene.traverse((o) => {
@@ -158,10 +159,10 @@ export class Hairdresser {
       const [{ GLTFLoader }, { VRMLoaderPlugin }] = await Promise.all([import('three/addons/loaders/GLTFLoader.js'), import('@pixiv/three-vrm')]);
       this.loader = new GLTFLoader(); this.loader.register((p) => new VRMLoaderPlugin(p));
     }
-    if (!this.fit) this.fit = await fetch(new URL('../models/hairs/player_fit.json', import.meta.url)).then((r) => r.json());
+    if (!this.fit) this.fit = await fetch(new URL('../models/hairs/' + (this.body === 'male' ? 'male' : 'player') + '_fit.json', import.meta.url)).then((r) => r.json());
     const src = await this.loader.loadAsync(new URL('../models/hairs/' + entry.id + '.glb', import.meta.url).href);
     this.cur = await fitHair(src, this.vrm, this.fit, entry.tune || {});
     if (this.color) tintHair(this.cur, this.color);
-    for (const m of this.own) m.visible = false;
+    if (!this.fit.keepOwn) for (const m of this.own) m.visible = false; // keepOwn: 体の髪 (頭の殻) を残す (男性の体は頭皮の三角形が無いため、殻の代わりに使う)
   }
 }
