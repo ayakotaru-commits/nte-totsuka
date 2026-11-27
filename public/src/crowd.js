@@ -30,7 +30,7 @@ export class Crowd {
     this.near = createTier(Math.min(cap, this.nearCap), true, !low);   // スマホは影を落とさない (影の描画が増えるため)
     this.far = createTier(cap, false, !low);                                // 遠くの人も影は落とす (形が軽いので負担は小さい。落とさないと境目で影が消える)
     this.mesh = this.far.mesh;                                              // 互換 (確認用)
-    this.group.add(this.near.mesh, this.far.mesh);
+    this.group.add(this.near.mesh, this.near.outline, this.far.mesh, this.far.outline);
     scene.add(this.group);
     this.col = new Map();               // 人 id → 色 (毎コマ作り直さない)
     this._c = new THREE.Color(); this._m = new THREE.Matrix4(); this._f = new THREE.Vector3(); this._d = [];

@@ -9,7 +9,7 @@ export const STYLE = { skirt: 1, longHair: 2, bag: 4, jacket: 8, hat: 16, shorts
 
 // 部品の番号 (aId.w): 0 = いつも出す、1〜5 = style のビット 0〜4 が立っているときだけ、6 = 頭 (bigHead で大きくする)
 const FEAT = { skirt: 1, longHair: 2, bag: 3, jacket: 4, hat: 5, head: 6 };
-// 色の枠 (aId.x): 0 肌 1 髪 2 上着 3 ズボン 4 くつ 5 すね (shorts なら肌) 6 前腕 (sleeve なら肌)
+// 色の枠 (aId.x): 0 肌 1 髪 2 上着 3 ズボン 4 くつ 5 すね (shorts なら肌) 6 前腕 (sleeve なら肌) 7 白目 8 黒目
 // 部分 (aId.y): 0 動かない 1 左脚 2 右脚 3 左腕 4 右腕、節 (aId.z): 0 付け根側 1 先の側 (膝・肘から先)
 const KNEE_DROP = 0.42, ELBOW_DROP = 0.29;   // 腰から膝まで・肩から肘まで (m)
 
@@ -49,6 +49,10 @@ export function buildGeometry(near = true) {
   put(new THREE.CylinderGeometry(0.042, 0.046, 0.1, D.rad, 1, true), { at: [0, 1.47, 0], slot: 0 });
   // 頭・髪
   ball(1, D.hw, D.hh, [0, 1.57, 0.005], [0.095, 0.115, 0.105], { slot: 0, feat: FEAT.head });
+  if (near) for (const sd of [-1, 1]) {   // 目 (主人公と同じ、白目と黒目)
+    ball(0.024, 8, 6, [0.038 * sd, 1.562, 0.097], [1, 1.45, 0.4], { slot: 7, feat: FEAT.head });
+    ball(0.016, 8, 6, [0.038 * sd, 1.56, 0.103], [1, 1.5, 0.4], { slot: 8, feat: FEAT.head });
+  }
   put(new THREE.SphereGeometry(1, D.hw, D.hh, 0, Math.PI * 2, 0, Math.PI * 0.5), { at: [0, 1.595, -0.018], s: [0.109, 0.128, 0.119], slot: 1, feat: FEAT.head });
   // 選べる部品
   ball(1, D.sw, D.sh, [0, 1.44, -0.075], [0.1, 0.17, 0.075], { slot: 1, feat: FEAT.longHair });                       // 長い髪
@@ -119,8 +123,19 @@ export function buildDepthMaterial() {
   return m;
 }
 
+// 主人公と同じ、3 段のトゥーン (character.js の gradientMap)。暗いところでも見えるよう、色の一部を自己発光させる (主人公と同じ考え方)
+let gradient = null;
+function gradientMap() {
+  if (!gradient) {
+    gradient = new THREE.DataTexture(new Uint8Array([90, 170, 255]), 3, 1, THREE.RedFormat);
+    gradient.minFilter = gradient.magFilter = THREE.NearestFilter; gradient.needsUpdate = true;
+  }
+  return gradient;
+}
+const BODY_VERT = '#include <begin_vertex>\n float on0; transformed = animate(transformed, on0) * on0;';
+
 export function buildMaterial() {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+  const m = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: gradientMap() });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\n' + COMMON)
@@ -128,12 +143,26 @@ export function buildMaterial() {
         float sl = aId.x;
         vec3 shoe = has(9.0) > 0.5 ? vec3(0.9) : vec3(0.13);
         vColor = sl < 0.5 ? iSkin : sl < 1.5 ? iHair : sl < 2.5 ? iTop : sl < 3.5 ? iBottom : sl < 4.5 ? shoe
-               : sl < 5.5 ? (has(5.0) > 0.5 ? iSkin : iBottom) : (has(6.0) > 0.5 ? iSkin : iTop);`)
+               : sl < 5.5 ? (has(5.0) > 0.5 ? iSkin : iBottom) : sl < 6.5 ? (has(6.0) > 0.5 ? iSkin : iTop) : sl < 7.5 ? vec3(1.0) : vec3(0.23, 0.18, 0.35);`)
       .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
         { float na, nb; limb(na, nb); objectNormal = rotX(objectNormal, na + (aId.z > 0.5 ? nb : 0.0)); }`)
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n float on0; transformed = animate(transformed, on0) * on0;');
+      .replace('#include <begin_vertex>', BODY_VERT);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += vColor * 0.2;');
   };
-  m.customProgramCacheKey = () => 'crowd-person';
+  m.customProgramCacheKey = () => 'crowd-person-toon';
+  return m;
+}
+
+// 輪郭線 (裏側だけを描く黒い殻。主人公と同じ作り)。形・動きは同じで、法線の向きに少し膨らませる
+export function buildOutlineMaterial() {
+  const m = new THREE.MeshBasicMaterial({ color: '#15151d', side: THREE.BackSide });
+  m.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + COMMON)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        { float na, nb, on1; limb(na, nb); vec3 nn = rotX(normal, na + (aId.z > 0.5 ? nb : 0.0)); transformed = (animate(transformed, on1) + normalize(nn) * 0.006) * on1; }`);
+  };
+  m.customProgramCacheKey = () => 'crowd-person-outline';
   return m;
 }
 
@@ -175,8 +204,11 @@ export function createTier(cap, near, shadow) {
   mesh.castShadow = shadow;
   mesh.customDepthMaterial = buildDepthMaterial();
   mesh.count = 0;
+  const outline = new THREE.InstancedMesh(geo, buildOutlineMaterial(), cap);   // 同じ形・同じ instance 属性を使う輪郭線
+  outline.instanceMatrix = mesh.instanceMatrix;
+  outline.frustumCulled = false; outline.count = 0;
   return {
-    mesh, A, cap,
+    mesh, outline, A, cap,
     put(i, m, cc, phase, amp, mode, style) {
       mesh.setMatrixAt(i, m);
       A.top.setXYZ(i, cc[0].r, cc[0].g, cc[0].b); A.bottom.setXYZ(i, cc[1].r, cc[1].g, cc[1].b);
@@ -184,10 +216,10 @@ export function createTier(cap, near, shadow) {
       A.anim.setXYZW(i, phase, amp, mode, style);
     },
     finish(n) {
-      mesh.count = n;
+      mesh.count = n; outline.count = n;
       mesh.instanceMatrix.needsUpdate = true;
       for (const k in A) A[k].needsUpdate = true;
     },
-    dispose() { mesh.geometry.dispose(); mesh.material.dispose(); mesh.customDepthMaterial.dispose(); },
+    dispose() { mesh.geometry.dispose(); mesh.material.dispose(); mesh.customDepthMaterial.dispose(); outline.material.dispose(); },
   };
 }

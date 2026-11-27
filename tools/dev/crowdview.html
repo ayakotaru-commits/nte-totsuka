@@ -42,7 +42,7 @@ if (old) {
   finish = () => { mesh.count = n; };
 } else {
   const { createTier, styleFor } = await import('../../public/src/crowdfigure.js');
-  tier = createTier(n, !far, true); scene.add(tier.mesh);
+  tier = createTier(n, !far, true); scene.add(tier.mesh, tier.outline);
   tris = tier.mesh.geometry.attributes.position.count / 3;
   put = (i, mm, cc, ph, am, mo, st) => tier.put(i, mm, cc, ph, am, mo, st);
   finish = () => tier.finish(n);
