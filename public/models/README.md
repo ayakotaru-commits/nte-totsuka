@@ -22,3 +22,9 @@ CC0 ではなく、利用条件付きで自由に使えるモデル。条件は 
 ## 服のパーツ (2026-11、枠ごとの組み合わせ)
 `public/models/outfits/` は、材質 (Tops / Bottoms / Shoes / Onepiece) ごとに 1 ファイル (13 点)。枠・店・値段は `public/data/outfits.json`。
 作り直すときは `python tools/outfits.py data/raw/outfits/<元の VRM> <id> --parts <材質名の正規表現>`。
+
+## 髪型 (`hairs/*.glb`、2026-11、キャラメイク用。まだゲームには組み込んでいない)
+OpenGameArt の「VRoid Studio CC0 models」(https://opengameart.org/content/vroid-studio-cc0-models。VRoid が明示的に CC0 で出した、VRoid Studio のアルファ版のモデル。VRM 0.x) から、髪の材質 (名前に HAIR を含むもの。頭の後ろを覆う HairBack も含む) だけを `python tools/hairs.py <元の.vrm> <id>` で取り出したもの (元の 14〜21MB → 1 つ 0.6〜2MB)。髪の揺れの設定 (secondaryAnimation) も残してある。
+- `hairsample_female`・`hairsample_male` (HairSample_Female / Male)、`avatar_d`・`avatar_d_darkness`・`avatar_e`・`avatar_f`・`avatar_g` (AvatarSample_D〜G。今の VRoid Studio の同名のものとは別物)、`sakurada` (Sakurada Fumiriya)、`shino` (Sendagaya Shino)。
+- 条件: OpenGameArt の説明では CC0。出どころに挙げられた VRoid のヘルプ本文は、この環境から読めていない (未確認)。AvatarSample_A〜C (今のキャラ) は対象外。
+- Base_Female / Base_Male (頭の殻だけの短髪) は、額が出てしまうので使わないことにした (2026-11-27、持ち主の判断)。一覧は `hairs/hairs.json`。

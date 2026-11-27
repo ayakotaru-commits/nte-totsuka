@@ -16,6 +16,7 @@ const CHILD = {
   rightUpperLeg: 'rightLowerLeg', rightLowerLeg: 'rightFoot', rightFoot: 'rightToes',
 };
 const FALLBACK = { chest: 'neck', upperChest: 'neck' };
+const FLIP = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI); // VRM 0.x の元の向きを直す回転
 const OWN_PARTS = /Tops|Bottoms|Shoes/; // 今のキャラの服の材質 (服を着せるとき隠す)
 
 function humanoidNames(src) {
@@ -31,7 +32,8 @@ function humanoidNames(src) {
 
 // 材質名で服のパーツを選ぶ。parts は材質名にあてる正規表現 (既定は全部)。
 // scale は服全体の膨らみ (1.04 = 4% 大きく。今のキャラの肩甲骨などが服から突き出るのを防ぐ)
-export async function fitOutfit(src, vrm, { parts = /./, scale = 1.04 } = {}) {
+// head は頭の骨につくもの (髪) だけの調整: { s: [x, y, z] 頭の骨の関節を中心にした倍率 (顔の幅・高さ・奥行きの違い), off: [x, y, z] ずらす量 (m。キャラの親の座標系。+z が前、+y が上) }
+export async function fitOutfit(src, vrm, { parts = /./, scale = 1.04, head = null } = {}) {
   const hmap = await humanoidNames(src);
   // 基準の姿勢にして計算し、終わったら姿勢を戻す (動いている最中に呼ばれてもよい)
   const saved = vrm.humanoid.getNormalizedPose();
@@ -45,6 +47,9 @@ export async function fitOutfit(src, vrm, { parts = /./, scale = 1.04 } = {}) {
     const rel = (o) => Fi.clone().multiply(o.matrixWorld);
     const lpos = (o) => new THREE.Vector3().setFromMatrixPosition(o.matrixWorld);
     const ppos = (o) => new THREE.Vector3().setFromMatrixPosition(rel(o));
+    // 元が VRM 0.x (前が -z) のときは、今のキャラ (前が +z。読み込み時に 180° 回してある) に向きをそろえる。VRM 1.0 の服は前が +z でそのまま
+    const j0 = src.parser.json.extensions || {};
+    const flip = !!j0.VRM && !j0.VRMC_vrm;
     const bonePlayer = (n) => vrm.humanoid.getNormalizedBoneNode(n);
     const boneLyla = new Map(); // 人型の名前 → 元の VRM の骨
     for (const [o, n] of hmap) boneLyla.set(n, o);
@@ -63,7 +68,10 @@ export async function fitOutfit(src, vrm, { parts = /./, scale = 1.04 } = {}) {
       if (!po) continue;
       const s = (scaleOf(n) ?? last) * scale; last = s / scale;
       const q = new THREE.Quaternion(); lo.matrixWorld.decompose(new THREE.Vector3(), q, new THREE.Vector3());
-      const M = new THREE.Matrix4().compose(ppos(po), q, new THREE.Vector3(s, s, s));
+      if (flip) q.premultiply(FLIP);
+      const hd = n === 'head' && head;
+      const M = new THREE.Matrix4().compose(hd ? ppos(po).add(new THREE.Vector3(...(head.off || [0, 0, 0]))) : ppos(po), q,
+        hd ? new THREE.Vector3(s * (head.s?.[0] ?? 1), s * (head.s?.[1] ?? 1), s * (head.s?.[2] ?? 1)) : new THREE.Vector3(s, s, s));
       mats.set(n, { M, inv: lo.matrixWorld.clone().invert(), rest: rel(po), po });
     }
 

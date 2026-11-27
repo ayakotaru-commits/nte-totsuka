@@ -85,7 +85,7 @@ function terrain(file) {
   if (terr) await page.route('**/data/terrain.json', r => r.fulfill({ path: path.resolve(terr), contentType: 'application/json' }));
   if (props) await page.route('**/data/props.json', r => r.fulfill({ path: path.resolve(props), contentType: 'application/json' }));
   page.on('pageerror', e => console.log('ERR', e.message));
-  page.on('console', m => { if (/\[detail\]|rror/.test(m.text())) console.log('LOG', m.text()); });
+  page.on('console', m => { if (/\[detail\]|rror|髪|VRM/.test(m.text())) console.log('LOG', m.text()); });
   const tq = tod === '--night' ? '&t=2' : tod === '--dusk' ? '&t=1' : tod === '--morning' ? '&t=3' : '';
   await page.goto(base + '/?shot' + tq + extraQ, { timeout: 240000 });
   await page.waitForFunction(() => window.__g, null, { timeout: 240000 });

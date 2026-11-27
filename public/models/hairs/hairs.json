@@ -1,0 +1,71 @@
+{
+  "_note": "髪の一覧 (キャラメイク用)。id = public/models/hairs/<id>.glb。body = 合う体 (female / male)。tune = 髪ごとの付け方の調整 (public/src/hair.js の fitHair のオプション): puff = 頭の中心から膨らませる倍率 (既定 1)、forward = 前へずらす量 (m、既定 0)、width = 横幅の倍率 (既定 1)。出どころは public/models/README.md。",
+  "hairs": [
+    {
+      "id": "hairsample_female",
+      "name": "ねこ耳ツインテール",
+      "body": "female",
+      "tune": {}
+    },
+    {
+      "id": "hairsample_male",
+      "name": "ツンツンの短髪",
+      "body": "male",
+      "tune": {
+        "puff": 1.12,
+        "forward": 0.032
+      }
+    },
+    {
+      "id": "avatar_d",
+      "name": "ぱっつんボブ（髪留め）",
+      "body": "female",
+      "tune": {}
+    },
+    {
+      "id": "avatar_d_darkness",
+      "name": "銀髪のボブ",
+      "body": "female",
+      "tune": {
+        "puff": 1.12,
+        "forward": 0.016,
+        "width": 1.06
+      }
+    },
+    {
+      "id": "avatar_e",
+      "name": "丸いボブ",
+      "body": "female",
+      "tune": {
+        "puff": 0.92
+      }
+    },
+    {
+      "id": "avatar_f",
+      "name": "角付きの白髪",
+      "body": "female",
+      "tune": {}
+    },
+    {
+      "id": "avatar_g",
+      "name": "2 色ロング（リボン）",
+      "body": "female",
+      "tune": {}
+    },
+    {
+      "id": "sakurada",
+      "name": "ショート（ピンクがかった色）",
+      "body": "male",
+      "tune": {
+        "puff": 1.12,
+        "forward": 0.016
+      }
+    },
+    {
+      "id": "shino",
+      "name": "ぱっつんロング",
+      "body": "female",
+      "tune": {}
+    }
+  ]
+}
