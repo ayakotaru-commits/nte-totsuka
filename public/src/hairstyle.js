@@ -1,7 +1,7 @@
 // キャラメイク: 選んだ髪型・髪色・目の色の保存。端末のブラウザ (localStorage) にだけ保存する (服の wardrobe.js と同じ)。
 // 髪の一覧は models/hairs/hairs.json (id・名前・合う体・tune)。髪のファイルは models/hairs/<id>.glb (tools/hairs.py で作る)。
 // 髪色・目の色は '#rrggbb' (null = 元の色)。色見本は PALETTE (髪)・EYE_PALETTE (目)。
-// 試すための URL: ?hair=<id> (その髪にする。保存はしない)、?hair=none (いつもの髪)、?haircolor=rrggbb (その髪色。保存はしない。none = 元の色)、?eyecolor=rrggbb (その目の色。同じ)、?skincolor=rrggbb (その肌の色。同じ)、?height=<cm> (その身長。145〜190 の 5 刻み。同じ)、?body=female|male (その体。同じ)、?resetsave (保存を消す。wardrobe.js と共通)
+// 試すための URL: ?hair=<id> (その髪にする。保存はしない)、?hair=none (いつもの髪)、?haircolor=rrggbb (その髪色。保存はしない。none = 元の色)、?eyecolor=rrggbb (その目の色。同じ)、?skincolor=rrggbb (その肌の色。同じ)、?face=eyeSize:0.5,noseSize:-0.3 (顔のパーツ。-1〜1。同じ)、?height=<cm> (その身長。145〜190 の 5 刻み。同じ)、?body=female|male (その体。同じ)、?resetsave (保存を消す。wardrobe.js と共通)
 const KEY = 'totsuka.look.v1';
 
 // 髪色の色見本 (メニュー)。自然な色から順に
@@ -39,6 +39,17 @@ export function savedBody() { // 起動時 (モデルを読み込む前) に、�
 // 身長の選択肢 (cm)。範囲は大人 (145〜190 cm)。null = その体の元の身長
 export const HEIGHT_BASE = 160;
 export const HEIGHTS = [145, 150, 155, 160, 165, 170, 175, 180, 185, 190];
+// 顔のパーツ (キャラメイク): 各項目は -1〜+1 (0.1 刻み。0 = 元の顔)。キーは face.js の FACE_KEYS と同じ (face.js は three.js を読むので、一覧はここにも持つ)
+export const FACE_ITEMS = [
+  { key: 'eyeSize', name: '目の大きさ', grp: '目' }, { key: 'eyeTilt', name: '目のつり・たれ', grp: '目', lo: 'たれ目', hi: 'つり目' }, { key: 'eyeY', name: '目の上下', grp: '目', lo: '下', hi: '上' }, { key: 'eyeGap', name: '目の間隔', grp: '目', lo: '近い', hi: '遠い' },
+  { key: 'browY', name: 'まゆの上下', grp: 'まゆ', lo: '下', hi: '上' }, { key: 'browTilt', name: 'まゆの角度', grp: 'まゆ', lo: '下がり', hi: '上がり' },
+  { key: 'noseSize', name: '鼻の高さ・大きさ', grp: '鼻' }, { key: 'noseY', name: '鼻の上下', grp: '鼻', lo: '下', hi: '上' },
+  { key: 'mouthSize', name: '口の大きさ', grp: '口' }, { key: 'mouthY', name: '口の上下', grp: '口', lo: '下', hi: '上' },
+  { key: 'earSize', name: '耳の大きさ', grp: '耳' },
+  { key: 'jawWidth', name: '輪郭の幅（あご）', grp: '輪郭' }, { key: 'chin', name: 'あごの長さ', grp: '輪郭', lo: '短い', hi: '長い' },
+];
+const FACE_KEYS = FACE_ITEMS.map((i) => i.key);
+const cleanFace = (o) => { const f = {}; if (o && typeof o === 'object') for (const k of FACE_KEYS) { const v = Math.round(+o[k] * 10) / 10; if (Number.isFinite(v) && v !== 0) f[k] = Math.max(-1, Math.min(1, v)); } return f; };
 const isHex =(c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
 
 export class HairStyle {
@@ -50,6 +61,7 @@ export class HairStyle {
     this.color = null;       // 髪色 ('#rrggbb')。null = 元の色
     this.eyeColor = null;    // 目の色 ('#rrggbb')。null = 元の色
     this.skinColor = null;   // 肌の色 ('#rrggbb')。null = 元の色
+    this.face = {};          // 顔のパーツ ({ eyeSize: 0.3, ... }。入っていない項目 = 0 = 元の顔)
     this.height = null;      // 身長 (cm、HEIGHTS のどれか)。null = 元の身長 (HEIGHT_BASE)
     this.listeners = [];
     const q = new URLSearchParams(location.search);
@@ -58,6 +70,7 @@ export class HairStyle {
     if (q.has('hair')) this.id = this.byId.has(q.get('hair')) ? q.get('hair') : null; // 試し用。保存はしない
     if (q.has('eyecolor')) this.eyeColor = isHex('#' + q.get('eyecolor')) ? '#' + q.get('eyecolor').toLowerCase() : null; // 試し用。保存はしない
     if (q.has('skincolor')) this.skinColor = isHex('#' + q.get('skincolor')) ? '#' + q.get('skincolor').toLowerCase() : null; // 試し用。保存はしない
+    if (q.has('face')) this.face = cleanFace(Object.fromEntries(q.get('face').split(',').map((kv) => kv.split(':')))); // 試し用 (?face=eyeSize:0.5,noseSize:-0.3)。保存はしない
     if (q.has('height')) this.height = HEIGHTS.includes(+q.get('height')) ? +q.get('height') : null; // 試し用。保存はしない
     if (q.has('haircolor')) this.color = isHex('#' + q.get('haircolor')) ? '#' + q.get('haircolor').toLowerCase() : null; // 試し用。保存はしない
   }
@@ -70,11 +83,12 @@ export class HairStyle {
       if (s && isHex(s.eyeColor)) this.eyeColor = s.eyeColor.toLowerCase();
       if (s && isHex(s.skinColor)) this.skinColor = s.skinColor.toLowerCase();
       if (s && HEIGHTS.includes(s.height)) this.height = s.height;
+      if (s) this.face = cleanFace(s.face);
     } catch (e) { /* 読めなければ最初から */ }
   }
 
   save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, body: this.body, hair: this.id, color: this.color, eyeColor: this.eyeColor, skinColor: this.skinColor, height: this.height })); } catch (e) { /* 保存できない環境 (プライベートモードなど) */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, body: this.body, hair: this.id, color: this.color, eyeColor: this.eyeColor, skinColor: this.skinColor, face: this.face, height: this.height })); } catch (e) { /* 保存できない環境 (プライベートモードなど) */ }
   }
 
   onChange(fn) { this.listeners.push(fn); }
@@ -116,6 +130,21 @@ export class HairStyle {
     this.skinColor = next ? next.toLowerCase() : null; this.save();
     for (const f of this.listeners) f(this);
     return true;
+  }
+
+  // 顔のパーツを 1 つ変える (key = FACE_ITEMS のキー、v = -1〜+1。0 で元に戻る)。知らないキーは何もしない
+  setFace(key, v) {
+    if (!FACE_KEYS.includes(key)) return false;
+    this.face = cleanFace({ ...this.face, [key]: v });
+    this.save();
+    for (const f of this.listeners) f(this);
+    return true;
+  }
+
+  // 顔のパーツを全部元に戻す
+  resetFace() {
+    this.face = {}; this.save();
+    for (const f of this.listeners) f(this);
   }
 
   // 身長を選ぶ (cm。null か 'none' なら元の身長)。HEIGHTS に無い値は何もしない
