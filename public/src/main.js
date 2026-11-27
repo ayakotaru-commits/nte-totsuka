@@ -32,6 +32,7 @@ import { setTerrain, setCover, setLowMemory } from './terrain.js';
 import { TOUCH, setupTouch } from './touch.js';
 import { loadWardrobe } from './wardrobe.js';
 import { Menu } from './menu.js';
+import { PhotoMode } from './photo.js';
 import { loadShops, ShopTrigger } from './shop.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
 import { startMultiplayer } from './net/index.js';
@@ -320,10 +321,18 @@ async function main() {
       unlock();
     }
   };
-  if (TOUCH) setupTouch({ dom: renderer.domElement, input, cam, streetView, warp: () => bigmap.warp() });
+  // 撮影モード (photo.js): UI を全部消して、ズーム・視点だけにする。人と車は止める
+  const photo = new PhotoMode({
+    cam, touch: TOUCH,
+    canStart: () => !(menu?.open || bigmap.open || editor.open || arcade.active || rhythm.playing || swarm.state !== 'idle' || ride?.riding || parkRide?.riding),
+  });
+  window.__photo = photo; // 確認用 (tools/dev/photocheck.js)
+  // PC: Esc でマウスの固定が外れたら (ブラウザは Esc のキー入力を渡さない) 撮影モードも終わる
+  document.addEventListener('pointerlockchange', () => { if (!TOUCH && photo.active && document.pointerLockElement !== renderer.domElement) photo.exit(); });
+  if (TOUCH) setupTouch({ dom: renderer.domElement, input, cam, streetView, warp: () => bigmap.warp(), photo });
   menu = new Menu({
     wardrobe, player, cam, dom: renderer.domElement, lock, unlock,
-    actions: { map: () => { rhythm.stop(); toggleMap(); }, time: () => { $('hud-time').textContent = tod.next(); }, help: () => { $('help').hidden = !$('help').hidden; } },
+    actions: { photo: () => photo.enter(), map: () => { rhythm.stop(); toggleMap(); }, time: () => { $('hud-time').textContent = tod.next(); }, help: () => { $('help').hidden = !$('help').hidden; } },
   });
   $('menu-btn').addEventListener('click', () => { if (!bigmap.open && !arcade.active) menu.toggle(); });
   shops = new ShopTrigger({ places: await loadShops(), player, menu }); // 洋服屋の入口 (とどまると「入りますか？」)
@@ -357,7 +366,9 @@ async function main() {
     const dt = Math.min(clock.getDelta(), 0.25);
 
     if (input.pressed('Tab') && (menu.open || (!bigmap.open && !arcade.active))) menu.toggle(); // メニュー (着替えなど)
-    const keys = menu.open ? NOIN : input; // メニューを開いている間は、ほかのキー (T・R・M など) を効かせない
+    photo.update(dt, input); // 撮影モード: I で入る・抜ける。歩き出し・Esc で抜ける (抜けたコマから、その入力はキャラに効く)
+    // メニューを開いている間は、ほかのキー (T・R・M など) を効かせない。撮影モード中は T (時間帯) だけ
+    const keys = menu.open ? NOIN : photo.active ? { ...NOIN, pressed: (c) => c === 'KeyT' && input.pressed(c) } : input;
     if (keys.pressed('KeyV')) detail.on = !detail.on; // detail (お試し)
     if (keys.pressed('KeyT')) $('hud-time').textContent = tod.next();
     if (keys.pressed('KeyR')) respawn();
@@ -371,7 +382,7 @@ async function main() {
     if (!bigmap.open) {
       // キャラの動きは 1/30 秒以下に刻んで進める (すり抜け防止)。ジャンプなどの「押した瞬間」は最初の 1 刻みだけに効かせる
       const n = Math.ceil(dt / (1 / 30) - 1e-6) || 1;
-      const inp = (arcade.active || menu.open) ? NOIN : input; // ゲームセンターのゲーム画面の間は、キャラ・扉・ほかのイベントに入力を渡さない
+      const inp = (arcade.active || menu.open || photo.active) ? NOIN : input; // ゲームセンターのゲーム画面の間は、キャラ・扉・ほかのイベントに入力を渡さない
       doors.update(dt, player, inp);     // 扉の開け閉め (F)。押した瞬間を player より先に見る
       swarm.update(dt, inp);             // イベント (受けるか聞く表示の Y / N も、押した瞬間を player より先に見る)
       rhythm.update(dt, inp);            // イベント「お札まき」(同上。曲の間のカメラもここで決めるので、cam.update の後でもう一度)
@@ -400,8 +411,8 @@ async function main() {
       if (parkHud.hidden === near2) parkHud.hidden = !near2;
     }
     updateTreeLayers(camera);   // 近い木だけ葉の板の形 (trees.js。街・パーク・駅前・庭の全部)
-    if (!Q.has('nocrowd') && !arcade.active) crowd.update(dt, camera, player.pos.x, player.pos.z, tod.name, clock.elapsedTime, parkWant);
-    if (!Q.has('notraffic') && !arcade.active) traffic.update(dt, camera, player.pos.x, player.pos.z, tod.name, clock.elapsedTime, tod.cur.win);
+    if (!Q.has('nocrowd') && !arcade.active && !photo.active) crowd.update(dt, camera, player.pos.x, player.pos.z, tod.name, clock.elapsedTime, parkWant);
+    if (!Q.has('notraffic') && !arcade.active && !photo.active) traffic.update(dt, camera, player.pos.x, player.pos.z, tod.name, clock.elapsedTime, tod.cur.win);
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
     detail.railExt?.update(camera.position.x, camera.position.z); // 線路の延長: カメラの近くの区間を読み込む・遠い区間を捨てる

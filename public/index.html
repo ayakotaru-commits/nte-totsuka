@@ -51,6 +51,7 @@
     <button class="tbtn" data-key="KeyR">戻る</button>
     <button class="tbtn" data-key="Tab">メニュー</button>
     <button class="tbtn" data-act="streetView">写真</button>
+    <button class="tbtn" data-key="KeyI">撮影</button>
   </div>
   <button class="tbtn round" id="tb-dash" data-hold="ShiftLeft">ダッシュ</button>
   <button class="tbtn round" id="tb-jump" data-key="Space">ジャンプ</button>
@@ -149,6 +150,9 @@
     <p class="sub" id="start-hint">クリックで開始（Escでマウス解放）</p>
   </div>
 </div>
+
+<!-- 撮影モード (src/photo.js)。入っている間は、これと #app 以外の画面の部品を全部消す -->
+<div id="photo-ui"><div id="photo-hint"></div><button id="photo-exit">× 撮影モードを終わる</button></div>
 
 <script type="module" src="src/main.js"></script>
 </body>
