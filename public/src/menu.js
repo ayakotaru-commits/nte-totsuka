@@ -2,10 +2,10 @@
 // 洋服屋の入口 (shop.js) からも開く: 入りますか？ → 店の一覧 → 服を買う。
 // 開いている間は、キャラ・イベントへの操作を止める (main.js が menu.open を見る)。街は動き続ける。
 // 着替えの画面は 枠 (トップス・ボトムス・くつ・ワンピース) ごとのタブで、選ぶとすぐ着替える。服は買ってから (wardrobe.js)。
-// キャラメイクの画面は、タブで 髪型の一覧・髪色の色見本 (hairstyle.js)。選ぶとすぐ変わる。
+// キャラメイクの画面は、タブで 髪型の一覧・髪色・目の色の色見本 (hairstyle.js)。選ぶとすぐ変わる。
 // カメラは、着替え・キャラメイクの画面で、キャラの正面へ寄せる。
 import { yen, SLOTS } from './wardrobe.js';
-import { PALETTE } from './hairstyle.js';
+import { PALETTE, EYE_PALETTE } from './hairstyle.js';
 
 export class Menu {
   constructor({ wardrobe, hairStyle, player, cam, dom, lock, unlock, actions }) {
@@ -13,7 +13,7 @@ export class Menu {
     this.open = false;
     this.screen = 'main';
     this.slot = 'tops';    // 着替えで見ている枠
-    this.cmTab = 'style';  // キャラメイクで見ているタブ (style = 髪型、color = 髪色)
+    this.cmTab = 'style';  // キャラメイクで見ているタブ (style = 髪型、color = 髪色、eye = 目の色)
     this.quiet = false;    // true の間は、髪色の入力 (色の選択枠) を作り直さないよう、画面を描き直さない
     this.sel = 0;
     this.msg = '';
@@ -70,7 +70,7 @@ export class Menu {
   go(screen) {
     this.screen = screen; this.msg = ''; this.sel = 0;
     if (screen === 'wardrobe' || screen === 'charmake') {
-      this.sel = screen === 'charmake' ? (this.cmTab === 'color' ? this.colorIndex() : this.hairIndex()) : this.selIndex();
+      this.sel = screen === 'charmake' ? (this.cmTab === 'style' ? this.hairIndex() : this.colorIndex()) : this.selIndex();
       // カメラをキャラの正面・近くへ (戻すときのために今の値を覚える)
       if (!this.saved) this.saved = { yaw: this.cam.yaw, pitch: this.cam.pitch, dist: this.cam.dist };
       this.cam.yaw = this.player.facing + 0.35; this.cam.pitch = 0.12; this.cam.dist = 3.4;
@@ -108,23 +108,30 @@ export class Menu {
     return Math.max(0, this.hairList().findIndex((o) => o.id === id));
   }
 
-  // 髪色の色見本の一覧: 先頭は「元の色」
-  colorList() { return [{ hex: null, name: '元の色' }, ...PALETTE]; }
+  // 色のタブ (髪色・目の色) の見ている対象: 色見本の一覧 (先頭は「元の色」)・いまの色
+  colorList() { return [{ hex: null, name: '元の色' }, ...(this.cmTab === 'eye' ? EYE_PALETTE : PALETTE)]; }
+  curColor() { return (this.cmTab === 'eye' ? this.hairStyle?.eyeColor : this.hairStyle?.color) || null; }
 
   colorIndex() {
-    const c = this.hairStyle?.color || null;
+    const c = this.curColor();
     return Math.max(0, this.colorList().findIndex((o) => o.hex === c));
   }
 
-  // 髪色を選ぶ (hex = '#rrggbb'、null は元の色)
+  // 色を選ぶ (hex = '#rrggbb'、null は元の色)。見ているタブが 目の色 なら目の色、髪色なら髪色
   pickColor(hex) {
-    if (!this.hairStyle || !this.hairStyle.setColor(hex)) return;
-    this.player.model.setHairColor(this.hairStyle.color);
+    if (!this.hairStyle) return;
+    if (this.cmTab === 'eye') {
+      if (!this.hairStyle.setEyeColor(hex)) return;
+      this.player.model.setEyeColor(this.hairStyle.eyeColor);
+    } else {
+      if (!this.hairStyle.setColor(hex)) return;
+      this.player.model.setHairColor(this.hairStyle.color);
+    }
     this.msg = '';
   }
 
   // キャラメイクのタブを切り替える
-  setCmTab(t) { this.cmTab = t; this.sel = t === 'color' ? this.colorIndex() : this.hairIndex(); this.msg = ''; this.render(); }
+  setCmTab(t) { this.cmTab = t; this.sel = t === 'style' ? this.hairIndex() : this.colorIndex(); this.msg = ''; this.render(); }
 
   // 髪型を選ぶ (すぐ髪が変わる)
   pickHair(id) {
@@ -181,10 +188,10 @@ export class Menu {
       h += `</div><div class="mn-msg">${this.msg || (items.length ? '' : 'いまは売っている服がありません')}</div><button class="mn-item mn-close" data-do="place">もどる<small>Esc</small></button>`;
     } else if (this.screen === 'charmake') {
       // キャラメイク: タブ (髪型 / 髪色) + 一覧
-      const tabs = [['style', '髪型'], ['color', '髪色']];
+      const tabs = [['style', '髪型'], ['color', '髪色'], ['eye', '目の色']];
       h += '<div class="mn-tabs">' + tabs.map(([k, n]) => `<button class="mn-tab${k === this.cmTab ? ' on' : ''}" data-cmtab="${k}">${n}</button>`).join('') + '</div>';
-      if (this.cmTab === 'color') {
-        const cur = this.hairStyle?.color || null;
+      if (this.cmTab !== 'style') {
+        const cur = this.curColor();
         h += '<div class="mn-swatches">';
         this.colorList().forEach((o, i) => {
           const on = o.hex === cur;
@@ -193,7 +200,7 @@ export class Menu {
             : `<button class="mn-sw mn-sw-orig${on ? ' on' : ''}${i === this.sel ? ' sel' : ''}" data-color="none" title="元の色" aria-label="元の色">元</button>`;
         });
         h += `</div><label class="mn-pick">好きな色 <input type="color" id="mn-color" value="${cur || '#6b4630'}"></label>`;
-        h += `<div class="mn-msg">${this.msg || (cur ? '' : '元の色です。色を選ぶと、髪の色が変わります')}</div>`;
+        h += `<div class="mn-msg">${this.msg || (cur ? '' : this.cmTab === 'eye' ? '元の色です。色を選ぶと、目の色が変わります' : '元の色です。色を選ぶと、髪の色が変わります')}</div>`;
       } else {
         const cur = this.hairStyle?.id || 'none', bodies = { female: '女性向き', male: '男性向き' };
         h += '<div class="mn-list">';
@@ -293,16 +300,16 @@ export class Menu {
       this.setSlot(SLOTS[(i + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return;
     }
     // キャラメイクのタブは ← → で切り替える
-    if (this.screen === 'charmake' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { this.setCmTab(this.cmTab === 'style' ? 'color' : 'style'); e.preventDefault(); return; }
+    if (this.screen === 'charmake' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { const T = ['style', 'color', 'eye'], n = T.length; this.setCmTab(T[(T.indexOf(this.cmTab) + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return; }
     // 一覧 (着替え・店・服) の選び方: ↑↓ で動かし、Enter で決める
-    const rows = this.screen === 'wardrobe' ? this.list() : this.screen === 'charmake' ? (this.cmTab === 'color' ? this.colorList() : this.hairList()) : this.screen === 'place' ? this.place.shops : this.screen === 'shop' ? this.stock(this.shop) : null;
+    const rows = this.screen === 'wardrobe' ? this.list() : this.screen === 'charmake' ? (this.cmTab === 'style' ? this.hairList() : this.colorList()) : this.screen === 'place' ? this.place.shops : this.screen === 'shop' ? this.stock(this.shop) : null;
     if (!rows || !rows.length) return;
     const n = rows.length;
     if (e.code === 'ArrowDown') { this.sel = (this.sel + 1) % n; this.render(); e.preventDefault(); }
     else if (e.code === 'ArrowUp') { this.sel = (this.sel + n - 1) % n; this.render(); e.preventDefault(); }
     else if (e.code === 'Enter') {
       if (this.screen === 'wardrobe') this.wear(rows[this.sel].id);
-      else if (this.screen === 'charmake') { if (this.cmTab === 'color') { this.pickColor(rows[this.sel].hex); this.render(); } else this.pickHair(rows[this.sel].id); }
+      else if (this.screen === 'charmake') { if (this.cmTab !== 'style') { this.pickColor(rows[this.sel].hex); this.render(); } else this.pickHair(rows[this.sel].id); }
       else if (this.screen === 'place') { this.shop = rows[this.sel]; this.go('shop'); }
       else this.buy(rows[this.sel].id);
     }

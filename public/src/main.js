@@ -155,6 +155,7 @@ async function main() {
   const hairStyle = await loadHairStyle();                      // キャラメイクの髪型 (端末に保存)
   player.model.setHair(hairStyle.entry());                      // 選んでいた髪にする (キャラの読み込み後)
   player.model.setHairColor(hairStyle.color);                   // 選んでいた髪色にする
+  player.model.setEyeColor(hairStyle.eyeColor);                 // 選んでいた目の色にする
   let menu = null;                                              // メニュー (下で作る)
   let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
