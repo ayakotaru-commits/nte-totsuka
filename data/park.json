@@ -1009,6 +1009,16 @@
    "parade": "audio/park_parade.mp3",
    "radius": 340,
    "paradeRadius": 170
+  },
+  "live": {
+   "_doc": "ライブ (サンライズ・ライブステージ。2026-11-27)。時計 (Date.now) の cycle 秒ごとに 1 公演。start 秒に開演し、曲を gap 秒の間 (MC) をあけて続ける。1 公演の長さは maxLen 秒以内で、曲は盛り上がりの流れ (energy: にぎやか → ふつう → にぎやか …。最後はにぎやか) に沿って、公演の番号から決まった並びで選ぶ (だれが見ても同じ)。曲の一覧は manifest (tools/music/live_songs.py が作る)。音は、ステージから radius m 以内で聞こえる (fullRadius m 以内は最大)。",
+   "cycle": 1200,
+   "start": 120,
+   "gap": 10,
+   "maxLen": 900,
+   "radius": 170,
+   "fullRadius": 45,
+   "manifest": "audio/live/songs.json"
   }
  },
  "castle": {

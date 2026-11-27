@@ -25,6 +25,7 @@ import { showClock } from './detail/parkshow.js';
 import { paradeRoute, paradeSeconds } from './detail/parkroute.js';
 import { createParkMap } from './parkmap.js';
 import { parkSchedule, viewWant, infoLine, makeViewSlots, inSite } from './parkinfo.js';
+import { makeLive } from './parklivesched.js';
 import { getBridges } from './bridges.js';
 import { Editor } from './editor.js';
 import { openStreetView } from './streetview.js';
@@ -156,9 +157,11 @@ async function main() {
   const minimap = new Minimap(city, $('minimap'));
   // 千葉ドリームランド (段階 5): 地図の下絵・印・ワープ先・ショーの案内・園内の人 (観客の場所)。?nopark で全部無し
   const parkSpots = park && park.spots ? park.spots : [];
-  const parkInfo = park && park.show ? (() => { const route = paradeRoute(park); return { route, paradeSec: paradeSeconds(park, route.length - 1), sch: null }; })() : null;
+  const parkInfo = park && park.show ? (() => { const route = paradeRoute(park); return { route, paradeSec: paradeSeconds(park, route.length - 1), sch: null, live: null }; })() : null;
+  // ライブ (サンライズ・ライブステージ): 曲の一覧 (public/audio/live/songs.json) を読んだら、時間割と曲順を作る (parklivesched.js)。読めない・?nolive のときは、ライブ無し
+  if (parkInfo && park.show.live && !Q.has('nolive')) fetch(park.show.live.manifest).then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status)))).then((man) => { if (man && man.songs && man.songs.length) parkInfo.live = makeLive(park, man.songs); }).catch(() => {});
   if (park) minimap.setPark(createParkMap(park));
-  const parkHud = $('hud-park');
+  const parkHud = $('hud-park'), liveHud = $('hud-live');
   window.__parkInfo = parkInfo; window.__parkSpots = parkSpots; window.__minimap = minimap; // 確認用 (tools/dev/parkcheck.js・parkshot.js)
   if (detail.railExt) minimap.setExt(detail.railExt.map);   // 線路の延長 (東戸塚など) も地図に描く (読み込んだ区間は細かく)
   const labels = new Labels(city.pois, scene);
@@ -253,7 +256,7 @@ async function main() {
     ...(!ride.disabled && ride.gates.length ? [{ name: '電車の乗り場（戸塚駅 改札）', x: ride.gates[0].top.x, z: ride.gates[0].top.z, color: '#1f5fae', glyph: '電', active: () => !!ride.riding }] : []),
     // 千葉ドリームランド (park.json の spots。tools/park_crowd.py)。印を選んでワープすると、その場所へ (warpTo)。パレード・花火の印は、始まる 40 秒前から最中まで点滅する
     ...parkSpots.map((q) => ({ name: q.name, x: q.x, z: q.z, color: q.color, glyph: q.glyph, minScale: [0, 0.5, 0.9][q.tier] || 0,
-      active: () => !!parkInfo?.sch && (q.kind === 'parade' ? parkInfo.sch.parade.on || parkInfo.sch.parade.startsIn < 40 : q.kind === 'lake' ? parkInfo.sch.fw.on || parkInfo.sch.fw.startsIn < 40 : q.kind === 'castle' ? !!parkInfo.sch.castle && (parkInfo.sch.castle.on || parkInfo.sch.castle.startsIn < 40) : false) })),
+      active: () => !!parkInfo?.sch && (q.kind === 'parade' ? parkInfo.sch.parade.on || parkInfo.sch.parade.startsIn < 40 : q.kind === 'live' ? !!parkInfo.sch.live && (parkInfo.sch.live.on || (parkInfo.sch.live.phase === 'wait' && parkInfo.sch.live.startsIn < 40)) : q.kind === 'lake' ? parkInfo.sch.fw.on || parkInfo.sch.fw.startsIn < 40 : q.kind === 'castle' ? !!parkInfo.sch.castle && (parkInfo.sch.castle.on || parkInfo.sch.castle.startsIn < 40) : false) })),
     // 延ばした先の駅 (rail_ext.json の stations)。印を選んでワープすると、その駅のホームの上に立つ (warpTo)。駅舎のある駅 (舞浜) は北口の広場の印も
     ...ride.stationSpots().map((q) => ({ name: q.label || `${q.name}駅（${q.sub ? q.sub + 'ホーム' : 'ホーム'}）`, x: q.x, z: q.z, color: '#1f5fae', glyph: '電', active: () => false })),
   ].filter((e) => !e.off);
@@ -403,12 +406,16 @@ async function main() {
     { const lb = tod.label(); if (lb !== hudTimeText) { hudTimeText = lb; $('hud-time').textContent = lb; } }
     let parkWant;
     if (parkInfo) {   // ショーの案内 (画面の 1 行) と、観客の指定
-      const sch = parkSchedule(park, showClock(), parkInfo.paradeSec);
+      const sch = parkSchedule(park, showClock(), parkInfo.paradeSec, parkInfo.live);
       parkInfo.sch = sch; parkWant = viewWant(park, sch, parkInfo.paradeSec);
       const pl = park.ellipses['サンライズ・プラザ'].center, near2 = Math.hypot(player.pos.x - pl[0], player.pos.z - pl[1]) < 900 && !arcade.active;
       const li = infoLine(sch);
       if (near2) { if (parkHud.textContent !== li.text) parkHud.textContent = li.text; parkHud.classList.toggle('soon', li.soon); }
       if (parkHud.hidden === near2) parkHud.hidden = !near2;
+      // ライブの曲のクレジット (ステージの近く = 音が聞こえる所で、曲の最中だけ)。音が聞こえている間は出す
+      const la = parkAudio.state && parkAudio.state.live, show = !!(la && la.vol > 0.02 && la.song && !arcade.active);
+      if (liveHud.hidden === show) liveHud.hidden = !show;
+      if (show) { const txt = `♪ ${la.song.title}　${la.song.credit}`; if (liveHud.textContent !== txt) liveHud.textContent = txt; }
     }
     updateTreeLayers(camera);   // 近い木だけ葉の板の形 (trees.js。街・パーク・駅前・庭の全部)
     if (!Q.has('nocrowd') && !arcade.active && !photo.active) crowd.update(dt, camera, player.pos.x, player.pos.z, tod.name, clock.elapsedTime, parkWant);
@@ -416,8 +423,9 @@ async function main() {
     look.update(dt, tod.cur);
     detail.update(clock.elapsedTime); // detail (お試し)
     detail.railExt?.update(camera.position.x, camera.position.z); // 線路の延長: カメラの近くの区間を読み込む・遠い区間を捨てる
+    detail.park?.areas?.live?.setLive(parkInfo?.sch?.live || null);   // ライブの状態を演者・照明へ (parklive.js)
     detail.park?.update(camera.position.x, camera.position.z, tod.cur.win);
-    parkAudio.update(camera.position.x, camera.position.z, showClock()); // 千葉ドリームランド: 地形を読めたら試作を作る
+    parkAudio.update(camera.position.x, camera.position.z, showClock(), parkInfo?.sch || null); // 千葉ドリームランド: 地形を読めたら試作を作る (ライブの曲は sch.live)
     sky.position.copy(camera.position); // 空の箱 (一辺 10 km) をカメラに付いて動かす。原点のままだと、延長の先 (舞浜は 40 km 先) で箱の外に出て空が黒くなった
 
     // 影は常にプレイヤー周辺

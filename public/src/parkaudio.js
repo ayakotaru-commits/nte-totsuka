@@ -2,9 +2,12 @@
 // 曲は tools/music/park_theme.py で作ったオリジナル (numpy だけで合成)。時計 (Date.now) で「今どこを流しているか」を決めるので、だれが聞いても同じ場所。
 //   ・曲は、プラザから music.radius m 以内に入ったときに読み込む (入るまで通信しない)。距離でなめらかに音量を変える。出たら止める。
 //   ・パレードの曲は、先頭の山車から music.paradeRadius m 以内で鳴る (園内の曲は、その間は小さくする)。
+//   ・ライブ (サンライズ・ライブステージ) の歌入りの曲 (public/audio/live/。時間割は parklivesched.js) は、公演の最中にステージから radius m 以内で鳴る。曲は 1 曲ずつ、近づいたら読む。
+//     曲の途中から (時計の秒数から) 鳴らし、距離で音量を変える。パレード・花火の間は小さくする。鳴っている間は園内の曲・パレードの曲を小さくする。
 //   ・花火は、打ち上げ・爆発のたびに合成した音を、距離 ÷ 340 m/s だけ遅らせて鳴らす (遠いと小さく・低く)。
 // ブラウザは、画面を触る前は音を出せない (rhythm/audio.js の unlock が、触ったら自動で使えるようにする)。出せない間は何もしない。URL の ?nosound で全部止める。
 import { ensure, audioOn, decode } from './rhythm/audio.js';
+import { liveMix } from './parklivesched.js';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const smooth = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
@@ -13,7 +16,7 @@ export class ParkAudio {
   constructor({ park, enabled = true }) {
     this.park = park; this.enabled = enabled;
     this.tracks = {};   // name → { url, buf, loading, src, gain }
-    this.state = { theme: 0, parade: 0, ducked: 1 };
+    this.state = { theme: 0, parade: 0, ducked: 1, live: null };
     this.noise = null;
     window.__parkaudio = this;
   }
@@ -27,13 +30,14 @@ export class ParkAudio {
     t.loading = true;
     fetch(t.url).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status)))).then((ab) => decode(ab)).then((buf) => { t.buf = buf; t.loading = false; if (!buf) t.failed = true; }).catch(() => { t.loading = false; t.failed = true; });
   }
-  play(t, offset) {
+  play(t, offset, loop = true) {
     const ctx = ensure();
     if (!ctx || !t.buf || t.src) return;
-    const src = ctx.createBufferSource(); src.buffer = t.buf; src.loop = true;
+    const src = ctx.createBufferSource(); src.buffer = t.buf; src.loop = loop;
     const g = ctx.createGain(); g.gain.value = 0;
     src.connect(g); g.connect(ctx.destination);
-    src.start(0, offset % t.buf.duration);
+    src.start(0, loop ? offset % t.buf.duration : Math.min(offset, t.buf.duration - 0.05));
+    if (!loop) src.onended = () => { if (t.src === src) { t.src = t.gain = null; } };   // 曲が終わったら、次に鳴らせるように空ける
     t.src = src; t.gain = g;
   }
   stop(t) {
@@ -76,7 +80,7 @@ export class ParkAudio {
   }
 
   // 毎コマ。x, z = カメラ (聞く位置)、nowSec = 時計 (秒)
-  update(x, z, nowSec) {
+  update(x, z, nowSec, sch) {
     if (!this.enabled || !this.park || !this.park.built) return;
     const cfg = this.park.cfg, M = cfg?.show?.music, show = this.park.show;
     if (!M || !show) return;
@@ -102,10 +106,40 @@ export class ParkAudio {
     }
     // 曲の音量: 園内の曲 = 距離で、パレードの間は小さく / パレードの曲 = 先頭の山車からの距離で
     const fw = show.state().fireworks;
-    const tv = near ? 0.5 * smooth((R * 1.05 - d) / (R * 0.55)) : 0;
-    const pv = lead && dl < M.paradeRadius ? 0.55 * smooth((M.paradeRadius - dl) / (M.paradeRadius * 0.6)) : 0;
+    const tv0 = near ? 0.5 * smooth((R * 1.05 - d) / (R * 0.55)) : 0;
+    const pv0 = lead && dl < M.paradeRadius ? 0.55 * smooth((M.paradeRadius - dl) / (M.paradeRadius * 0.6)) : 0;
+    // ライブ: ステージからの距離で鳴らす曲・音量を決める (parklivesched.js の liveMix)。パレードの先頭がステージの近く (230 m 以内) か花火のときは小さくする
+    const LC = cfg.show.live, RL = cfg.gen && cfg.gen.rides && cfg.gen.rides.live, live = sch && sch.live;
+    let liveV = 0, liveSong = null, liveD = Infinity, mix = null;
+    if (LC && RL && live) {
+      const cl = Math.cos(RL.yaw), sl = Math.sin(RL.yaw), zs = RL.stage.back + RL.stage.d + 10;   // ステージの 10 m 前 (聞こえ方の中心)
+      const sx = RL.x + zs * sl, sz = RL.z + zs * cl;
+      liveD = Math.hypot(x - sx, z - sz);
+      const dd = (lead && Math.hypot(lead.x - sx, lead.z - sz) < 230 ? 0.45 : 1) * (fw ? 0.65 : 1);
+      mix = liveMix(LC, live, liveD, dd);
+      liveV = mix.vol; liveSong = live.phase === 'song' ? live.song : null;
+    }
+    const lq = liveSong ? liveV : 0;   // ライブが聞こえている度合い (0〜1)。園内の曲・パレードの曲は、その分だけ小さくする
+    const tv = tv0 * (1 - 0.9 * lq), pv = pv0 * (1 - 0.5 * lq);
     const duck = (pv > 0.05 ? 0.35 : 1) * (fw ? 0.6 : 1);
-    this.state = { theme: tv * duck, parade: pv, ducked: duck, d, dl };
+    this.state = { theme: tv * duck, parade: pv, ducked: duck, d, dl, live: LC && live ? { vol: liveV, song: liveSong, d: liveD, cur: mix && mix.cur ? mix.cur.vol : 0 } : null };
+    // ライブの曲を読む・鳴らす (曲は 1 曲ずつ。いま鳴らす曲と、先に読む次の曲以外は、鳴っていなければ捨てる)
+    if (mix) {
+      const want = new Set(mix.preload.map((q) => q.id));
+      for (const q of mix.preload) this.load(this.track('live:' + q.id, q.file));
+      for (const k of Object.keys(this.tracks)) if (k.startsWith('live:') && !want.has(k.slice(5)) && !this.tracks[k].src && this.tracks[k].buf) { this.tracks[k].buf = null; this.tracks[k].loading = false; }
+      const curId = mix.cur ? 'live:' + mix.cur.song.id : null;
+      if (ok) {
+        for (const k of Object.keys(this.tracks)) if (k.startsWith('live:') && k !== curId && this.tracks[k].src) this.stop(this.tracks[k]);   // 曲が替わった・間に入った・遠くなった
+        if (curId) {
+          const t = this.tracks[curId];
+          if (t && t.buf) {
+            if (!t.src && mix.cur.offset < t.buf.duration - 1) this.play(t, mix.cur.offset, false);
+            if (t.src) this.setVol(t, mix.cur.vol);
+          }
+        }
+      }
+    } else if (ok) for (const k of Object.keys(this.tracks)) if (k.startsWith('live:') && this.tracks[k].src) this.stop(this.tracks[k]);
     if (!ok) return;
     if (tv > 0.01) { if (!theme.src && theme.buf) this.play(theme, nowSec); this.setVol(theme, tv * duck); } else if (theme.src && !near) this.stop(theme);
     if (pv > 0.01) { if (!parade.src && parade.buf) this.play(parade, nowSec - (cfg.show.parade.start)); this.setVol(parade, pv); } else if (parade.src) this.stop(parade);

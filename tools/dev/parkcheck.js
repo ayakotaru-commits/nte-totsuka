@@ -124,6 +124,35 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       check('大画面の絵が 8 秒ごとに切り替わる・遠いときは動かさない', lv && lv.swap && lv.far, lv);
     }
 
+    {   // ライブの公演 (時計を差し替えて、曲の最中・曲の間・終演後を見る): 案内・演者・客席の観客・曲 (音量の計算)・クレジットの表示
+      const Lv = rd.live, zf = Lv.stage.back + Lv.stage.d, [px, pz] = W(Lv, 0, zf + 22);
+      const gyL = await page.evaluate(async ([x, z]) => (await import('/src/terrain.js')).H(x, z), [px, pz]);
+      await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [px, gyL + 0.2, pz]);
+      for (let k = 0; k < 60 && !(await page.evaluate(() => !!(window.__parkInfo && window.__parkInfo.live))); k++) { await frames(page, 3); await page.waitForTimeout(300); }
+      const at = async (sec, wait = 5000) => {   // 公演の頭から sec 秒 (clock = 600000 + start + sec。cycle 1200 の 500 周目)
+        await page.evaluate((sec) => { const st = window.__pride.park.cfg.show.live.start; window.__showClock = () => 600000 + st + sec; }, sec);
+        await frames(page, 30); await page.waitForTimeout(wait); await frames(page, 30);
+        return page.evaluate(() => {
+          const live = window.__parkInfo.sch && window.__parkInfo.sch.live, A = window.__parkaudio.state.live, hud = document.getElementById('hud-live'), pf = window.__pride.park.areas.live.performers;
+          let v2 = 0, cheer = 0; const sim = window.__crowd && window.__crowd.sim; if (sim && sim.viewers) for (const [i, v] of sim.viewers) if (sim.slots[i].kind === 2 && v.grow > 0.5) { v2++; if (v.mode === 4) cheer++; }
+          return { on: live && live.on, phase: live && live.phase, song: live && live.song && live.song.title, line: document.getElementById('hud-park').textContent, hudHidden: hud.hidden, hud: hud.textContent, audioSong: A && A.song && A.song.title, audioVol: A && +A.vol.toFixed(2), performers: pf.count, viewers: v2, cheer };
+        });
+      };
+      const a = await at(40);
+      console.log(JSON.stringify(a));
+      check('ライブの最中: 案内の 1 行に曲名・演者が 7 人・客席に観客・手を上げている', a.on && a.phase === 'song' && /ライブ開催中/.test(a.line) && a.line.includes(a.song) && a.performers === 7 && a.viewers >= 30 && a.cheer >= a.viewers * 0.9, { performers: a.performers, viewers: a.viewers, cheer: a.cheer });
+      check('曲が聞こえる所 (ステージの 22 m 前) では、曲名とクレジットが画面に出て、音量の計算が最大に近い', !a.hudHidden && a.hud.includes(a.song) && a.hud.includes('音楽：') && a.audioSong === a.song && a.audioVol > 0.9, { hud: a.hud, vol: a.audioVol });
+      const g = await page.evaluate(() => { const live = window.__parkInfo.live, p = live.program(500); return p.starts[1] - 5; });
+      const b = await at(g);
+      console.log(JSON.stringify(b));
+      check('曲と曲の間: 音とクレジットは止まり、観客は手を下ろす (演者はステージにいる)', b.phase === 'gap' && b.audioSong === null && b.hudHidden && b.cheer === 0 && b.performers === 7 && b.viewers >= 30, { phase: b.phase, cheer: b.cheer, viewers: b.viewers });
+      const len = await page.evaluate(() => window.__parkInfo.live.program(500).len);
+      const e = await at(Math.max(len + 30, 1010));   // 終演の後 (次の開演まで休み)。パレード・花火・城のライトアップの無い時刻 (公演の頭から 1010 秒 = ショーの周期の 530 秒目)
+      console.log(JSON.stringify(e));
+      check('終演後: 案内は「ライブまで」・演者は引っこみ・クレジットは出ない', !e.on && e.phase !== 'song' && e.hudHidden && /ライブまで/.test(e.line) && e.performers === 0, { phase: e.phase, performers: e.performers, line: e.line });
+      await page.evaluate(() => { delete window.__showClock; });
+    }
+
     // 観覧車に乗る・降りる (時計を差し替えて、ゴンドラ 0 が底に来た時刻から進める)
     const ride = await page.evaluate(async ({ F, gy }) => {
       const pr = window.__pride, fw = pr.ferris, pl = window.__g.player, out = {};
