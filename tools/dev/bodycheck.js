@@ -39,8 +39,8 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   const waitGroups = (n, ms = 400000) => page.waitForFunction((n) => { let k = 0; __g.player.model.root.traverse(o => { if (o.name === 'outfit' && o.visible) k++; }); return k === n; }, n, { timeout: ms }); // この環境は描画が遅く、服 1 点の読み込みに 30〜40 秒かかることがある
   const worn = () => page.evaluate(() => JSON.stringify(__g.wardrobe.worn));
   const ownVisible = () => page.evaluate(() => { const r = {}; __g.player.model.root.traverse(o => { if (!o.isMesh) return; for (const m of Array.isArray(o.material) ? o.material : [o.material]) for (const k of ['Tops', 'Bottoms', 'Shoes']) if (m.name.includes('F00_') && m.name.includes(k)) r[k] = m.visible; }); return r; });
-  const mats = () => page.evaluate(() => { const r = { F: 0, M: 0 }; __g.player.model.root.traverse(o => { if (!o.isMesh || o.userData.outfit) return; for (const m of Array.isArray(o.material) ? o.material : [o.material]) { if (m.name.startsWith('F00_')) r.F++; if (m.name.startsWith('M00_')) r.M++; } }); return r; });
-  const waitBody = (k) => page.waitForFunction((k) => { let n = 0; __g.player.model.root.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (m.name.startsWith(k)) n++; }); return n > 0; }, k, { timeout: 400000 });
+  const mats = () => page.evaluate(() => { const r = { F: 0, M: 0 }; __g.player.model.root.traverse(o => { if (!o.isMesh || o.userData.outfit) return; for (const m of Array.isArray(o.material) ? o.material : [o.material]) { if (/^F00_\d+_\d+_Body/.test(m.name)) r.F++; if (/^M00_\d+_\d+_Body/.test(m.name)) r.M++; } }); return r; });
+  const waitBody = (k) => page.waitForFunction((k) => { let n = 0; __g.player.model.root.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (new RegExp('^' + k + '\\d+_\\d+_Body').test(m.name)) n++; }); return n > 0; }, k, { timeout: 400000 });
   await frames(3);
   const m0 = await mats();
   ok(m0.F > 0 && m0.M === 0, '最初は今の女性の体 ' + JSON.stringify(m0));
@@ -89,6 +89,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await page.goto(base + '/?shot&money=5000', { timeout: 240000 });
   await page.waitForFunction(() => window.__g, null, { timeout: 240000 });
   await waitBody('M00_'); await frames(3);
+  console.log('起動時の保存:', await page.evaluate(() => localStorage.getItem('totsuka.look.v1')));
   const m3 = await mats();
   ok(m3.M > 0 && m3.F === 0, '開き直すと、保存した男性の体で始まる ' + JSON.stringify(m3));
   await page.screenshot({ path: path.join(out, 'e_reload_male.png') });
