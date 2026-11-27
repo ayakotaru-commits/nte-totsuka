@@ -7,7 +7,7 @@ import { H } from './terrain.js';
 import { GROUND_LIFT } from './world.js';
 
 // ---- 人形の形 (m。足元が原点、+Z が前、高さ約 1.65 m)。slot: 0 肌 1 髪 2 上着 3 ズボン 4 くつ。part: 0 動かない 1 左脚 2 右脚 3 左腕 4 右腕 ----
-function buildGeometry() {
+export function buildGeometry() {
   const pos = [], nor = [], slot = [], part = [], pivot = [];
   const add = (g, cx, cy, cz, sl, pt, pv) => {
     const ng = g.index ? g.toNonIndexed() : g;
@@ -44,7 +44,7 @@ function buildGeometry() {
   return g;
 }
 
-function buildMaterial() {
+export function buildMaterial() {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
@@ -61,6 +61,15 @@ function buildMaterial() {
           if (aId.y > 2.5) {                       // 腕: 1 = スマホを見る (両手を胸の前へ)、2 = 立ち話 (手を動かす)
             if (iAnim.z > 0.5 && iAnim.z < 1.5) a = -1.15;
             else if (iAnim.z > 1.5 && iAnim.z < 2.5) a = (aId.y < 3.5 ? -1.0 : 1.0) * sw * 1.4 - 0.5;
+            else if (iAnim.z > 3.5) {              // ライブ: 4 = 客席 (両手を上げて左右に振る)、5 = 歌 (右手でマイク・左手で身ぶり)、6 = ギター・ベース (弦をはじく)、7 = ドラム (交互に打つ)、8 = キーボード、9 = ダンス (腕を大きく振る)
+              float L = aId.y < 3.5 ? 1.0 : -1.0, ph = iAnim.x;
+              if (iAnim.z < 4.5) a = -2.5 + L * sin(ph) * 0.5;
+              else if (iAnim.z < 5.5) a = aId.y < 3.5 ? -0.7 + sin(ph * 0.8) * 0.9 : -2.05 + sin(ph * 0.5) * 0.08;
+              else if (iAnim.z < 6.5) a = aId.y < 3.5 ? -1.25 : -0.85 + sin(ph * 2.0) * 0.38;
+              else if (iAnim.z < 7.5) a = -1.0 + L * sin(ph * 2.0) * 0.7;
+              else if (iAnim.z < 8.5) a = -1.05 + sin(ph * 1.5 + L) * 0.16;
+              else a = -1.7 + L * sin(ph * 1.2) * 1.0;
+            }
           }
           vec3 q = transformed - aPivot;
           float cs = cos(a), sn = sin(a);
@@ -71,7 +80,7 @@ function buildMaterial() {
   return m;
 }
 
-const NO_SHOW = { parade: 0, fw: 0, paradeOn: false, fwOn: false };
+const NO_SHOW = { parade: 0, fw: 0, live: 0, paradeOn: false, fwOn: false, liveOn: false };
 
 export class Crowd {
   // props = props.json (crowd を持つこと)。opt = { low: スマホなど (人数・範囲を減らす), cap, park: 千葉ドリームランドの設定 (public/data/park.json。園内の通り道と観客の場所を足す) }
@@ -108,7 +117,7 @@ export class Crowd {
   setVisible(v) { if (this.enabled) this.group.visible = v; }
 
   // camera = three のカメラ、player = {x, z} (よけるため)、preset = '朝' | '昼' | '夕方' | '夜'
-  // want = ショーの観客の指定 ({ parade, fw, paradeOn, fwOn }。crowdsim.js の updateViewers)。園外・ショーが無いときは省く
+  // want = ショーの観客の指定 ({ parade, fw, live, paradeOn, fwOn, liveOn }。crowdsim.js の updateViewers)。園外・ショーが無いときは省く
   update(dt, camera, px, pz, preset, clock, want) {
     if (!this.enabled || dt <= 0) return;
     camera.getWorldDirection(this._f);

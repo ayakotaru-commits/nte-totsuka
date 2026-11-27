@@ -122,10 +122,24 @@ const slots = makeViewSlots(park, route);
   let bad = 0;
   for (const s of slots) {
     const f = [Math.sin(s.yaw), Math.cos(s.yaw)];
-    if (s.kind) { const d = [lake.center[0] - s.x, lake.center[1] - s.z], L = Math.hypot(...d); if ((f[0] * d[0] + f[1] * d[1]) / L < 0.9) bad++; }
+    if (s.kind === 2) { const lv = park.gen.rides.live, cl = Math.cos(lv.yaw), sl = Math.sin(lv.yaw), zf = lv.stage.back + lv.stage.d, st = [lv.x + zf * sl, lv.z + zf * cl], d = [st[0] - s.x, st[1] - s.z], L = Math.hypot(...d); if ((f[0] * d[0] + f[1] * d[1]) / L < 0.95) bad++; }   // ライブの客席はステージの方
+    else if (s.kind) { const d = [lake.center[0] - s.x, lake.center[1] - s.z], L = Math.hypot(...d); if ((f[0] * d[0] + f[1] * d[1]) / L < 0.9) bad++; }
     else { let bd = 1e9, bp = null; for (const q of route) { const dd = Math.hypot(q[0] - s.x, q[1] - s.z); if (dd < bd) { bd = dd; bp = q; } } const d = [bp[0] - s.x, bp[1] - s.z]; if ((f[0] * d[0] + f[1] * d[1]) / (bd || 1) < 0.7) bad++; }
   }
-  check('観客の顔は、パレードは道の方・花火は湖の中心の方を向く', bad / slots.length < 0.03, `${bad}/${slots.length}`);
+  check('観客の顔は、パレードは道の方・花火は湖の中心の方・ライブはステージの方を向く', bad / slots.length < 0.03, `${bad}/${slots.length}`);
+  {   // ライブの客席 (kind 2): 扇の中・前の柵より後ろ・ミキサー席・花壇・街灯・ベンチ・入口の通り道に立たない
+    const lv = park.gen.rides.live, F = lv.fan, ST = lv.stage, cl = Math.cos(lv.yaw), sl = Math.sin(lv.yaw), zf = ST.back + ST.d, half = F.ang * Math.PI / 360;
+    const loc = (x, z) => { const dx = x - lv.x, dz = z - lv.z; return [dx * cl - dz * sl, dx * sl + dz * cl]; };
+    const L2 = slots.filter((q) => q.kind === 2), mix = [lv.x + (zf + 38) * sl, lv.z + (zf + 38) * cl];
+    let out = 0, fence = 0, tent = 0, near = 0;
+    for (const q of L2) {
+      const [u, v] = loc(q.x, q.z);
+      if (v < zf + 17 || v > F.apexV + F.R || Math.abs(u) > (v - F.apexV) * Math.tan(half) + 0.5) { out++; continue; }
+      if (Math.hypot(q.x - mix[0], q.z - mix[1]) < 6) tent++;
+      if ([...park.gen.beds, ...park.gen.lamps, ...park.gen.benches].some((o) => Math.hypot(q.x - o[0], q.z - o[1]) < 0.9)) near++;
+    }
+    check('ライブの客席: 400 か所以上・扇の中で前の柵より後ろ・ミキサー席・花壇・街灯・ベンチの上ではない', L2.length >= 400 && out === 0 && tent === 0 && near === 0, { n: L2.length, out, tent, near });
+  }
 }
 const watch = (nowSec, center, preset = '昼', seconds = 30) => {
   const sim = new CrowdSim(crowd, { ...OPT, cap: 120, radius: 130, seed: 5 });

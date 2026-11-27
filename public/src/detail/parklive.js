@@ -3,12 +3,14 @@
 // 周りの木・花壇・街灯・ベンチ・広場へつなぐ道は、同じ生成が gen の trees・beds・lamps・benches・paths に足してある (parkareas.js が描く)。
 // ローカル座標: x = 右、z = 前 (サンライズ・プラザの中心の向き)。奥 (-z) にステージ、手前 (+z) が客席の扇。group.rotation.y = yaw。
 // 色は園のパステル (クリーム・桃・水色・金・藤色)。朝日 (サンライズ) の意匠: 扇の舗装は広場と同じ放射状、屋根の上に太陽の冠。
-// 描画の数を抑える: 動かない部品は Geo で材質ごとに 1 つにまとめる。動くのは大画面の絵の切り替えとムービングライトの光線 (夜だけ見える)。
+// 演者 (歌・ギター・ベース・キーボード・ドラム・ダンサー 7 人) は、街の人と同じ人形 (crowd.js の形とシェーダ。腕の動きだけ曲に合わせる) を 1 つの InstancedMesh で描く。ライブの状態 (parklivesched.js) は main.js が setLive() で渡す。
+// 描画の数を抑える: 動かない部品は Geo で材質ごとに 1 つにまとめる。動くのは大画面の絵の切り替え・ムービングライトの光線 (夜だけ見える)・演者。
 // 動き・光は実際の時計 (Date.now) で決まる (だれが見ても同じ)。カメラが会場の 450 m 以内のときだけ update が動かす。
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { fontCss } from './parkfont.js';
 import { Geo } from './parkrides.js';
+import { buildGeometry as personGeometry, buildMaterial as personMaterial } from '../crowd.js';
 
 export function buildLive(ctx) {
   const { cfg, ground, std, glowMat, group, col, emissive, low } = ctx;
@@ -21,7 +23,7 @@ export function buildLive(ctx) {
   const F = L.fan, ST = L.stage, gy = ground(L.x, L.z);
   const g = new THREE.Group(); g.position.set(L.x, gy, L.z); g.rotation.y = L.yaw; api.group.add(g);
   const worldOf = (lx, lz) => [L.x + lx * Math.cos(L.yaw) + lz * Math.sin(L.yaw), L.z - lx * Math.sin(L.yaw) + lz * Math.cos(L.yaw)];
-  let tris = 0;
+  let tris = 0, LS = null;   // LS = ライブの状態 (parklivesched.js の state)。main.js が setLive() で毎コマ渡す
   const addMesh = (geo, mat, shadow = true) => { const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; m.receiveShadow = true; g.add(m); tris += (geo.index ? geo.index.count : geo.attributes.position.count) / 3; return m; };
   const box = (hx, hz, x, z, y0, y1) => col.box.push([...worldOf(x, z), L.yaw, hx, hz, gy + y0, gy + y1]);   // 当たり判定 (ローカル → ワールド)
   const circ = (x, z, r, y0, y1) => col.circle.push([...worldOf(x, z), r, gy + y0, gy + y1]);
@@ -31,6 +33,7 @@ export function buildLive(ctx) {
   const zBack = ST.back, zFront = zBack + SD, zMid = (zBack + zFront) / 2;
   const SCW = 32, SCH = 15, SCY = 5.6;                     // 大画面: 幅・高さ・下端
   const TOP = 25;                                          // 屋根のトラスの高さ
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
   // ---------- 園の配色 ----------
   const C = { cream: '#f4e9d2', pink: '#ff9ccf', teal: '#3fb8b0', gold: '#e9c26a', plum: '#6b5aa6', lav: '#b79ae0' };
@@ -292,13 +295,80 @@ export function buildLive(ctx) {
     tm.instanceColor.needsUpdate = true; tm.castShadow = true; g.add(tm); addMesh(tpole.geometry(), cream, false); tris += tents.length * 8;
   }
 
+  // ---------- 演者と楽器 (ライブの最中だけ出る。ドラムセットとキーボードは、いつも置いてある) ----------
+  const perfProps = new THREE.Group(); g.add(perfProps);   // ギター・ベース (演者と一緒に出る)
+  const staticSet = new Geo(), drumM = new Geo(), cymM = new Geo(), keyW = new Geo(), keyB = new Geo();
+  const DZ = zBack + 7.2, KX = -17, KZ = zFront - 9.5;
+  {
+    staticSet.box(5.2, 0.5, 4.2, 0, SH + 0.25, DZ);                                   // ドラムの台
+    drumM.add(new THREE.CylinderGeometry(0.5, 0.5, 0.55, 20).rotateX(Math.PI / 2), new THREE.Matrix4().makeTranslation(0, SH + 1.15, DZ + 0.8));   // バスドラム
+    for (const [x, y, z, r] of [[-0.75, 1.75, -0.6, 0.32], [0.75, 1.75, -0.6, 0.32], [-1.3, 1.2, 0.4, 0.4], [1.2, 1.15, 0.5, 0.42]]) drumM.add(new THREE.CylinderGeometry(r, r, 0.3, 16), new THREE.Matrix4().makeTranslation(x, SH + y, DZ + z));   // タム・スネア
+    for (const [x, y, z, r] of [[-1.9, 2.5, -0.3, 0.55], [1.9, 2.5, -0.1, 0.6], [0, 2.65, -1.5, 0.5]]) { cymM.add(new THREE.CylinderGeometry(r, r, 0.04, 20), new THREE.Matrix4().makeTranslation(x, SH + y, DZ + z)); staticSet.box(0.05, y - 0.5, 0.05, x, SH + 0.5 + (y - 0.5) / 2, DZ + z); }
+    // キーボード (台 + 白鍵 + 黒鍵)
+    staticSet.box(0.12, 1.0, 0.12, KX - 1.3, SH + 0.5, KZ + 1.0); staticSet.box(0.12, 1.0, 0.12, KX + 1.3, SH + 0.5, KZ + 1.0);
+    keyW.box(3.0, 0.12, 0.8, KX, SH + 1.0, KZ + 1.0);
+    for (let i = -5; i <= 5; i++) if (![-2, 1, 3].includes(i)) keyB.box(0.1, 0.06, 0.35, KX + i * 0.23 + 0.12, SH + 1.09, KZ + 0.85);
+    addMesh(staticSet.geometry(), plumD); addMesh(drumM.geometry(), std('#ffd0e4', 0.5)); addMesh(cymM.geometry(), goldM, false);
+    addMesh(keyW.geometry(), std('#fffaf0', 0.4), false); addMesh(keyB.geometry(), std('#2b2640', 0.4), false);
+    box(2.6, 2.1, 0, DZ, -1, SH + 0.5); box(1.6, 0.5, KX, KZ + 1.0, -1, SH + 1.2);
+    // ギター・ベース (演者の前に斜めに置く。ライブの最中だけ)
+    const gtr = new Geo(), neckG = new Geo();
+    for (const sx of [-1, 1]) { gtr.box(0.16, 0.5, 0.08, sx * 9 + sx * 0.05, SH + 0.95, zFront - 6.35, 0, 0, -sx * 0.55); neckG.box(0.07, 0.8, 0.05, sx * 9 + sx * 0.5, SH + 1.4, zFront - 6.3, 0, 0, -sx * 0.55); }
+    perfProps.add(new THREE.Mesh(gtr.geometry(), pinkM), new THREE.Mesh(neckG.geometry(), goldM));
+  }
+  const PE = [   // 演者 { x, z, 大きさ, 曲の最中の動き (crowd.js のシェーダの mode), 色 }
+    { x: 0, z: zFront - 3.2, sc: 1.12, mode: 5, top: '#ff7fb5', bottom: '#ffffff', hair: '#ffd36b', skin: '#f2c9a6', name: 'vocal' },
+    { x: -9, z: zFront - 7.2, sc: 1.05, mode: 6, top: '#3fb8b0', bottom: '#4b4561', hair: '#3b2a1e', skin: '#e5b594', name: 'guitar' },
+    { x: 9, z: zFront - 7.2, sc: 1.05, mode: 6, top: '#8f7bff', bottom: '#4b4561', hair: '#8a5a2b', skin: '#e5b594', name: 'bass' },
+    { x: KX, z: KZ, sc: 1.05, mode: 8, top: '#ffd36b', bottom: '#4b4561', hair: '#2d2a3a', skin: '#f2c9a6', name: 'keys' },
+    { x: 0, z: DZ - 0.2, sc: 1.05, mode: 7, top: '#ff9a7a', bottom: '#4b4561', hair: '#c0392b', skin: '#e5b594', name: 'drums', y: 0.5 },
+    { x: -6.5, z: zFront - 4.2, sc: 1.0, mode: 9, top: '#ff9ccf', bottom: '#fff6e6', hair: '#f08cb4', skin: '#f2c9a6', name: 'dancer' },
+    { x: 6.5, z: zFront - 4.2, sc: 1.0, mode: 9, top: '#9fd8ee', bottom: '#fff6e6', hair: '#5a7fd6', skin: '#e5b594', name: 'dancer' },
+  ];
+  const pgeo = personGeometry(), NP = PE.length;
+  const pattr = (n, size) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(NP * size), size); a.setUsage(THREE.DynamicDrawUsage); pgeo.setAttribute(n, a); return a; };
+  const PA = { top: pattr('iTop', 3), bottom: pattr('iBottom', 3), hair: pattr('iHair', 3), skin: pattr('iSkin', 3), anim: pattr('iAnim', 3) };
+  const performers = new THREE.InstancedMesh(pgeo, personMaterial(), NP);
+  performers.instanceMatrix.setUsage(THREE.DynamicDrawUsage); performers.frustumCulled = false; performers.castShadow = true; performers.count = 0; performers.name = 'park_live_performers';
+  g.add(performers);
+  { const c = new THREE.Color(); PE.forEach((q, i) => { for (const k of ['top', 'bottom', 'hair', 'skin']) { c.set(q[k]); PA[k].setXYZ(i, c.r, c.g, c.b); } }); for (const k of ['top', 'bottom', 'hair', 'skin']) PA[k].needsUpdate = true; }
+  let grow = 0;   // 出る・引っこむ (0 → 1。3 秒)
+  const pm4 = new THREE.Matrix4();
+  const updatePerformers = (nowSec, dt) => {
+    const st = LS, target = st && (st.on || (st.phase === 'wait' && st.startsIn < 15)) ? 1 : 0;
+    grow += clamp(target - grow, -dt / 3, dt / 3);
+    perfProps.visible = grow > 0.02; performers.count = grow > 0.002 ? NP : 0;
+    if (!performers.count) return;
+    const song = st && st.phase === 'song' ? st.song : null, beat = song ? (song.energy >= 3 ? 2.3 : song.energy === 2 ? 1.9 : 1.5) : 1.2;
+    const s2 = grow * grow * (3 - 2 * grow);
+    PE.forEach((q, i) => {
+      let x = q.x, z = q.z;
+      if (q.name === 'vocal' && song) { x = Math.sin(nowSec * 0.22) * 9; z += Math.max(0, Math.sin(nowSec * 0.11 + 1.3)) * 6.5; }   // 歌う子はステージの上を歩き、ときどき花道へ出る
+      const sc = q.sc * Math.max(0.001, s2);
+      pm4.set(sc, 0, 0, x, 0, sc, 0, SH + (q.y || 0), 0, 0, sc, z, 0, 0, 0, 1);
+      performers.setMatrixAt(i, pm4);
+      const dancing = song && (q.name !== 'dancer' || song.energy >= 2);
+      PA.anim.setXYZ(i, nowSec * Math.PI * 2 * beat + i * 0.7, dancing && q.name === 'dancer' ? 0.5 : song && (q.name === 'vocal') ? 0.25 : 0, dancing ? q.mode : 3);
+    });
+    performers.instanceMatrix.needsUpdate = true; PA.anim.needsUpdate = true;
+  };
+  api.setLive = (st) => { LS = st; };
+  api.performers = performers;
+
   api.stats.tris = Math.round(tris);
 
   // ---------- 動き (カメラが近いときだけ) ----------
   const CYCLE = 24;   // 絵の切り替え 24 秒周期 (3 場面 × 8 秒)
   let lastScene = -1;
+  let lastNow = null;
   api.update = (nowSec, cx, cz) => {
     if (Math.hypot(cx - L.x, cz - L.z) > 450) return;
+    const real = performance.now() / 1000, dt = lastNow === null ? 0.016 : clamp(real - lastNow, 0, 0.1); lastNow = real;   // 出る・引っこむは実際の時間 (確認用に時計を止めても進む)
+    updatePerformers(nowSec, dt);
+    // 照明: 公演の最中 (と始まる直前) だけ光線が出る。大画面は公演の最中が明るい
+    const lit = LS && (LS.on || (LS.phase === 'wait' && LS.startsIn < 20));
+    for (const m of beamMats) m.userData.glow = lit ? 0.075 : 0;
+    screenMat.userData.glow = LS && LS.on ? 1.05 : 0.55;
     const sc = Math.floor((nowSec % CYCLE) / (CYCLE / nScene)) % nScene;
     if (sc !== lastScene) { lastScene = sc; screenMat.map = sceneTex[sc]; screenMat.emissiveMap = sceneTex[sc]; }
     for (const b of beams) {
