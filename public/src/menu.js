@@ -40,6 +40,8 @@ export class Menu {
       this.quiet = true; this.pickFace(k, v); this.quiet = false;
       this.sel = i + 1; this.msg = '';
       const t = this.el.querySelector(`[data-faceval="${i}"]`); if (t) t.textContent = this.faceText(i, v);
+      const rb = this.el.querySelector('[data-do=facereset]'); // 動かしたら「元に戻す」を有効に見せる
+      if (rb) { const ch = FACE_ITEMS.some((it) => this.faceVal(it.key) !== 0); rb.classList.toggle('locked', !ch); rb.querySelector('small').textContent = ch ? 'すべての項目を 0 へ' : 'いまは元の顔です'; }
       this.el.querySelectorAll('.mn-slide').forEach((el, j) => el.classList.toggle('sel', j === i));
     });
   }

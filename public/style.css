@@ -341,7 +341,7 @@ body.photo #photo-ui { display: block; }
 .mn-pick input { width: 64px; height: 40px; padding: 0; border: 1px solid rgba(255,255,255,.45); border-radius: 8px; background: transparent; cursor: pointer; }
 
 /* キャラメイクの顔: スライダー */
-.mn-faces { max-height: 46vh; overflow-y: auto; }
+.mn-faces { max-height: 34vh; overflow-y: auto; }
 .mn-grp { font-size: 12px; color: #9fd6ff; margin: 6px 2px 0; }
 .mn-slide { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; cursor: default; }
 .mn-slide small { text-align: right; min-width: 4.5em; }
