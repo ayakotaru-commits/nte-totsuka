@@ -12,6 +12,14 @@ const THREE_DIR = path.join(__dirname, '.cache', 'package');
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png' };
 
 const VIEWS = [
+  // ライブ会場 (サンライズ・ライブステージ。コースターの跡地。中心 31353, -25583、前 = (0.84, -0.545) = 広場の向き)
+  { name: 'lv1_stage_front', at: [31350, -25581], look: [-0.84, 0.545], pitch: 0.14, dist: 30 },        // 客席の中から、ステージと大画面
+  { name: 'lv2_aerial', at: [31353, -25583], look: [0.84, -0.545], pitch: 1.0, dist: 230 },              // 上から (会場・広場・湖・城)
+  { name: 'lv3_from_avenue', at: [31490, -25735], look: [0, 1], pitch: 0.12, dist: 22 },                  // アベニューの出口から (城が隠れないか)
+  { name: 'lv4_from_plaza', at: [31450, -25672], look: [-0.9, 0.43], pitch: 0.1, dist: 20 },            // 広場の西から会場へ
+  { name: 'lv5_stage_close', at: [31334, -25571], look: [-0.84, 0.545], pitch: 0.25, dist: 12 },
+  { name: 'lv7_night', at: [31350, -25581], look: [-0.84, 0.545], pitch: 0.2, dist: 30, show: { idle: true } },   // 夜のステージ (光線・大画面・電球。--night)
+  { name: 'lv6_castle_axis', at: [31490, -25690], look: [0, 1], pitch: 0.08, dist: 16 },                  // 広場の軸 (城の方向)。会場は左に入る
   { name: 'e1_arch_night', at: [31121, -25830], look: [-0.230, -0.973], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
   { name: 'e2_arch_town', at: [31367, -25675], look: [-0.992, -0.129], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
   { name: 'e3_arch_valley', at: [31661, -25664], look: [0.995, 0.101], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
@@ -174,13 +182,6 @@ try {
       for (const [k, a] of [['e', 1.57], ['w', -1.57], ['n', 3.14]]) VIEWS.push({ name: 'r4_carousel_' + k, at: [c.x + Math.sin(c.yaw + a) * 11, c.z + Math.cos(c.yaw + a) * 11], look: [-Math.sin(c.yaw + a), -Math.cos(c.yaw + a)], pitch: 0.3, dist: 16 });
       VIEWS.push({ name: 'r4_carousel', at: W(c, 0, 11), look: [-Math.sin(c.yaw), -Math.cos(c.yaw)], pitch: 0.15, dist: 16 });
       VIEWS.push({ name: 'r5_carousel_aerial', at: [c.x, c.z], look: [0, 1], pitch: 1.0, dist: 40 });
-    }
-    if (rd.coaster) {
-      const k = rd.coaster;
-      VIEWS.push({ name: 'r6_coaster_aerial', at: [k.x, k.z], look: [0, 1], pitch: 1.0, dist: 150 });
-      VIEWS.push({ name: 'r7_coaster_side', at: [k.x, k.z], look: [Math.sin(k.yaw), Math.cos(k.yaw)], pitch: 0.2, dist: 100 });
-      const s = k.pts[k.stationIdx[1]];
-      VIEWS.push({ name: 'r8_coaster_station', at: [s[0], s[1]], look: [Math.sin(k.yaw + 1.6), Math.cos(k.yaw + 1.6)], pitch: 0.12, dist: 22 });
     }
     for (const pr of park.gen.props) VIEWS.push({ name: 'p_' + pr.k + '_' + pr.a, at: [pr.x - Math.sin(pr.yaw || 0) * 0, pr.z], look: [0.3, 1], pitch: 0.2, dist: Math.max(30, pr.r * 3.5) });
   }

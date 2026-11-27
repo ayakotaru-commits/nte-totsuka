@@ -507,7 +507,8 @@ export function buildPark(cfg, world, opts = {}) {
       if (api.beams) api.beams.rotation.y = performance.now() / 1000 * 0.25;
       api.entrance?.update(Date.now() / 1000, x, z);   // 入口の冠のリールが回る
       api.areas?.update?.(Date.now() / 1000, x, z);   // 旗のゆれ・煙突の煙・ネオンのまたたき (段階 7)
-      api.areas?.rides?.update(Date.now() / 1000, x, z);   // 観覧車・メリーゴーラウンド・コースターの動き (近くのときだけ)
+      api.areas?.rides?.update(Date.now() / 1000, x, z);   // 観覧車・メリーゴーラウンドの動き (近くのときだけ)
+      api.areas?.live?.update(Date.now() / 1000, x, z);   // ライブ会場の大画面の切り替え・ムービングライト (近くのときだけ)
       api.show?.update(showClockNow(), x, z, win);          // 花火・パレード・水上ショー (win = 夜の度合い。time.js)
       if (api.castle) { const ck = showClockNow(); api.castle.update(ck, x, z, win, ck % cfg.show.cycle); }   // 城の冠・旗・夜のライトアップ
     },
