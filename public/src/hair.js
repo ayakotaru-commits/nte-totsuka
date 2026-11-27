@@ -1,5 +1,5 @@
 // キャラメイク: 髪型の付け替え。別の VRM (VRoid の CC0 のサンプル、VRM 0.x) の髪を、今のキャラの頭の骨に付ける。
-//   const h = await fitHair(src, vrm, playerFit);  vrm.scene.add(h.group);  h.dispose() で外す
+//   const h = await fitHair(src, vrm, playerFit, entry.tune);  h.dispose() で外す  (entry = public/models/hairs/hairs.json の 1 件。tune は髪ごとの調整)
 //   src = 髪のファイル (public/models/hairs/*.glb。tools/hairs.py で作る) を GLTFLoader + VRMLoaderPlugin で読んだもの。
 //   playerFit = public/models/hairs/player_fit.json (tools/hairs.py --player で作る。今のキャラの顔の数字と、頭皮の三角形)。
 // やること:
@@ -85,9 +85,10 @@ function scalpMaterial(src, color) {
   return new THREE.MeshToonMaterial({ color: c });
 }
 
-export async function fitHair(src, vrm, playerFit, { scalp = true, scalpLift = 0.004, adjust = true, keepWidth = 0.5, puff = 1.12 } = {}) {
+export async function fitHair(src, vrm, playerFit, { scalp = true, scalpLift = 0.004, adjust = true, keepWidth = 0.5, puff = 1, forward = 0 } = {}) {
   const sfit = src.parser.json.extras?.fit;
   const head = adjust && sfit && playerFit?.metrics ? headAdjust(sfit, playerFit.metrics, { keepWidth, puff }) : null;
+  if (head) head.off[2] += forward; // 前 (+z) へずらす量 (m)。髪ごとの調整 (public/models/hairs/hairs.json の tune)
   const { group, used } = await fitOutfit(src, vrm, { parts: /./, scale: 1.04, head });
   vrm.scene.add(group);
   let caps = [], capMat = null;
