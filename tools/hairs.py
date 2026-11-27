@@ -40,6 +40,59 @@ def write_glb(path, j, binary):
         f.write(struct.pack('<I', len(binary)) + b'BIN\0' + binary)
 
 
+def read_acc(j, b, idx):
+    """アクセサーの中身を、タプルのリストで読む。"""
+    a = j['accessors'][idx]; bv = j['bufferViews'][a['bufferView']]
+    n = NCOMP[a['type']]; size = COMP[a['componentType']] * n
+    stride = bv.get('byteStride') or size
+    fmt = {5126: 'f', 5123: 'H', 5125: 'I', 5121: 'B'}[a['componentType']]
+    off = bv.get('byteOffset', 0) + a.get('byteOffset', 0)
+    return [struct.unpack_from('<' + fmt * n, b, off + i * stride) for i in range(a['count'])]
+
+
+def node_y(j, idx):
+    """基準の姿勢での、ノードの高さ (親の移動量の和。VRoid の骨は基準の姿勢で回転が無い)。"""
+    par = {c: i for i, n in enumerate(j['nodes']) for c in n.get('children', [])}
+    y = 0.0
+    while idx is not None:
+        y += j['nodes'][idx].get('translation', [0, 0, 0])[1]; idx = par.get(idx)
+    return y
+
+
+def prim_bounds(j, b, mesh_name, key):
+    """名前が mesh_name のノードのメッシュのうち、材質名に key を含む面が使う頂点の範囲 (min3, max3)。
+    (位置のアクセサーは全部の面で共有されているので、面の頂点番号で絞る)"""
+    lo, hi = [9e9] * 3, [-9e9] * 3
+    for n in [n for n in j['nodes'] if n.get('name') == mesh_name and 'mesh' in n]:
+        for p in j['meshes'][n['mesh']]['primitives']:
+            if key not in j['materials'][p['material']]['name']: continue
+            pos = read_acc(j, b, p['attributes']['POSITION'])
+            for k in {x[0] for x in read_acc(j, b, p['indices'])}:
+                lo = [min(x, y) for x, y in zip(lo, pos[k])]; hi = [max(x, y) for x, y in zip(hi, pos[k])]
+    return lo, hi
+
+
+def face_metrics(j, b):
+    """目の上端・頭頂・あご・顔の幅・顔の前と後ろ (z)。高さは頭の骨の関節から測る。元の座標 (VRM 0.x は前が -z)。"""
+    head = next(b['node'] for b in j['extensions']['VRM']['humanoid']['humanBones'] if b['bone'] == 'head')
+    hy = node_y(j, head)
+    fl, fh = prim_bounds(j, b, 'Face', 'Face_00_SKIN')
+    el, eh = prim_bounds(j, b, 'Face', 'EyeWhite')
+    r = lambda x: round(x, 5)
+    return {'eyeTop': r(eh[1] - hy), 'eyeBottom': r(el[1] - hy), 'top': r(fh[1] - hy), 'chin': r(fl[1] - hy),
+            'width': r(fh[0] - fl[0]), 'front': r(fl[2]), 'back': r(fh[2])}
+
+
+def image_mean(j, b, tex_index):
+    """模様の平均の色 (透明でない画素だけ)。"""
+    im = j['images'][j['textures'][tex_index]['source']]
+    bv = j['bufferViews'][im['bufferView']]
+    pic = Image.open(io.BytesIO(b[bv.get('byteOffset', 0):][:bv['byteLength']])).convert('RGBA'); pic.thumbnail((128, 128))
+    px = [p for p in pic.getdata() if p[3] > 200]
+    if not px: return [0.5, 0.5, 0.5]
+    return [round(sum(p[i] for p in px) / len(px) / 255, 4) for i in range(3)]
+
+
 class Pack:
     """新しいバッファ。アクセサーごとに、元の並びをつめて写す。"""
     def __init__(self, j, binary):
@@ -72,7 +125,46 @@ class Pack:
         return len(self.views) - 1
 
 
+def player_main(src, dark):
+    """今のキャラの顔の数字と、頭皮 (髪の色で塗られた地肌) の三角形の一覧を public/models/hairs/player_fit.json に書く。
+    頭皮 = 顔と体のメッシュの肌の面 (材質名に _SKIN) のうち、模様の色が暗い (髪色で塗られた) 三角形。
+    頭の殻は体のメッシュにある (Body_00_SKIN の 4 番目の面) ので、顔だけでなく体も見る。髪の下に敷く殻の元になる (public/src/hair.js)。"""
+    j, b = read_glb(src)
+    v = j['extensions']['VRM']
+    hy = node_y(j, next(x['node'] for x in v['humanoid']['humanBones'] if x['bone'] == 'head'))
+    scalp = []
+    for nd in [n for n in j['nodes'] if n.get('name') in ('Face', 'Body') and 'mesh' in n]:
+        for prim in j['meshes'][nd['mesh']]['primitives']:
+            mname = j['materials'][prim['material']]['name']
+            if '_SKIN' not in mname: continue
+            mp = next(p for p in v['materialProperties'] if p['name'] == mname)
+            ti = mp['textureProperties']['_MainTex']
+            im = j['images'][j['textures'][ti]['source']]; bv = j['bufferViews'][im['bufferView']]
+            pic = Image.open(io.BytesIO(b[bv.get('byteOffset', 0):][:bv['byteLength']])).convert('RGBA')
+            W, H = pic.size; px = pic.load()
+            uv = read_acc(j, b, prim['attributes']['TEXCOORD_0']); idx = [x[0] for x in read_acc(j, b, prim['indices'])]
+            pos = read_acc(j, b, prim['attributes']['POSITION'])
+            keep = []
+            for t in range(0, len(idx), 3):
+                tri = idx[t:t + 3]
+                u = sum(uv[k][0] for k in tri) / 3; w = sum(uv[k][1] for k in tri) / 3
+                r, g, bl, al = px[min(W - 1, max(0, int(u * W))), min(H - 1, max(0, int(w * H)))]
+                cy = sum(pos[k][1] for k in tri) / 3
+                # 透明な画素は除く。頭の骨の関節より下 (首より下) は頭皮ではない
+                if al > 200 and cy > hy - 0.07 and (0.299 * r + 0.587 * g + 0.114 * bl) / 255 < dark: keep += tri
+            if keep: scalp.append({'material': mname, 'indexCount': len(idx), 'vertexCount': len(uv), 'index': keep})
+    out = {'_note': 'tools/hairs.py --player が作る。顔の数字は頭の骨の関節からの相対 (元の座標。前が -z)。scalp は肌の面ごとの、頭皮の頂点番号 (3 つで 1 三角形)。面は 材質名 + 元の頂点番号の数 (indexCount) で見つける。',
+           'metrics': face_metrics(j, b), 'scalp': scalp}
+    dst = os.path.join(ROOT, 'public', 'models', 'hairs', 'player_fit.json')
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    json.dump(out, open(dst, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+    print(f'{os.path.relpath(dst, ROOT)}  {os.path.getsize(dst) / 1e3:.0f} KB  頭皮の三角形', ' / '.join(f"{s['material'][-14:]} {len(s['index']) // 3}" for s in scalp))
+    print('  顔の数字:', out['metrics'])
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == '--player':  # python tools/hairs.py --player <今のキャラの.vrm> [暗さのしきい値 0.55]
+        return player_main(sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else 0.55)
     ap = argparse.ArgumentParser()
     ap.add_argument('src'); ap.add_argument('id')
     ap.add_argument('--parts', default='HAIR', help='取り出す材質名の正規表現')
@@ -191,6 +283,12 @@ def main():
     if new_smp: out['samplers'] = new_smp
     kh = sorted({e for m in new_mats for e in m.get('extensions', {})})
     if kh: out['extensionsUsed'] += kh
+    # 今のキャラの顔に合わせるための数字 (髪の元の顔の寸法と、髪の平均の色)。読む側は public/src/hair.js
+    main = next((p for p in v.get('materialProperties', []) if p.get('name') in names and '_MainTex' in p.get('textureProperties', {})
+                 and 'HairBack' not in p['name']), None) or next((p for p in v.get('materialProperties', []) if p.get('name') in names and '_MainTex' in p.get('textureProperties', {})), None)
+    fit = dict(face_metrics(j, b))
+    if main: fit['color'] = image_mean(j, b, main['textureProperties']['_MainTex'])
+    out['extras'] = {'fit': fit}
     dst = os.path.join(ROOT, 'public', 'models', 'hairs', a.id + '.glb')
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     write_glb(dst, out, bytes(pk.out))
