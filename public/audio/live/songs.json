@@ -1,0 +1,449 @@
+{
+ "_doc": "ライブ会場で流す歌入りの曲 (tools/music/live_songs.py が作る)。credit = 曲の最中に画面へ出すクレジット。energy = 3 にぎやか・2 ふつう・1 ゆったり。曲の権利は各サイトにある。",
+ "songs": [
+  {
+   "id": "nw602",
+   "file": "audio/live/nw602.mp3",
+   "title": "今日がちょっと好きになる",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/602",
+   "dur": 228.9,
+   "tags": [
+    "明るい"
+   ],
+   "energy": 3,
+   "bytes": 2289416
+  },
+  {
+   "id": "nw470",
+   "file": "audio/live/nw470.mp3",
+   "title": "キセキのカウントダウン",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/470",
+   "dur": 263.8,
+   "tags": [
+    "明るい"
+   ],
+   "energy": 3,
+   "bytes": 2638412
+  },
+  {
+   "id": "nw460",
+   "file": "audio/live/nw460.mp3",
+   "title": "虹色スパーク",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/460",
+   "dur": 201.6,
+   "tags": [
+    "明るい"
+   ],
+   "energy": 3,
+   "bytes": 2016698
+  },
+  {
+   "id": "nw493",
+   "file": "audio/live/nw493.mp3",
+   "title": "Color me ! Love me !",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/493",
+   "dur": 195.0,
+   "tags": [
+    "明るい",
+    "恋・愛"
+   ],
+   "energy": 3,
+   "bytes": 1950608
+  },
+  {
+   "id": "nw500",
+   "file": "audio/live/nw500.mp3",
+   "title": "こんにちは、ふしぎさん",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/500",
+   "dur": 247.8,
+   "tags": [
+    "明るい",
+    "オシャレ・エモい"
+   ],
+   "energy": 2,
+   "bytes": 2478282
+  },
+  {
+   "id": "nw514",
+   "file": "audio/live/nw514.mp3",
+   "title": "大人のColor Pop Days",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/514",
+   "dur": 233.3,
+   "tags": [
+    "明るい",
+    "オシャレ・エモい",
+    "恋・愛"
+   ],
+   "energy": 2,
+   "bytes": 2333041
+  },
+  {
+   "id": "nw376",
+   "file": "audio/live/nw376.mp3",
+   "title": "Step with you , Step to you",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　企画：フリコンMusic　作詞・作曲・歌：みなとん。",
+   "url": "https://music.freegame-contest.com/archives/376",
+   "dur": 254.0,
+   "tags": [
+    "明るい",
+    "オシャレ・エモい"
+   ],
+   "energy": 2,
+   "bytes": 2541033
+  },
+  {
+   "id": "nw363",
+   "file": "audio/live/nw363.mp3",
+   "title": "あなたが来る前に",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　企画：フリコンMusic　作詞・作曲・歌：みなとん。",
+   "url": "https://music.freegame-contest.com/archives/363",
+   "dur": 222.5,
+   "tags": [
+    "明るい",
+    "恋・愛"
+   ],
+   "energy": 3,
+   "bytes": 2225745
+  },
+  {
+   "id": "nw25",
+   "file": "audio/live/nw25.mp3",
+   "title": "にゃぞ",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　企画：フリコンMusic　作詞・作曲・歌：みなとん。",
+   "url": "https://music.freegame-contest.com/archives/25",
+   "dur": 198.7,
+   "tags": [
+    "明るい"
+   ],
+   "energy": 3,
+   "bytes": 1988030
+  },
+  {
+   "id": "nw34",
+   "file": "audio/live/nw34.mp3",
+   "title": "フリーゲームワールド",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　企画：フリコンMusic　作詞・作曲・歌：みなとん。",
+   "url": "https://music.freegame-contest.com/archives/34",
+   "dur": 182.5,
+   "tags": [
+    "明るい"
+   ],
+   "energy": 3,
+   "bytes": 1825193
+  },
+  {
+   "id": "nw43",
+   "file": "audio/live/nw43.mp3",
+   "title": "START BUTTON",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　企画：フリコンMusic　作詞・作曲・歌：みなとん。",
+   "url": "https://music.freegame-contest.com/archives/43",
+   "dur": 209.4,
+   "tags": [
+    "明るい"
+   ],
+   "energy": 3,
+   "bytes": 2094636
+  },
+  {
+   "id": "nw806",
+   "file": "audio/live/nw806.mp3",
+   "title": "青春Re:Start",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/806",
+   "dur": 267.8,
+   "tags": [
+    "オシャレ・エモい"
+   ],
+   "energy": 2,
+   "bytes": 2677857
+  },
+  {
+   "id": "nw799",
+   "file": "audio/live/nw799.mp3",
+   "title": "Neon Sigh",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/799",
+   "dur": 287.5,
+   "tags": [
+    "オシャレ・エモい"
+   ],
+   "energy": 2,
+   "bytes": 2875082
+  },
+  {
+   "id": "nw702",
+   "file": "audio/live/nw702.mp3",
+   "title": "Spark Tonight",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/702",
+   "dur": 262.2,
+   "tags": [
+    "オシャレ・エモい",
+    "恋・愛"
+   ],
+   "energy": 2,
+   "bytes": 2622739
+  },
+  {
+   "id": "nw640",
+   "file": "audio/live/nw640.mp3",
+   "title": "星影ラテ",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/640",
+   "dur": 290.2,
+   "tags": [
+    "オシャレ・エモい",
+    "恋・愛"
+   ],
+   "energy": 2,
+   "bytes": 2902249
+  },
+  {
+   "id": "nw819",
+   "file": "audio/live/nw819.mp3",
+   "title": "With You",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/819",
+   "dur": 252.9,
+   "tags": [
+    "恋・愛"
+   ],
+   "energy": 1,
+   "bytes": 2529482
+  },
+  {
+   "id": "nw605",
+   "file": "audio/live/nw605.mp3",
+   "title": "ボクラのマップ",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/605",
+   "dur": 332.4,
+   "tags": [
+    "オシャレ・エモい"
+   ],
+   "energy": 2,
+   "bytes": 3324649
+  },
+  {
+   "id": "nw649",
+   "file": "audio/live/nw649.mp3",
+   "title": "ボクがボクを救う歌",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/649",
+   "dur": 287.2,
+   "tags": [
+    "オシャレ・エモい"
+   ],
+   "energy": 2,
+   "bytes": 2872208
+  },
+  {
+   "id": "nw524",
+   "file": "audio/live/nw524.mp3",
+   "title": "もういちど、はじめまして",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/524",
+   "dur": 254.9,
+   "tags": [
+    "恋・愛"
+   ],
+   "energy": 1,
+   "bytes": 2549596
+  },
+  {
+   "id": "nw634",
+   "file": "audio/live/nw634.mp3",
+   "title": "Rise Ignition",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/634",
+   "dur": 281.5,
+   "tags": [
+    "ロック"
+   ],
+   "energy": 3,
+   "bytes": 2815523
+  },
+  {
+   "id": "nw519",
+   "file": "audio/live/nw519.mp3",
+   "title": "君が泣いた分だけ、僕は立ち上がる",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/519",
+   "dur": 240.0,
+   "tags": [
+    "ロック"
+   ],
+   "energy": 3,
+   "bytes": 2400176
+  },
+  {
+   "id": "nw811",
+   "file": "audio/live/nw811.mp3",
+   "title": "泣き虫ヒーロー",
+   "site": "フリーボーカルMusic【NeWorld】",
+   "credit": "音楽：NeWorld　作詞・作曲：R2　歌：aya",
+   "url": "https://music.freegame-contest.com/archives/811",
+   "dur": 289.7,
+   "tags": [
+    "ロック"
+   ],
+   "energy": 3,
+   "bytes": 2897025
+  },
+  {
+   "id": "ht-soranomukou",
+   "file": "audio/live/ht-soranomukou.mp3",
+   "title": "ソラノムコウ",
+   "site": "独り音",
+   "credit": "音楽：独り音",
+   "url": "https://hitorioto.com/soranomukou/",
+   "dur": 83.1,
+   "tags": [
+    "爽やか",
+    "明るい",
+    "ポップ"
+   ],
+   "energy": 3,
+   "bytes": 831261
+  },
+  {
+   "id": "ht-vocal-13",
+   "file": "audio/live/ht-vocal-13.mp3",
+   "title": "隣で唄った夏の歌を",
+   "site": "独り音",
+   "credit": "音楽：独り音",
+   "url": "https://hitorioto.com/vocal-13/",
+   "dur": 92.0,
+   "tags": [
+    "爽やか",
+    "明るい",
+    "ポップ"
+   ],
+   "energy": 3,
+   "bytes": 920600
+  },
+  {
+   "id": "ht-vocal-14",
+   "file": "audio/live/ht-vocal-14.mp3",
+   "title": "飛行線",
+   "site": "独り音",
+   "credit": "音楽：独り音",
+   "url": "https://hitorioto.com/vocal-14/",
+   "dur": 100.1,
+   "tags": [
+    "爽やか",
+    "明るい",
+    "ポップ"
+   ],
+   "energy": 3,
+   "bytes": 1001580
+  },
+  {
+   "id": "ht-vocal-16",
+   "file": "audio/live/ht-vocal-16.mp3",
+   "title": "トラックメイカーと踊る",
+   "site": "独り音",
+   "credit": "音楽：独り音",
+   "url": "https://hitorioto.com/vocal-16/",
+   "dur": 90.7,
+   "tags": [
+    "楽しい",
+    "かっこいい",
+    "エレクトロニカ"
+   ],
+   "energy": 3,
+   "bytes": 907539
+  },
+  {
+   "id": "ht-vocal-17",
+   "file": "audio/live/ht-vocal-17.mp3",
+   "title": "東京シティビュー",
+   "site": "独り音",
+   "credit": "音楽：独り音",
+   "url": "https://hitorioto.com/vocal-17/",
+   "dur": 79.4,
+   "tags": [
+    "穏やか",
+    "オシャレ",
+    "エレクトロニカ"
+   ],
+   "energy": 2,
+   "bytes": 794429
+  },
+  {
+   "id": "ht-gamusixyarara",
+   "file": "audio/live/ht-gamusixyarara.mp3",
+   "title": "ガムシャララ",
+   "site": "独り音",
+   "credit": "音楽：独り音",
+   "url": "https://hitorioto.com/gamusixyarara/",
+   "dur": 76.9,
+   "tags": [
+    "かっこいい",
+    "明るい",
+    "ロック"
+   ],
+   "energy": 3,
+   "bytes": 769612
+  },
+  {
+   "id": "ht-vocal-31",
+   "file": "audio/live/ht-vocal-31.mp3",
+   "title": "人生きっと",
+   "site": "独り音",
+   "credit": "音楽：独り音",
+   "url": "https://hitorioto.com/vocal-31/",
+   "dur": 85.8,
+   "tags": [
+    "明るい",
+    "優しい",
+    "ポップ"
+   ],
+   "energy": 3,
+   "bytes": 858690
+  },
+  {
+   "id": "ht-vocal-32",
+   "file": "audio/live/ht-vocal-32.mp3",
+   "title": "ずっと好き",
+   "site": "独り音",
+   "credit": "音楽：独り音",
+   "url": "https://hitorioto.com/vocal-32/",
+   "dur": 102.9,
+   "tags": [
+    "明るい",
+    "優しい",
+    "ポップ"
+   ],
+   "energy": 3,
+   "bytes": 1029792
+  }
+ ]
+}
