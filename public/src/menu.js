@@ -5,7 +5,7 @@
 // キャラメイクの画面は、タブで 髪型の一覧・髪色・目の色の色見本 (hairstyle.js)。選ぶとすぐ変わる。
 // カメラは、着替え・キャラメイクの画面で、キャラの正面へ寄せる。
 import { yen, SLOTS } from './wardrobe.js';
-import { PALETTE, EYE_PALETTE } from './hairstyle.js';
+import { PALETTE, EYE_PALETTE, SKIN_PALETTE } from './hairstyle.js';
 
 export class Menu {
   constructor({ wardrobe, hairStyle, player, cam, dom, lock, unlock, actions }) {
@@ -109,8 +109,8 @@ export class Menu {
   }
 
   // 色のタブ (髪色・目の色) の見ている対象: 色見本の一覧 (先頭は「元の色」)・いまの色
-  colorList() { return [{ hex: null, name: '元の色' }, ...(this.cmTab === 'eye' ? EYE_PALETTE : PALETTE)]; }
-  curColor() { return (this.cmTab === 'eye' ? this.hairStyle?.eyeColor : this.hairStyle?.color) || null; }
+  colorList() { return [{ hex: null, name: '元の色' }, ...(this.cmTab === 'eye' ? EYE_PALETTE : this.cmTab === 'skin' ? SKIN_PALETTE : PALETTE)]; }
+  curColor() { return (this.cmTab === 'eye' ? this.hairStyle?.eyeColor : this.cmTab === 'skin' ? this.hairStyle?.skinColor : this.hairStyle?.color) || null; }
 
   colorIndex() {
     const c = this.curColor();
@@ -123,6 +123,9 @@ export class Menu {
     if (this.cmTab === 'eye') {
       if (!this.hairStyle.setEyeColor(hex)) return;
       this.player.model.setEyeColor(this.hairStyle.eyeColor);
+    } else if (this.cmTab === 'skin') {
+      if (!this.hairStyle.setSkinColor(hex)) return;
+      this.player.model.setSkinColor(this.hairStyle.skinColor);
     } else {
       if (!this.hairStyle.setColor(hex)) return;
       this.player.model.setHairColor(this.hairStyle.color);
@@ -159,7 +162,7 @@ export class Menu {
     if (this.screen === 'main') {
       h += `<div class="mn-list">
         <button class="mn-item" data-do="wardrobe">着替え<small>持っている服に着替える</small></button>
-        <button class="mn-item" data-do="charmake">キャラメイク<small>髪型を選ぶ</small></button>
+        <button class="mn-item" data-do="charmake">キャラメイク<small>髪型・髪色・目の色・肌の色</small></button>
         <button class="mn-item" data-do="map">地図<small>M</small></button>
         <button class="mn-item" data-do="time">時間帯を変える<small>T</small></button>
         <button class="mn-item" data-do="photo">撮影モード<small>I　画面の表示を消す</small></button>
@@ -188,7 +191,7 @@ export class Menu {
       h += `</div><div class="mn-msg">${this.msg || (items.length ? '' : 'いまは売っている服がありません')}</div><button class="mn-item mn-close" data-do="place">もどる<small>Esc</small></button>`;
     } else if (this.screen === 'charmake') {
       // キャラメイク: タブ (髪型 / 髪色) + 一覧
-      const tabs = [['style', '髪型'], ['color', '髪色'], ['eye', '目の色']];
+      const tabs = [['style', '髪型'], ['color', '髪色'], ['eye', '目の色'], ['skin', '肌の色']];
       h += '<div class="mn-tabs">' + tabs.map(([k, n]) => `<button class="mn-tab${k === this.cmTab ? ' on' : ''}" data-cmtab="${k}">${n}</button>`).join('') + '</div>';
       if (this.cmTab !== 'style') {
         const cur = this.curColor();
@@ -200,7 +203,7 @@ export class Menu {
             : `<button class="mn-sw mn-sw-orig${on ? ' on' : ''}${i === this.sel ? ' sel' : ''}" data-color="none" title="元の色" aria-label="元の色">元</button>`;
         });
         h += `</div><label class="mn-pick">好きな色 <input type="color" id="mn-color" value="${cur || '#6b4630'}"></label>`;
-        h += `<div class="mn-msg">${this.msg || (cur ? '' : this.cmTab === 'eye' ? '元の色です。色を選ぶと、目の色が変わります' : '元の色です。色を選ぶと、髪の色が変わります')}</div>`;
+        h += `<div class="mn-msg">${this.msg || (cur ? '' : this.cmTab === 'eye' ? '元の色です。色を選ぶと、目の色が変わります' : this.cmTab === 'skin' ? '元の色です。色を選ぶと、肌の色が変わります' : '元の色です。色を選ぶと、髪の色が変わります')}</div>`;
       } else {
         const cur = this.hairStyle?.id || 'none', bodies = { female: '女性向き', male: '男性向き' };
         h += '<div class="mn-list">';
@@ -300,7 +303,7 @@ export class Menu {
       this.setSlot(SLOTS[(i + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return;
     }
     // キャラメイクのタブは ← → で切り替える
-    if (this.screen === 'charmake' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { const T = ['style', 'color', 'eye'], n = T.length; this.setCmTab(T[(T.indexOf(this.cmTab) + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return; }
+    if (this.screen === 'charmake' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { const T = ['style', 'color', 'eye', 'skin'], n = T.length; this.setCmTab(T[(T.indexOf(this.cmTab) + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return; }
     // 一覧 (着替え・店・服) の選び方: ↑↓ で動かし、Enter で決める
     const rows = this.screen === 'wardrobe' ? this.list() : this.screen === 'charmake' ? (this.cmTab === 'style' ? this.hairList() : this.colorList()) : this.screen === 'place' ? this.place.shops : this.screen === 'shop' ? this.stock(this.shop) : null;
     if (!rows || !rows.length) return;

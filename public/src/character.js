@@ -11,6 +11,7 @@ import { sampleMotion, loadMotion, getMotion } from './motion.js';
 import { Outfitter } from './outfit.js';
 import { Hairdresser } from './hair.js';
 import { Eyedresser } from './eyes.js';
+import { Skindresser } from './skin.js';
 
 // 歩き・走り・待機・空中・着地を、動きのデータ (Quaternius の Universal Animation Library、CC0) で動かす。
 // URL に ?handmade で、以前の手作りの動きに戻す。階段は手作りのまま (データに階段の動きが無いため)
@@ -964,6 +965,8 @@ export function makeCharacter(opt = {}) {
   let wantHairColor = null;
   let eyedresser = null, wantEyeColor = null;
   const setEyeColor = (hex) => { wantEyeColor = hex || null; eyedresser?.setColor(wantEyeColor); }; // 目の色 ('#rrggbb'。null = 元の色)
+  let skindresser = null, wantSkinColor = null;
+  const setSkinColor = (hex) => { wantSkinColor = hex || null; skindresser?.setColor(wantSkinColor); }; // 肌の色 ('#rrggbb'。null = 元の色)
   const setHairColor = (hex) => { wantHairColor = hex || null; hairdresser?.setColor(wantHairColor); }; // 髪色 ('#rrggbb'。null = 元の色)。いつもの髪にも効く
 
   async function loadVRM(url) {
@@ -1019,6 +1022,8 @@ export function makeCharacter(opt = {}) {
       if (wantOutfits) outfitter.set(wantOutfits);
       eyedresser = new Eyedresser(vrm);
       if (wantEyeColor) eyedresser.setColor(wantEyeColor);
+      skindresser = new Skindresser(vrm);
+      if (wantSkinColor) skindresser.setColor(wantSkinColor);
       hairdresser = new Hairdresser(vrm);
       if (wantHairColor) hairdresser.setColor(wantHairColor);
       if (wantHair) hairdresser.set(wantHair);
@@ -1041,5 +1046,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor };
 }
