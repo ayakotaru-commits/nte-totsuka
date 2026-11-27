@@ -50,8 +50,8 @@ const ok = (name, cond, extra = '') => { total++; if (!cond) bad++; console.log(
   // 画面の部品の表示 (display が none でないものの id)
   const visibleUi = (page) => page.evaluate(() => [...document.body.children].filter(e => e.id && !['app', 'photo-ui'].includes(e.id) && e.tagName !== 'SCRIPT' && getComputedStyle(e).display !== 'none').map(e => e.id));
 
-  // ===== PC =====
-  {
+  // ===== PC =====  (PHOTO_ONLY=touch でスマホだけ)
+  if (process.env.PHOTO_ONLY !== 'touch') {
     const { ctx, page } = await open({ viewport: { width: 1000, height: 600 }, deviceScaleFactor: 1 });
     await page.mouse.click(500, 300); // 開始
     await page.waitForTimeout(1500);
@@ -164,8 +164,8 @@ const ok = (name, cond, extra = '') => { total++; if (!cond) bad++; console.log(
     }
     // ↑は指を広げる = 近づく。狭める = 遠ざかる
     for (let k = 0; k < 10; k++) {
-      await touch('touchStart', [[180, 200], [660, 200]]);
-      for (let i = 1; i <= 4; i++) { await touch('touchMove', [[180 + i * 100, 200], [660 - i * 100, 200]]); await wait(30); }
+      await touch('touchStart', [[100, 200], [740, 200]]);
+      for (let i = 1; i <= 4; i++) { await touch('touchMove', [[100 + i * 50, 200], [740 - i * 50, 200]]); await wait(30); } // 640 → 240 px (指は交差させない)
       await touch('touchEnd', []); await wait(120);
     }
     const c2 = await camState();
