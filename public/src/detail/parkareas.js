@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { makeWallPatcher } from './textures.js';
 import { buildRides } from './parkrides.js';
+import { buildLive } from './parklive.js';
 import { mergeStaticMeshes } from './mergestatic.js';
 import { makeFacadeKit, facadeDetail, floorLayout } from './parkfacade.js';
 import { buildBunting, buildSmoke } from './parkfx.js';
@@ -563,6 +564,8 @@ export function buildAreas(ctx) {
 
   // ---------- 乗り物 (段階 3。観覧車・メリーゴーラウンド・コースター) ----------
   api.rides = buildRides({ cfg, ground, std, glowMat, group, col, emissive });
+  // ---------- ライブ会場 (コースターの跡地。サンライズ・ライブステージ。parklive.js。?nolive で無効 = 確認用) ----------
+  api.live = new URLSearchParams(location.search).has('nolive') ? null : buildLive({ cfg, ground, std, glowMat, group, col, emissive, low });
 
   api.stats.signs = G.signs.length;
   api.stats.meshes = api.group.children.length;

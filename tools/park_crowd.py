@@ -4,7 +4,7 @@
   道どうしの交わる所で切ってつなぐ (T 字・十字の交差で人が引き返さないように。切るのは「道の端が別の道の 6 m 以内」のとき)。
   輪は 2 本の半円にして、つなぎ目で人が引き返さないようにする。決まった乱数は使わない (設定だけから決まる)。
   使う側: public/src/crowdsim.js (街を歩く人の仕組みを流用。k = 'p' の通り道は園内用)、public/src/crowd.js。
-地図の印・ワープ先 (spots): ゲート・サンライズ・プラザ・観覧車・コースター・ムーンレイク・7 エリア。位置は必ず通り道の上の点 (建物・木の上ではない。
+地図の印・ワープ先 (spots): ゲート・サンライズ・プラザ・観覧車・ライブ会場・ムーンレイク・7 エリア。位置は必ず通り道の上の点 (建物・木の上ではない。
   ワープ先は、遠くから跳んだときに園内がまだ読み込まれていなくても、建物の中に出ないように通り道の点にする)。
     python tools/park_crowd.py --plot 出力.png   平面図 (通り道・つなぎ目・印)
 """
@@ -160,9 +160,11 @@ def generate(out):
         for key, extra in (("ferris", 6.0), ("carousel", 4.0)):
             if key in rd and math.hypot(rd[key]["x"] - x, rd[key]["z"] - z) < rd[key]["R"] + extra:
                 return False
-        if "coaster" in rd:
-            cp = [q[:2] for q in rd["coaster"]["pts"]]
-            if min(seg_dist(x, z, cp[i], cp[(i + 1) % len(cp)]) for i in range(len(cp))) < 8:    # コースターの柱・レール
+        if "live" in rd:   # ライブ会場のステージ (奥の 30 m) と、その両わきの機材
+            L = rd["live"]
+            lx, lz = x - L["x"], z - L["z"]
+            u, v = lx * math.cos(L["yaw"]) - lz * math.sin(L["yaw"]), lx * math.sin(L["yaw"]) + lz * math.cos(L["yaw"])
+            if abs(u) < L["width"] / 2 + 2 and v < -L["depth"] / 2 + 30:
                 return False
         if math.hypot(x - out["tower"]["at"][0], z - out["tower"]["at"][1]) < out["tower"]["radius"] + 5:
             return False
@@ -202,11 +204,13 @@ def generate(out):
         f = rd["ferris"]
         q = near(f["x"], f["z"], f["R"] + 12)
         spot("観覧車", "ferris", q[0], q[1], f["x"], f["z"], 1, "輪", "#00bbf9")
-    if "coaster" in rd:
-        k = rd["coaster"]
-        sx, sz = k["pts"][k["stationIdx"][0]][:2]
-        q = near(sx, sz, 12)
-        spot(k["name"], "coaster", q[0], q[1], sx, sz, 1, "速", "#ff6b35")
+    if "live" in rd:   # ライブ会場: 前の柵のすぐ後ろの客席 (ステージの前の端から 34 m) に立ってステージを見る
+        k = rd["live"]
+        cs_, sn_ = math.cos(k["yaw"]), math.sin(k["yaw"])
+        wp = lambda u, v: (k["x"] + u * cs_ + v * sn_, k["z"] - u * sn_ + v * cs_)
+        sx, sz = wp(0, -k["depth"] / 2 + 46)
+        tx, tz = wp(0, -k["depth"] / 2 + 12)
+        spot(k["name"], "live", sx, sz, tx, tz, 1, "歌", "#ff6b35")
     # 城: 前の堤道の入口 (門の前の前庭。湖の中なので歩ける点を直接決める)
     if cas:
         sx, sz = CW(0, 56)

@@ -771,48 +771,41 @@ def make_rides(cfg, R, info, out, site, ellipses, circles, inner, park_paths, el
         d, q = nearest_path_pt(pl["x"], pl["z"])
         rides["carousel"] = {"x": pl["x"], "z": pl["z"], "yaw": rl(math.atan2(q[0] - pl["x"], q[1] - pl["z"])), "R": c["R"], "a": ai}
 
-    # コースター: 形の輪を、エリアの外・湖・道・敷地の縁から離れた空き地に置く。near の中心に近い順に、向きを変えて試す
-    k = R.get("coaster")
+    # ライブ会場: コースターの跡地。広場の中心へ向いた長方形 (幅 width × 奥行き depth。奥にステージ、手前が客席) を、
+    # エリアの外・湖・道・敷地の縁から離れた空き地に置く。near の中心に近い順に探す (乱数なし)。
+    k = R.get("live")
     if k:
-        shape, clear = k["shape"], k.get("clear", 7)
-        dense = []
-        for i in range(len(shape)):
-            a, b = shape[i], shape[(i + 1) % len(shape)]
-            n = max(1, int(math.hypot(b[0] - a[0], b[1] - a[1]) / 4))
-            for j in range(n):
-                dense.append((a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n))
+        W, D, clear = k["width"], k["depth"], k.get("clear", 7)
+        face = ellipses[k["faceTo"]]["center"]
         near = cfg["areas"][k["near"]]
         ncx, ncz = sum(q[0] for q in near) / len(near), sum(q[1] for q in near) / len(near)
         area_polys = [a for n, a in cfg["areas"].items() if not n.startswith("_")]
         xs, zs = [q[0] for q in site], [q[1] for q in site]
-        cands = []
-        for cx in range(int(min(xs)), int(max(xs)), 6):
-            for cz in range(int(min(zs)), int(max(zs)), 6):
-                for deg in range(0, 180, 15):
-                    cands.append((math.hypot(cx - ncx, cz - ncz), cx, cz, deg))
-        cands.sort()
+        cands = sorted((math.hypot(cx - ncx, cz - ncz), cx, cz) for cx in range(int(min(xs)), int(max(xs)), 4) for cz in range(int(min(zs)), int(max(zs)), 4))
         chosen = None
-        for dist, cx, cz, deg in cands:
-            yaw = math.radians(deg)
+        for dist, cx, cz in cands:
+            yaw = math.atan2(face[0] - cx, face[1] - cz)   # 前 = 広場の中心の向き (ローカル z が前)
             cs, sn = math.cos(yaw), math.sin(yaw)
             ok = True
-            for u, v in dense:
-                x, z = cx + u * cs + v * sn, cz - u * sn + v * cs
-                if not inside(x, z, site, 12) or ell_hit(x, z, 4.0) or any(math.hypot(x - c0[0], z - c0[1]) < c0[2] + 4 for c0 in circles) or not path_clear(x, z, 5.0):
-                    ok = False
-                    break
-                if any(inpoly(x, z, ap) or poly_edge_dist(x, z, ap) < clear for ap in area_polys):
-                    ok = False
+            for iu in range(int(W // 5) + 1):
+                for iv in range(int(D // 5) + 1):
+                    u, v = -W / 2 + iu * W / int(W // 5), -D / 2 + iv * D / int(D // 5)
+                    x, z = cx + u * cs + v * sn, cz - u * sn + v * cs
+                    if not inside(x, z, site, 12) or ell_hit(x, z, 2.0) or any(math.hypot(x - c0[0], z - c0[1]) < c0[2] + 4 for c0 in circles) or not path_clear(x, z, 4.0):
+                        ok = False
+                    elif any(inpoly(x, z, ap) or poly_edge_dist(x, z, ap) < clear for ap in area_polys):
+                        ok = False
+                    if not ok:
+                        break
+                if not ok:
                     break
             if ok:
                 chosen = (cx, cz, yaw)
                 break
         if chosen is None:
-            sys.exit("park_areas: コースターを置ける空き地が無い")
+            sys.exit("park_areas: ライブ会場を置ける空き地が無い")
         cx, cz, yaw = chosen
-        cs, sn = math.cos(yaw), math.sin(yaw)
-        pts = [[rl(cx + u * cs + v * sn), rl(cz - u * sn + v * cs), h] for u, v, h in shape]
-        rides["coaster"] = {"name": k["name"], "roman": k.get("roman", k["name"]), "x": cx, "z": cz, "yaw": rl(yaw), "pts": pts, "liftIdx": k["liftIdx"], "stationIdx": k["stationIdx"], "near": k["near"]}
+        rides["live"] = {"name": k["name"], "roman": k.get("roman", k["name"]), "x": cx, "z": cz, "yaw": rl(yaw), "width": W, "depth": D, "near": k["near"]}
     return rides
 
 
@@ -827,8 +820,8 @@ def stats(gen):
         rows.append(f"  {n}: 建物 {sum(1 for b in gen['buildings'] if b['a'] == i)}・木 {sum(1 for t in gen['trees'] if t[4] == i)}・道 {sum(1 for p in gen['paths'] if p['a'] == i)}・広場 {sum(1 for p in gen['plazas'] if p['a'] == i)}・街灯 {sum(1 for p in gen['lamps'] if p[2] == i)}・植え込み {sum(1 for p in gen['beds'] if p[6] == i)}・特別な物 {sum(1 for p in gen['props'] if p['a'] == i)}")
     rd = gen.get("rides", {})
     if rd:
-        k = rd.get("coaster")
-        rows.append("  乗り物: " + "・".join(n for n in ("観覧車" if "ferris" in rd else "", "メリーゴーラウンド" if "carousel" in rd else "", f"コースター（{k['name']}、輪の中心 {k['x']:.0f}, {k['z']:.0f}、点 {len(k['pts'])}）" if k else "") if n))
+        k = rd.get("live")
+        rows.append("  乗り物: " + "・".join(n for n in ("観覧車" if "ferris" in rd else "", "メリーゴーラウンド" if "carousel" in rd else "", f"ライブ会場（{k['name']}、中心 {k['x']:.0f}, {k['z']:.0f}、{k['width']:.0f}×{k['depth']:.0f} m）" if k else "") if n))
     return f"建物 {len(gen['buildings'])}・木 {len(gen['trees'])}・看板 {len(gen['signs'])}・門 {len(gen['arches'])}\n" + "\n".join(rows)
 
 
@@ -865,8 +858,10 @@ def plot(cfg, gen, path):
     for a in gen["arches"]:
         g.ellipse([*P((a["x"] - 3, a["z"] - 3)), *P((a["x"] + 3, a["z"] + 3))], fill="magenta")
     rd = gen.get("rides", {})
-    if "coaster" in rd:
-        pts = [P(q) for q in rd["coaster"]["pts"]]
+    if "live" in rd:
+        v = rd["live"]
+        cs, sn = math.cos(v["yaw"]), math.sin(v["yaw"])
+        pts = [P((v["x"] + u * cs + w * sn, v["z"] - u * sn + w * cs)) for u, w in ((-v["width"] / 2, -v["depth"] / 2), (v["width"] / 2, -v["depth"] / 2), (v["width"] / 2, v["depth"] / 2), (-v["width"] / 2, v["depth"] / 2))]
         g.line(pts + [pts[0]], fill="#d00", width=3)
     for key, r in (("ferris", 13.5), ("carousel", 7.4)):
         if key in rd:
