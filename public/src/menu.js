@@ -108,6 +108,7 @@ export class Menu {
         <button class="mn-item" data-do="wardrobe">着替え<small>持っている服に着替える</small></button>
         <button class="mn-item" data-do="map">地図<small>M</small></button>
         <button class="mn-item" data-do="time">時間帯を変える<small>T</small></button>
+        <button class="mn-item" data-do="photo">撮影モード<small>I　画面の表示を消す</small></button>
         <button class="mn-item" data-do="help">操作の説明を出す・隠す<small>H</small></button>
         <button class="mn-item mn-close" data-do="close">閉じる<small>Tab</small></button></div>`;
     } else if (this.screen === 'ask') {
@@ -190,6 +191,7 @@ export class Menu {
     else if (d === 'close') this.close();
     else if (d === 'map') { this.close(); this.actions.map(); }
     else if (d === 'time') this.actions.time();
+    else if (d === 'photo') { this.close(); this.actions.photo(); }
     else if (d === 'help') this.actions.help();
   }
 

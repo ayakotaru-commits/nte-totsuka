@@ -320,3 +320,12 @@ body.touch #menu-btn { display: none; }
 .mn-tabs { display: flex; gap: 6px; }
 .mn-tab { flex: 1; font: inherit; font-size: 13px; color: #fff; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.35); border-radius: 8px; padding: 8px 2px; min-height: 40px; cursor: pointer; }
 .mn-tab.on { background: rgba(95,211,255,.35); border-color: #5fd3ff; }
+
+/* 撮影モード (src/photo.js): #app (街の絵) と #photo-ui 以外の部品を全部消す。人・車は止まる */
+body.photo > *:not(#app):not(#photo-ui) { display: none !important; }
+#photo-ui { display: none; }
+body.photo #photo-ui { display: block; }
+#photo-hint { position: fixed; left: 50%; bottom: calc(14% + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 40; padding: 8px 18px; border-radius: 999px; background: rgba(10,20,35,.6); color: #fff; font-size: 14px; white-space: nowrap; text-shadow: 0 1px 3px #000; pointer-events: none; opacity: 0; transition: opacity .4s; }
+#photo-hint.show { opacity: 1; }
+#photo-exit { position: fixed; right: calc(14px + env(safe-area-inset-right)); top: calc(14px + env(safe-area-inset-top)); z-index: 41; height: 40px; padding: 0 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,.7); background: rgba(10,20,35,.7); color: #fff; font: inherit; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .4s; }
+#photo-exit.show { opacity: 1; pointer-events: auto; }

@@ -12,7 +12,7 @@ const STICK_R = 56;      // スティックを倒しきるまでの距離 (px)
 const STICK_AREA = 0.45; // 画面の左からこの割合までが移動、残りが視点
 const LOOK = 0.006;      // 視点の速さ (rad/px)
 
-export function setupTouch({ dom, input, cam, streetView, warp }) {
+export function setupTouch({ dom, input, cam, streetView, warp, photo }) {
   const $ = (id) => document.getElementById(id);
   document.body.classList.add('touch');
   $('touch-ui').hidden = false;
@@ -25,9 +25,16 @@ export function setupTouch({ dom, input, cam, streetView, warp }) {
   const look = new Map();   // 視点に使っている指 (pointerId → 位置)
   const spread = () => { const [a, b] = [...look.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
   let pinch = 0;
+  let tap = null;           // 撮影モードで、動かさずに離したら「終了ボタンを出す」ためのタップ判定
 
   dom.addEventListener('pointerdown', (e) => {
     dom.setPointerCapture?.(e.pointerId);
+    if (photo?.active) { // 撮影モード: 画面のどこでも視点 (スティックは出さない)
+      look.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      tap = look.size === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() } : null;
+      if (look.size === 2) pinch = spread();
+      return;
+    }
     if (!move && e.clientX < innerWidth * STICK_AREA) {
       move = { id: e.pointerId, x: e.clientX, y: e.clientY };
       stick.style.left = e.clientX + 'px'; stick.style.top = e.clientY + 'px';
@@ -51,6 +58,7 @@ export function setupTouch({ dom, input, cam, streetView, warp }) {
     if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
     p.x = e.clientX; p.y = e.clientY;
+    if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 12) tap = null;
     if (look.size >= 2) { const d = spread(); cam.zoom(pinch / d); pinch = d; }
     else cam.rotate(dx * LOOK, dy * LOOK);
   });
@@ -59,6 +67,8 @@ export function setupTouch({ dom, input, cam, streetView, warp }) {
       move = null; input.ax = input.az = 0;
       stick.classList.remove('on');
     }
+    if (tap && tap.id === e.pointerId && e.type === 'pointerup' && performance.now() - tap.t < 500) photo?.showExit();
+    if (tap && tap.id === e.pointerId) tap = null;
     look.delete(e.pointerId);
     if (look.size === 2) pinch = spread();
   };
