@@ -55,6 +55,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await frames(4);
   await page.screenshot({ path: path.join(out, 'b_changed.png') });
   // キーボード: ↑↓ で行を移し、← → で値を変える (スライダーにフォーカスがある)
+  await page.keyboard.press('ArrowDown'); await frames(3); // 末尾 (あごの長さ) の次は先頭の「元に戻す」
   await page.keyboard.press('ArrowDown'); await frames(3);
   const foc = await page.evaluate(() => document.activeElement?.dataset?.face);
   ok(!!foc, '↑↓ で行を移すとスライダーにフォーカス: ' + foc);
