@@ -152,7 +152,7 @@
 ### 確認したこと
 - `python tools/park.py` 2 回で `public/data/park.json` が同じ（md5 一致）、`--undo` で消える。`park_areas.py --plot` の平面図で、建物が道・広場・湖・柵・ほかの建物に重ならないこと（生成時に判定）を見た。
 - ゲーム画面（`parkshot.js`。門・主な通り・上から・特別な物 計 29 枚 + アベニュー）を全部見た。途中で直したこと: アベニューの門がゲートの看板と重なった（位置をずらした）、平らな屋根の縁取りと屋根面が同じ高さで白い筋が出た（縁取りを枠だけに）、火山が暗い（色を明るく）。
-- `node tools/dev/parkcheck.js --quick`（段階 2 の項目を足した。結果は CLAUDE.md）。
+- `node tools/dev/parkcheck.js --quick`（段階 2 の項目を足した。結果は docs/history/park.md）。
 - **未確認**: 実機（スマホ・PC）の重さ・読み込み、操作しての感じ、夜の見え方（看板・街灯は光るが画面では見ていない）、建物の屋根に上れるか（パルクール）、`build_city.py`・`rail_ext.py` の通し。
 
 ### 気になる点・次の候補
@@ -199,7 +199,7 @@
 - 地形が読めた後に作る光る材質（`buildAreas`・`buildRides` 内）が、夜に光る材質の配列（`built.windowMats`）に渡っていなかった。段階 2・3 の看板・街灯・火山・電球は夜に光っていなかったことになる。`buildPark` の `opts.sink` で直した。
 
 ### 確認したこと・未確認
-CLAUDE.md の「段階 4」の項に同じ。確認の道具: `tools/dev/showcheck.js`（16 項目）、`parkshot.js --night/--dusk`（視点 `n*`・`f*`・`q*`）。
+docs/history/park.md の「段階 4」の項に同じ。確認の道具: `tools/dev/showcheck.js`（16 項目）、`parkshot.js --night/--dusk`（視点 `n*`・`f*`・`q*`）。
 
 ### 次の一歩
 段階 5（人・地図・イベント）: 園内の人（`crowd`）、ミニマップ・大きい地図の印とワープ先、ショーの時刻の案内（次のパレード・花火まで）、観客。
