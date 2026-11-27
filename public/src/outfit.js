@@ -123,7 +123,7 @@ export async function fitOutfit(src, vrm, { parts = /./, scale = 1.04, head = nu
 // 服の切り替え (枠ごと)。読み込んだ服は覚えておき、2 回目からは表示を切り替えるだけ。
 //   set({ tops, bottoms, shoes, onepiece }) 各値は 服のファイルの URL か null (= いつもの)。
 //   今のキャラ自身の服は、枠ごとに「その枠に服がある」ときだけ隠す (ワンピースは トップスとボトムスの両方を隠す)。
-const OWN_SLOT = { tops: /Tops/, bottoms: /Bottoms/, shoes: /Shoes/ };
+const OWN_SLOT = { tops: /Tops|Accessory/, bottoms: /Bottoms/, shoes: /Shoes/ };
 export class Outfitter {
   constructor(vrm) {
     this.vrm = vrm;

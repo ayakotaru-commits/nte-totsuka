@@ -12,6 +12,7 @@ import { Outfitter } from './outfit.js';
 import { Hairdresser } from './hair.js';
 import { Eyedresser } from './eyes.js';
 import { Skindresser } from './skin.js';
+import { BODIES, savedBody } from './hairstyle.js';
 
 // 歩き・走り・待機・空中・着地を、動きのデータ (Quaternius の Universal Animation Library、CC0) で動かす。
 // URL に ?handmade で、以前の手作りの動きに戻す。階段は手作りのまま (データに階段の動きが無いため)
@@ -43,7 +44,8 @@ function gradientMap() {
 // VRM のファイルの取得と解読 (形を組み立てる前まで)。main.js がページを開いた直後に preloadVRM() で始めておき、
 // 街を作っている間に済ませる (以前は街の生成の後に始まり、開始直後は組み立て式のキャラが出てから差し替わっていた)。
 // 先読みした結果は 1 回だけ使う (2 体目からは読み直す。同じ形を 2 か所に置けないため)
-const VRM_URL = new URL('../models/player.vrm', import.meta.url).href;
+const bodyUrl = (id) => new URL('../models/' + (BODIES.find((b) => b.id === id) || BODIES[0]).url, import.meta.url).href;
+const VRM_URL = bodyUrl(savedBody()); // 起動時に選んでいた体 (キャラメイク)。切り替えは setBody
 let vrmPreload = null;
 async function fetchVRM(url) {
   const head = await fetch(url, { method: 'HEAD' });
@@ -982,12 +984,17 @@ export function makeCharacter(opt = {}) {
     vrm.humanoid.getRawBoneNode('head')?.scale.setScalar(hk); // キャラの頭の模型 (標準化した骨の倍率は元の骨へ伝わらない)
   };
   const setHeight = (hs) => { wantHeight = hs > 0 ? hs : 1; applyHeight(); };
+  // 体 (キャラメイク): setBody('female' | 'male')。選んだ体のモデルを読み込んで差し替える。髪・服・色・身長は引き継ぐ
+  const setBody = (id) => { if (id === curBody || !BODIES.some((b) => b.id === id)) return Promise.resolve(); curBody = id; return loadVRM(bodyUrl(id)); };
   const setHairColor = (hex) => { wantHairColor = hex || null; hairdresser?.setColor(wantHairColor); }; // 髪色 ('#rrggbb'。null = 元の色)。いつもの髪にも効く
 
+  let loadToken = 0, curBody = savedBody();
   async function loadVRM(url) {
+    const token = ++loadToken;
     try {
       const gltf = await takeVRM(url);
       if (!gltf) return; // モデルが置かれていなければ何もしない
+      if (token !== loadToken) return; // 読み込み中にまた別の体が選ばれた
       const { VRMUtils } = await import('@pixiv/three-vrm');
       const vrm = gltf.userData.vrm;
       if (!vrm) throw new Error('VRM ではないファイル');
@@ -1031,8 +1038,10 @@ export function makeCharacter(opt = {}) {
         armBase = [SH_UP, ARM_A, ARM_B];
         console.info(`VRM の寸法: 腰→肩 ${SH_UP.toFixed(2)} m、上腕 ${ARM_A.toFixed(2)} m、前腕 ${ARM_B.toFixed(2)} m`);
       }
+      const old = vrmRig;
       vrmRig = { vrm, scale, hs: 1, nodes, minY, soles, fingers, flip: vrm.meta?.metaVersion === '0', hx0: nodes.hips.position.x, hz0: nodes.hips.position.z }; // 腰の高さは、以後 applyVRM が毎フレーム決める
       body.visible = false;
+      if (old) { root.remove(old.vrm.scene); VRMUtils.deepDispose?.(old.vrm.scene); } // 体の切り替え: 前の体を手放す (髪・服・目・肌は下で作り直す)
       root.add(vrm.scene);
       outfitter = new Outfitter(vrm); // 着せ替え (VRM のときだけ。ほかの人の組み立て式のキャラは対象外)
       if (wantOutfits) outfitter.set(wantOutfits);
@@ -1043,6 +1052,7 @@ export function makeCharacter(opt = {}) {
       applyHeight();
       hairdresser = new Hairdresser(vrm);
       if (wantHairColor) hairdresser.setColor(wantHairColor);
+      hairdresser.body = curBody; // 髪の合わせ (頭の数字) は体ごと
       if (wantHair) hairdresser.set(wantHair);
       console.info('VRM を読み込みました: ' + url);
     } catch (e) {
@@ -1063,5 +1073,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor, setHeight };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor, setHeight, setBody };
 }

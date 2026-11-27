@@ -1,7 +1,7 @@
 // キャラメイク: 選んだ髪型・髪色・目の色の保存。端末のブラウザ (localStorage) にだけ保存する (服の wardrobe.js と同じ)。
 // 髪の一覧は models/hairs/hairs.json (id・名前・合う体・tune)。髪のファイルは models/hairs/<id>.glb (tools/hairs.py で作る)。
 // 髪色・目の色は '#rrggbb' (null = 元の色)。色見本は PALETTE (髪)・EYE_PALETTE (目)。
-// 試すための URL: ?hair=<id> (その髪にする。保存はしない)、?hair=none (いつもの髪)、?haircolor=rrggbb (その髪色。保存はしない。none = 元の色)、?eyecolor=rrggbb (その目の色。同じ)、?skincolor=rrggbb (その肌の色。同じ)、?height=<cm> (その身長。145〜190 の 5 刻み。同じ)、?resetsave (保存を消す。wardrobe.js と共通)
+// 試すための URL: ?hair=<id> (その髪にする。保存はしない)、?hair=none (いつもの髪)、?haircolor=rrggbb (その髪色。保存はしない。none = 元の色)、?eyecolor=rrggbb (その目の色。同じ)、?skincolor=rrggbb (その肌の色。同じ)、?height=<cm> (その身長。145〜190 の 5 刻み。同じ)、?body=female|male (その体。同じ)、?resetsave (保存を消す。wardrobe.js と共通)
 const KEY = 'totsuka.look.v1';
 
 // 髪色の色見本 (メニュー)。自然な色から順に
@@ -23,7 +23,20 @@ export const SKIN_PALETTE = [
   { hex: '#b87c4f', name: '日焼け' }, { hex: '#996039', name: '褐色' }, { hex: '#7a4528', name: '濃い褐色' }, { hex: '#59301c', name: '深い褐色' },
   { hex: '#e8b8b0', name: '桃色がかった' }, { hex: '#c9d6e0', name: '青白い' }, { hex: '#a9c98e', name: '緑がかった' }, { hex: '#9b8fc4', name: '薄紫' },
 ];
-// 身長の選択肢 (cm)。今のキャラは約 160 cm (HEIGHT_BASE)。範囲は大人 (145〜190 cm)。null = 元の身長
+// 体 (キャラメイク): female = 今のキャラ (AvatarSample_A)、male = Base_Male (VRoid 公式 CC0)。モデルのファイルは models/player.vrm と models/bodies/male.vrm。
+export const BODIES = [{ id: 'female', name: '女性の体', url: 'player.vrm' }, { id: 'male', name: '男性の体', url: 'bodies/male.vrm' }];
+// 体ごとの元の身長 (cm)。どの体も、ゲームの中では同じ大きさに合わせて読み込む (character.js)。身長の倍率は cm / HEIGHT_BASE
+export const BODY_HEIGHT = { female: 160, male: 172 };
+export function savedBody() { // 起動時 (モデルを読み込む前) に、選んでいた体を知るため
+  try {
+    const q = new URLSearchParams(location.search).get('body');
+    if (q && BODY_HEIGHT[q]) return q;
+    const s = JSON.parse(localStorage.getItem('totsuka.look.v1') || 'null');
+    if (s && BODY_HEIGHT[s.body]) return s.body;
+  } catch (e) { /* 読めなければ今のキャラ */ }
+  return 'female';
+}
+// 身長の選択肢 (cm)。範囲は大人 (145〜190 cm)。null = その体の元の身長
 export const HEIGHT_BASE = 160;
 export const HEIGHTS = [145, 150, 155, 160, 165, 170, 175, 180, 185, 190];
 const isHex =(c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
@@ -32,6 +45,7 @@ export class HairStyle {
   constructor(catalog) {
     this.hairs = catalog.hairs || [];
     this.byId = new Map(this.hairs.map((h) => [h.id, h]));
+    this.body = savedBody(); // 選んでいる体 ('female' | 'male')
     this.id = null;          // 選んでいる髪の id (null = いつもの髪)
     this.color = null;       // 髪色 ('#rrggbb')。null = 元の色
     this.eyeColor = null;    // 目の色 ('#rrggbb')。null = 元の色
@@ -60,7 +74,7 @@ export class HairStyle {
   }
 
   save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, hair: this.id, color: this.color, eyeColor: this.eyeColor, skinColor: this.skinColor, height: this.height })); } catch (e) { /* 保存できない環境 (プライベートモードなど) */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, body: this.body, hair: this.id, color: this.color, eyeColor: this.eyeColor, skinColor: this.skinColor, height: this.height })); } catch (e) { /* 保存できない環境 (プライベートモードなど) */ }
   }
 
   onChange(fn) { this.listeners.push(fn); }
@@ -113,8 +127,19 @@ export class HairStyle {
     return true;
   }
 
-  // 身長の倍率 (今のキャラ = 1)
-  heightScale() { return (this.height || HEIGHT_BASE) / HEIGHT_BASE; }
+  // 体を選ぶ ('female' | 'male')。一覧に無い値は何もしない
+  setBody(id) {
+    if (!BODY_HEIGHT[id]) return false;
+    this.body = id; this.save();
+    for (const f of this.listeners) f(this);
+    return true;
+  }
+
+  // 選んでいる体の元の身長 (cm)
+  naturalHeight() { return BODY_HEIGHT[this.body]; }
+
+  // 身長の倍率 (今のキャラ = 1。男性の体の元の身長は 172 / 160)
+  heightScale() { return (this.height || this.naturalHeight()) / HEIGHT_BASE; }
 
   // 髪のファイルの URL
   urlOf(entry) { return new URL('../models/hairs/' + entry.id + '.glb', import.meta.url).href; }

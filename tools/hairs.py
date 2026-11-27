@@ -1,6 +1,6 @@
 """キャラメイク用の髪のファイルを作る: VRM (0.x) から髪のパーツだけを取り出して、小さな glb にする。
 
-  python tools/hairs.py <元の.vrm> <id> [--parts 正規表現] [--max-tex 1024]
+  python tools/hairs.py <元の.vrm> <id> [--parts 正規表現] [--max-tex 1024] [--outdir hairs]
     例: python tools/hairs.py data/raw/hairs/HairSample_Female.vrm hairsample_female
     出力: public/models/hairs/<id>.glb
 
@@ -125,7 +125,7 @@ class Pack:
         return len(self.views) - 1
 
 
-def player_main(src, dark):
+def player_main(src, dark, name='player_fit.json'):
     """今のキャラの顔の数字と、頭皮 (髪の色で塗られた地肌) の三角形の一覧を public/models/hairs/player_fit.json に書く。
     頭皮 = 顔と体のメッシュの肌の面 (材質名に _SKIN) のうち、模様の色が暗い (髪色で塗られた) 三角形。
     頭の殻は体のメッシュにある (Body_00_SKIN の 4 番目の面) ので、顔だけでなく体も見る。髪の下に敷く殻の元になる (public/src/hair.js)。"""
@@ -155,7 +155,7 @@ def player_main(src, dark):
             if keep: scalp.append({'material': mname, 'indexCount': len(idx), 'vertexCount': len(uv), 'index': keep})
     out = {'_note': 'tools/hairs.py --player が作る。顔の数字は頭の骨の関節からの相対 (元の座標。前が -z)。scalp は肌の面ごとの、頭皮の頂点番号 (3 つで 1 三角形)。面は 材質名 + 元の頂点番号の数 (indexCount) で見つける。',
            'metrics': face_metrics(j, b), 'scalp': scalp}
-    dst = os.path.join(ROOT, 'public', 'models', 'hairs', 'player_fit.json')
+    dst = os.path.join(ROOT, 'public', 'models', 'hairs', name)
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     json.dump(out, open(dst, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     print(f'{os.path.relpath(dst, ROOT)}  {os.path.getsize(dst) / 1e3:.0f} KB  頭皮の三角形', ' / '.join(f"{s['material'][-14:]} {len(s['index']) // 3}" for s in scalp))
@@ -163,13 +163,14 @@ def player_main(src, dark):
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == '--player':  # python tools/hairs.py --player <今のキャラの.vrm> [暗さのしきい値 0.55]
-        return player_main(sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else 0.55)
+    if len(sys.argv) > 1 and sys.argv[1] == '--player':  # python tools/hairs.py --player <今のキャラの.vrm> [暗さのしきい値 0.55] [出力のファイル名 player_fit.json。別の体は male_fit.json など]
+        return player_main(sys.argv[2], float(sys.argv[3]) if len(sys.argv) > 3 else 0.55, sys.argv[4] if len(sys.argv) > 4 else 'player_fit.json')
     ap = argparse.ArgumentParser()
     ap.add_argument('src'); ap.add_argument('id')
     ap.add_argument('--parts', default='HAIR', help='取り出す材質名の正規表現')
     ap.add_argument('--max-tex', type=int, default=1024, help='模様の最大の大きさ (px)')
     ap.add_argument('--quality', type=int, default=88)
+    ap.add_argument('--outdir', default='hairs', help='出力先 (public/models/ の下)。VRM 0.x の体の服を取り出すときは outfits (--parts "Tops|Accessory" など)')
     a = ap.parse_args()
     j, b = read_glb(a.src)
     ext = j.get('extensions', {})
@@ -289,7 +290,7 @@ def main():
     fit = dict(face_metrics(j, b))
     if main: fit['color'] = image_mean(j, b, main['textureProperties']['_MainTex'])
     out['extras'] = {'fit': fit}
-    dst = os.path.join(ROOT, 'public', 'models', 'hairs', a.id + '.glb')
+    dst = os.path.join(ROOT, 'public', 'models', a.outdir, a.id + '.glb')
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     write_glb(dst, out, bytes(pk.out))
     print(f'{os.path.relpath(dst, ROOT)}  {os.path.getsize(dst) / 1e3:.0f} KB  (元 {os.path.getsize(a.src) / 1e6:.1f} MB)  材質 {len(new_mats)}  模様 {len(new_img)}  面のある形 {len(new_meshes)}  揺れの組 {len(groups)}')

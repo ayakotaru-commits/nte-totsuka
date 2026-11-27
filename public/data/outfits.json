@@ -1,5 +1,5 @@
 {
- "_note": "着せ替えの服の一覧 (パーツごと)。slot = tops / bottoms / shoes / onepiece (ワンピースは トップスとボトムスの両方の枠を使う)。price (円)・shop (店の key。shops.json) は仮の値 (持ち主が決める)。source が null のものは配布ページの URL が未確認。服のファイルは tools/outfits.py で作る (材質名 Tops / Bottoms / Shoes / Onepiece ごとに 1 ファイル)。",
+ "_note": "着せ替えの服の一覧 (パーツごと)。slot = tops / bottoms / shoes / onepiece (ワンピースは トップスとボトムスの両方の枠を使う)。price (円)・shop (店の key。shops.json) は仮の値 (持ち主が決める)。source が null のものは配布ページの URL が未確認。服のファイルは tools/outfits.py で作る (材質名 Tops / Bottoms / Shoes / Onepiece ごとに 1 ファイル)。 body = 合う体 (female / male)。男性の体の服は、VRM 0.x の元から tools/hairs.py --outdir outfits --parts <材質> で取り出す。",
  "slots": [
   {
    "key": "tops",
@@ -29,7 +29,8 @@
    "model": "Lyla",
    "author": "Lyrik",
    "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで",
+   "body": "female"
   },
   {
    "id": "nona_tshirt",
@@ -41,7 +42,8 @@
    "model": "のなつー",
    "author": "いさん",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK",
+   "body": "female"
   },
   {
    "id": "lyla_tank",
@@ -53,7 +55,8 @@
    "model": "Lyla",
    "author": "Lyrik",
    "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで",
+   "body": "female"
   },
   {
    "id": "nona_shorts",
@@ -65,7 +68,8 @@
    "model": "のなつー",
    "author": "いさん",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK",
+   "body": "female"
   },
   {
    "id": "lyla_shorts",
@@ -77,7 +81,8 @@
    "model": "Lyla",
    "author": "Lyrik",
    "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで",
+   "body": "female"
   },
   {
    "id": "nishi_dress",
@@ -89,7 +94,8 @@
    "model": "Nishi",
    "author": "Nishimiya",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで",
+   "body": "female"
   },
   {
    "id": "celestia_dress",
@@ -101,7 +107,8 @@
    "model": "celestia",
    "author": "PEPE",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK",
+   "body": "female"
   },
   {
    "id": "tanuki_yukata",
@@ -113,7 +120,8 @@
    "model": "たぬき",
    "author": "wayy",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK",
+   "body": "female"
   },
   {
    "id": "nona_sandals",
@@ -125,7 +133,8 @@
    "model": "のなつー",
    "author": "いさん",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK",
+   "body": "female"
   },
   {
    "id": "lyla_boots",
@@ -137,7 +146,8 @@
    "model": "Lyla",
    "author": "Lyrik",
    "source": "https://hub.vroid.com/characters/6532766393512697732/models/3717456312448398722",
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで",
+   "body": "female"
   },
   {
    "id": "nishi_shoes",
@@ -149,7 +159,8 @@
    "model": "Nishi",
    "author": "Nishimiya",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用は個人利益まで",
+   "body": "female"
   },
   {
    "id": "celestia_boots",
@@ -161,7 +172,8 @@
    "model": "celestia",
    "author": "PEPE",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK",
+   "body": "female"
   },
   {
    "id": "tanuki_geta",
@@ -173,7 +185,21 @@
    "model": "たぬき",
    "author": "wayy",
    "source": null,
-   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK"
+   "license": "VRM 1.0: 改変・再配布 OK、クレジット不要、商用 OK",
+   "body": "female"
+  },
+  {
+   "id": "hairsample_male_tops",
+   "name": "白いパーカー",
+   "slot": "tops",
+   "file": "hairsample_male_tops.glb",
+   "shop": "GU",
+   "price": 1500,
+   "body": "male",
+   "model": "HairSample_Male",
+   "author": "VRoid プロジェクト",
+   "source": "https://opengameart.org/content/vroid-studio-cc0-models",
+   "license": "CC0 (VRM の利用条件にも明記)"
   }
  ]
 }
