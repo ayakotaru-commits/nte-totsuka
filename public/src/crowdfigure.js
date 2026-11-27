@@ -92,6 +92,15 @@ const COMMON = `
       b = -(0.18 + 0.75 * max(0.0, -a));
       if (mode > 0.5 && mode < 1.5) { a = -0.55; b = -1.35; }                                              // スマホを見る
       else if (mode > 1.5 && mode < 2.5) { a = (pa < 3.5 ? -1.0 : 1.0) * sw * 1.4 - 0.5; b = -(0.8 + 0.4 * abs(sw)); }   // 立ち話
+      else if (mode > 3.5) {                           // ライブ: 4 客席 (両手を上げて振る) 5 歌 (右手でマイク・左手で身ぶり) 6 ギター・ベース 7 ドラム 8 キーボード 9 ダンス
+        float L = pa < 3.5 ? 1.0 : -1.0;
+        if (mode < 4.5) { a = -2.5 + L * sin(ph) * 0.5; b = -0.25; }
+        else if (mode < 5.5) { if (pa < 3.5) { a = -0.7 + sin(ph * 0.8) * 0.9; b = -0.6; } else { a = -2.05 + sin(ph * 0.5) * 0.08; b = -1.3; } }
+        else if (mode < 6.5) { if (pa < 3.5) { a = -1.25; b = -0.9; } else { a = -0.85 + sin(ph * 2.0) * 0.38; b = -0.8; } }
+        else if (mode < 7.5) { a = -1.0 + L * sin(ph * 2.0) * 0.7; b = -0.9; }
+        else if (mode < 8.5) { a = -1.05 + sin(ph * 1.5 + L) * 0.16; b = -0.9; }
+        else { a = -1.7 + L * sin(ph * 1.2) * 1.0; b = -0.5; }
+      }
     }
   }
   vec3 animate(vec3 p0, out float on) {

@@ -1,6 +1,6 @@
 // 千葉ドリームランドの地図の下絵 (ミニマップ・大きい地図)。線路の延長の下絵 (detail/railext.js の map) と同じ形: { bounds, draw(c, X, Z, scale, bbox) }。
 // X(x)・Z(z) = ワールドの座標 → 画面の座標、scale = 1 m の画面上の長さ (px)、bbox = 見えている範囲 [x0, z0, x1, z1]。
-// 描くもの: 敷地 (実在の舞浜の道・建物の絵の上に塗りつぶす)・エリアの色・湖・プラザ・園内の道・建物・観覧車・コースター。実在のパークの絵は使わない (この設定から描く)。
+// 描くもの: 敷地 (実在の舞浜の道・建物の絵の上に塗りつぶす)・エリアの色・湖・プラザ・園内の道・建物・観覧車・ライブ会場。実在のパークの絵は使わない (この設定から描く)。
 const AREA_TINT = ['#d9d2ea', '#e9e3d4', '#f4dbe8', '#e2d6c0', '#fbe0ee', '#cfe6c4', '#cfe1ef', '#f0d9b8'];   // gen.areas の順 (ミッドナイト・ターボ・アベニュー・バレー・スイート・フォレスト・ハーバー・タイム・ステーション)
 
 export function createParkMap(cfg) {
@@ -53,12 +53,19 @@ export function createParkMap(cfg) {
         c.fillRect(-b.w / 2 * scale, -b.d / 2 * scale, b.w * scale, b.d * scale); c.restore();
       }
     }
-    // 観覧車・コースター
+    // 観覧車・ライブ会場
     const rd = gen && gen.rides;
     if (rd) {
       c.strokeStyle = '#d94f3a'; c.lineWidth = Math.max(1.5, 2 * scale);
       if (rd.ferris) { c.beginPath(); c.arc(X(rd.ferris.x), Z(rd.ferris.z), Math.max(3, rd.ferris.R * scale), 0, Math.PI * 2); c.stroke(); }
-      if (rd.coaster) { c.beginPath(); rd.coaster.pts.forEach(([x, z], i) => (i ? c.lineTo(X(x), Z(z)) : c.moveTo(X(x), Z(z)))); c.closePath(); c.stroke(); }
+      if (rd.live) {   // ライブ会場: 客席の扇と、奥のステージ (塗り)
+        const L = rd.live, F = L.fan, ST = L.stage, h = F.ang * Math.PI / 360;
+        c.save(); c.translate(X(L.x), Z(L.z)); c.rotate(-L.yaw);
+        c.beginPath(); c.moveTo(0, F.apexV * scale);
+        for (let i = 0; i <= 24; i++) { const th = -h + 2 * h * i / 24; c.lineTo(F.R * Math.sin(th) * scale, (F.apexV + F.R * Math.cos(th)) * scale); }
+        c.closePath(); c.stroke();
+        c.fillStyle = '#d94f3a'; c.fillRect(-ST.w / 2 * scale, ST.back * scale, ST.w * scale, ST.d * scale); c.restore();
+      }
     }
     c.restore();
   };

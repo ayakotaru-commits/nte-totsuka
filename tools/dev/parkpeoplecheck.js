@@ -1,4 +1,5 @@
 // 千葉ドリームランド 段階 5 (園内の人・地図の印とワープ・ショーの案内) を、ゲーム本体で確かめる。画面は撮らない (画面は parkshot.js の x*・m* の視点)。
+// ライブ (サンライズ・ライブステージ) は ?nolive で切って確かめる (ライブの観客・案内がパレード・花火の確認に混ざるため。ライブは parkcheck.js が確かめる)。
 // 使い方: node tools/dev/parkpeoplecheck.js   (約 5〜10 分。three.js は tools/dev/.cache/package に要る = CLAUDE.md の手順。node 単体の数字の確認は tools/dev/parkcrowdcheck.mjs)
 // 確かめること: 地図の印 14 か所 (城の印を含む) が出ている / 大きい地図の印を選んでワープすると、その場所の道の上に立つ (建物・柵の中ではない・地面に立つ) /
 //   縮小した大きい地図では細かい印が選べない / 園内に人が出る (敷地の中・建物の外・街の人は混ざらない) / ショーの案内 (開催前・開催中・遠くでは出ない) /
@@ -39,7 +40,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     r.fulfill({ body: t, contentType: 'application/javascript' });
   });
   page.on('pageerror', (e) => console.log('ERR', e.message));
-  await page.goto(base + '/?shot&novrm', { timeout: 600000 });
+  await page.goto(base + '/?shot&novrm&nolive', { timeout: 600000 });
   await page.waitForFunction(() => window.__g && window.__ride && window.__parkSpots, null, { timeout: 600000 });
   const frames = (n) => page.evaluate((n) => new Promise((r) => { let k = 0; const fn = () => (++k >= n ? r() : requestAnimationFrame(fn)); requestAnimationFrame(fn); }), n);
   const extIdle = async () => { for (let k = 0; k < 400; k++) { await frames(2); if (await page.evaluate(() => !window.__railext || window.__railext.stats.idle)) return; } console.log('区間の読み込みが終わらない'); };

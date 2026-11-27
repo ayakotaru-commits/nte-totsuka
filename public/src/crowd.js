@@ -9,7 +9,7 @@ import { createTier, styleFor } from './crowdfigure.js';
 
 const NEAR_R = 32;   // この距離 (カメラから m) より近い人は細かい形 (人形の形・動きは crowdfigure.js)
 
-const NO_SHOW = { parade: 0, fw: 0, paradeOn: false, fwOn: false };
+const NO_SHOW = { parade: 0, fw: 0, live: 0, paradeOn: false, fwOn: false, liveOn: false };
 
 export class Crowd {
   // props = props.json (crowd を持つこと)。opt = { low: スマホなど (人数・範囲を減らす), cap, park: 千葉ドリームランドの設定 (public/data/park.json。園内の通り道と観客の場所を足す) }
@@ -42,7 +42,7 @@ export class Crowd {
   setVisible(v) { if (this.enabled) this.group.visible = v; }
 
   // camera = three のカメラ、player = {x, z} (よけるため)、preset = '朝' | '昼' | '夕方' | '夜'
-  // want = ショーの観客の指定 ({ parade, fw, paradeOn, fwOn }。crowdsim.js の updateViewers)。園外・ショーが無いときは省く
+  // want = ショーの観客の指定 ({ parade, fw, live, paradeOn, fwOn, liveOn }。crowdsim.js の updateViewers)。園外・ショーが無いときは省く
   update(dt, camera, px, pz, preset, clock, want) {
     if (!this.enabled || dt <= 0) return;
     camera.getWorldDirection(this._f);

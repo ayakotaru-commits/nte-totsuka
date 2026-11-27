@@ -12,6 +12,19 @@ const THREE_DIR = path.join(__dirname, '.cache', 'package');
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png' };
 
 const VIEWS = [
+  // ライブ会場 (サンライズ・ライブステージ。コースターの跡地。中心 31353, -25583、前 = (0.84, -0.545) = 広場の向き)
+  { name: 'lv1_stage_front', at: [31362, -25593], look: [-0.853, 0.522], pitch: 0.14, dist: 30, show: { live: 40 }, settle: 30 },        // 客席の中から、ステージと大画面と演者 (ライブの最中)
+  { name: 'lv2_aerial', at: [31373, -25600], look: [0.853, -0.522], pitch: 1.0, dist: 230 },              // 上から (会場・広場・湖・城)
+  { name: 'lv3_from_avenue', at: [31490, -25735], look: [0, 1], pitch: 0.12, dist: 22 },                  // アベニューの出口から (城が隠れないか)
+  { name: 'lv4_from_plaza', at: [31450, -25672], look: [-0.64, 0.77], pitch: 0.1, dist: 20 },            // 広場の西から会場へ
+  { name: 'lv5_stage_close', at: [31355, -25589], look: [-0.853, 0.522], pitch: 0.25, dist: 12 },      // ステージの前の花道
+  { name: 'lv7_night', at: [31362, -25593], look: [-0.853, 0.522], pitch: 0.2, dist: 30, show: { live: 60 }, settle: 30 },   // 夜のステージ (光線・大画面・電球・演者。--night)
+  { name: 'lv10_perf_close', at: [31353, -25588], look: [-0.853, 0.522], pitch: 0.1, dist: 6, show: { live: 40 }, settle: 30 },   // 演者を近くから (歌・ギター・ベース・ドラム・キーボード・ダンサー。花道の先から)
+  { name: 'lv11_before', at: [31362, -25593], look: [-0.853, 0.522], pitch: 0.14, dist: 30, show: { live: -40 }, settle: 30 },   // 開演の 40 秒前 (人が集まり始める。演者はまだ)
+  { name: 'lv12_gap', at: [31362, -25593], look: [-0.853, 0.522], pitch: 0.14, dist: 30, show: { liveGap: true }, settle: 30 },   // 曲と曲の間 (客席は立って待つ・音は鳴らさない)
+  { name: 'lv8_back', at: [31305, -25558], look: [0.853, -0.522], pitch: 0.12, dist: 25 },                   // ステージの裏 (楽屋・テント・木)
+  { name: 'lv9_far_end', at: [31403, -25618], look: [-0.853, 0.522], pitch: 0.16, dist: 28 },                // 扇の先 (入口の門・広場から来る道) からステージへ
+  { name: 'lv6_castle_axis', at: [31490, -25690], look: [0, 1], pitch: 0.08, dist: 16 },                  // 広場の軸 (城の方向)。会場は左に入る
   { name: 'e1_arch_night', at: [31121, -25830], look: [-0.230, -0.973], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
   { name: 'e2_arch_town', at: [31367, -25675], look: [-0.992, -0.129], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
   { name: 'e3_arch_valley', at: [31661, -25664], look: [0.995, 0.101], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
@@ -175,13 +188,6 @@ try {
       VIEWS.push({ name: 'r4_carousel', at: W(c, 0, 11), look: [-Math.sin(c.yaw), -Math.cos(c.yaw)], pitch: 0.15, dist: 16 });
       VIEWS.push({ name: 'r5_carousel_aerial', at: [c.x, c.z], look: [0, 1], pitch: 1.0, dist: 40 });
     }
-    if (rd.coaster) {
-      const k = rd.coaster;
-      VIEWS.push({ name: 'r6_coaster_aerial', at: [k.x, k.z], look: [0, 1], pitch: 1.0, dist: 150 });
-      VIEWS.push({ name: 'r7_coaster_side', at: [k.x, k.z], look: [Math.sin(k.yaw), Math.cos(k.yaw)], pitch: 0.2, dist: 100 });
-      const s = k.pts[k.stationIdx[1]];
-      VIEWS.push({ name: 'r8_coaster_station', at: [s[0], s[1]], look: [Math.sin(k.yaw + 1.6), Math.cos(k.yaw + 1.6)], pitch: 0.12, dist: 22 });
-    }
     for (const pr of park.gen.props) VIEWS.push({ name: 'p_' + pr.k + '_' + pr.a, at: [pr.x - Math.sin(pr.yaw || 0) * 0, pr.z], look: [0.3, 1], pitch: 0.2, dist: Math.max(30, pr.r * 3.5) });
   }
 } catch (e) { /* 設定が無ければ段階 1 の視点だけ */ }
@@ -273,13 +279,15 @@ try {
         pr.view(1 / 30);
       }, v.board);
     }
-    if (v.show) {   // ショーの時計を差し替える (その時刻のまま止める)
+    if (v.show) {   // ショーの時計を差し替える (その時刻のまま止める。{ live: 公演の頭から何秒 } も指定できる)
       await page.evaluate((sh) => {
         const S = window.__pride.park.show, cfg = window.__pride.park.cfg?.show; if (!cfg) return;   // ショーの無い版 (修正前) は時計を替えない
         const F = cfg.fireworks, RISE = 1.8;
         let phase = 100;   // ショーの無い時刻 (パレード 20 秒〜のあと、花火の前)
         if (sh.parade !== undefined) phase = cfg.parade.start + sh.parade / cfg.parade.speed;
         else if (sh.castle !== undefined) phase = window.__pride.park.cfg.castle.show.start + sh.castle;
+        else if (sh.liveGap) { const pr = window.__parkInfo.live && window.__parkInfo.live.program(500); phase = cfg.live.start + (pr ? pr.starts[1] - 5 : 100); }   // 2 曲目の始まりの 5 秒前 = 曲と曲の間
+        else if (sh.live !== undefined) phase = cfg.live.start + sh.live;   // ライブの公演の始まりから sh.live 秒 (cycle 1200 秒。曲は parklivesched.js の公演 0 ではなく、時計 600000 の公演)
         else if (sh.fw !== undefined) {
           if (typeof sh.fw === 'number') phase = F.start + sh.fw;
           else if (sh.fw.startsWith('burst:')) phase = F.start + S.plan[+sh.fw.slice(6)].t + RISE + 1.0;

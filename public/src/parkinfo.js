@@ -1,19 +1,22 @@
 // 千葉ドリームランド 段階 5: ショーの時刻の案内と、観客の場所。three.js・DOM に依存しない (tools/dev/parkcrowdcheck.mjs が数字を確かめる)。
 //   ・ショーは時計 (Date.now) の cycle 秒ごとにくり返す (detail/parkshow.js)。「次のパレード・花火まであと何秒か」は時計から計算できる (parkSchedule)
+//   ・ライブ (サンライズ・ライブステージ): 時間割と曲順は parklivesched.js。ここでは案内の 1 行・客席の「立つ場所」(kind 2)・観客の多さを足す
 //   ・観客: パレードの道の両側と、湖のまわり・プラザの南の縁の「立つ場所」(makeViewSlots)。ショーが近づくと増え、終わると減る (viewWant)。人の出し入れは crowdsim.js の updateViewers
+import { liveDensity } from './parklivesched.js';
+
 const ev = (ph, cyc, start, dur) => {
   const t = ph - start, on = t >= 0 && t < dur;
   return { on, t: on ? t : 0, left: on ? dur - t : 0, startsIn: on ? 0 : t < 0 ? -t : cyc - t };
 };
 
 // 時計 nowSec (秒) のときの、パレード・花火の状態。paradeSec = パレードが道を通りきるまでの秒数 (detail/parkshow.js の paradeSeconds)。
-// 戻り値: { phase, parade: { on, t, left, startsIn }, fw: { ... }, next: 'parade' | 'fw' (次に始まる方)、nextIn }
-export function parkSchedule(cfg, nowSec, paradeSec) {
+// 戻り値: { phase, parade: { on, t, left, startsIn }, fw: { ... }, castle, live (ライブの状態。parklivesched.js の state。live を渡さないと null)、next: 'parade' | 'fw' (次に始まる方)、nextIn }
+export function parkSchedule(cfg, nowSec, paradeSec, live) {
   const S = cfg.show, cyc = S.cycle, ph = ((nowSec % cyc) + cyc) % cyc;
   const parade = ev(ph, cyc, S.parade.start, paradeSec), fw = ev(ph, cyc, S.fireworks.start, S.fireworks.duration + 8);
   const castle = cfg.castle && cfg.castle.show ? ev(ph, cyc, cfg.castle.show.start, cfg.castle.show.duration) : null;   // 段階 9: 城のライトアップ (映写)
   const next = parade.startsIn <= fw.startsIn ? 'parade' : 'fw';
-  return { phase: ph, parade, fw, castle, next, nextIn: Math.min(parade.startsIn, fw.startsIn) };
+  return { phase: ph, parade, fw, castle, live: live ? live.state(nowSec) : null, next, nextIn: Math.min(parade.startsIn, fw.startsIn) };
 }
 
 // 「m:ss」
@@ -21,16 +24,18 @@ export const fmtMin = (sec) => { const s = Math.max(0, Math.ceil(sec)); return `
 
 // 画面に出す 1 行 (HUD)。ショーが近いほど目立たせる (soon = 始まる 60 秒前から)。{ text, soon, on }
 export function infoLine(sch) {
-  const p = sch.parade, f = sch.fw, c = sch.castle;
-  if (p.on || f.on || (c && c.on)) {
+  const p = sch.parade, f = sch.fw, c = sch.castle, lv = sch.live;
+  const liveOn = !!(lv && lv.on), liveSoon = !!(lv && !lv.on && lv.phase === 'wait' && lv.startsIn <= 60);
+  if (p.on || f.on || (c && c.on) || liveOn) {
     const parts = [];
     if (p.on) parts.push(`パレード開催中！（あと ${fmtMin(p.left)}）`);
     if (c && c.on) parts.push(`城のライトアップ中！（あと ${fmtMin(c.left)}）`);
     if (f.on) parts.push(`花火 開催中！（あと ${fmtMin(f.left)}）`);
+    if (liveOn) parts.push(lv.phase === 'song' && lv.song ? `ライブ開催中！ ♪${lv.song.title}（公演あと ${fmtMin(lv.progLeft)}）` : `ライブ開催中！（公演あと ${fmtMin(lv.progLeft)}）`);
     return { text: parts.join('　'), soon: true, on: true };
   }
-  const soon = sch.nextIn <= 60 || !!(c && c.startsIn <= 60);
-  return { text: `パレードまで ${fmtMin(p.startsIn)}　花火まで ${fmtMin(f.startsIn)}` + (c && c.startsIn <= 90 ? `　城のライトアップまで ${fmtMin(c.startsIn)}` : ''), soon, on: false };
+  const soon = sch.nextIn <= 60 || !!(c && c.startsIn <= 60) || liveSoon;
+  return { text: `パレードまで ${fmtMin(p.startsIn)}　花火まで ${fmtMin(f.startsIn)}` + (c && c.startsIn <= 90 ? `　城のライトアップまで ${fmtMin(c.startsIn)}` : '') + (lv ? `　ライブまで ${fmtMin(lv.startsIn)}` : ''), soon, on: false };
 }
 
 // 観客の指定 (crowdsim.js の updateViewers に渡す)。ショーの pre 秒前から人が集まり (0 → 0.8)、始まると 1、終わって post 秒かけて減る
@@ -44,6 +49,7 @@ export function viewWant(cfg, sch, paradeSec) {
     parade: dens(sch.phase, cyc, S.parade.start, paradeSec, 40, 15),
     fw: dens(sch.phase, cyc, S.fireworks.start, S.fireworks.duration + 8, 45, 25),
     paradeOn: sch.parade.on, fwOn: sch.fw.on,
+    live: sch.live ? liveDensity(S.live, sch.live) : 0, liveOn: !!(sch.live && sch.live.phase === 'song'),   // ライブの客席 (kind 2)。曲の間は立って待つ、曲の最中は手を上げる
   };
 }
 
@@ -103,6 +109,28 @@ export function makeViewSlots(cfg, route) {
     for (let row = 0; row < 2; row++) {
       const r = 0.78 + row * 0.09, x = px + pz.rx * r * Math.cos(ang), z = pzz + pz.rz * r * Math.sin(ang);
       add(x, z, Math.atan2(lx - x, lz - z), 1);
+    }
+  }
+  // ライブ (kind 2): 客席の扇の中。前の柵 (ステージの前の端から 16 m) の少し後ろから扇の先の手前まで、2.4 m おきの格子。ステージへ顔を向ける。
+  // ミキサー席・柵・花壇・ベンチ・街灯・入口の門のそば (1.2 m 以内) には立たない。前の方 (柵に近い所) から先に人が立つ (u が小さい = 前)
+  const lv = gen.rides && gen.rides.live;
+  if (lv) {
+    const F = lv.fan, ST = lv.stage, cl = Math.cos(lv.yaw), sl = Math.sin(lv.yaw), half = F.ang * Math.PI / 360;
+    const zf = ST.back + ST.d, W = (u, v) => [lv.x + u * cl + v * sl, lv.z - u * sl + v * cl];
+    const [sx, sz] = W(0, zf);
+    const obst = [].concat((gen.beds || []).map((b) => [b[0], b[1], 2.2]), (gen.lamps || []).map((l) => [l[0], l[1], 1.0]), (gen.benches || []).map((b) => [b[0], b[1], 1.6]));
+    const [fx, fz] = W(0, zf + 38);   // ミキサー席
+    let k = 0;
+    for (let v = zf + 18.5; v < F.apexV + F.R - 7; v += 2.4) {
+      const lim = (v - F.apexV) * Math.tan(half) - 2.0;
+      for (let u = -lim; u <= lim + 1e-6; u += 2.4) {
+        const [x, z] = W(u, v);
+        if (Math.hypot(x - fx, z - fz) < 6.5) continue;
+        if (obst.some((o) => Math.hypot(x - o[0], z - o[1]) < o[2])) continue;
+        if (Math.abs(u) < 3.2 && v > F.apexV + F.R - 14) continue;   // 入口の通り道
+        const rr = Math.round((v - (zf + 18.5)) / 2.4);   // 前の列ほど先に立つ (列ごとに 0〜1 を少しずつ上げる + ばらつき)
+        out.push({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, yaw: Math.round(Math.atan2(sx - x, sz - z) * 1000) / 1000, kind: 2, u: Math.min(0.999, rr * 0.035 + hash(k++ + 9000) * 0.3) });
+      }
     }
   }
   return out;

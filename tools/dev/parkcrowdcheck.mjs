@@ -122,10 +122,24 @@ const slots = makeViewSlots(park, route);
   let bad = 0;
   for (const s of slots) {
     const f = [Math.sin(s.yaw), Math.cos(s.yaw)];
-    if (s.kind) { const d = [lake.center[0] - s.x, lake.center[1] - s.z], L = Math.hypot(...d); if ((f[0] * d[0] + f[1] * d[1]) / L < 0.9) bad++; }
+    if (s.kind === 2) { const lv = park.gen.rides.live, cl = Math.cos(lv.yaw), sl = Math.sin(lv.yaw), zf = lv.stage.back + lv.stage.d, st = [lv.x + zf * sl, lv.z + zf * cl], d = [st[0] - s.x, st[1] - s.z], L = Math.hypot(...d); if ((f[0] * d[0] + f[1] * d[1]) / L < 0.95) bad++; }   // ライブの客席はステージの方
+    else if (s.kind) { const d = [lake.center[0] - s.x, lake.center[1] - s.z], L = Math.hypot(...d); if ((f[0] * d[0] + f[1] * d[1]) / L < 0.9) bad++; }
     else { let bd = 1e9, bp = null; for (const q of route) { const dd = Math.hypot(q[0] - s.x, q[1] - s.z); if (dd < bd) { bd = dd; bp = q; } } const d = [bp[0] - s.x, bp[1] - s.z]; if ((f[0] * d[0] + f[1] * d[1]) / (bd || 1) < 0.7) bad++; }
   }
-  check('観客の顔は、パレードは道の方・花火は湖の中心の方を向く', bad / slots.length < 0.03, `${bad}/${slots.length}`);
+  check('観客の顔は、パレードは道の方・花火は湖の中心の方・ライブはステージの方を向く', bad / slots.length < 0.03, `${bad}/${slots.length}`);
+  {   // ライブの客席 (kind 2): 扇の中・前の柵より後ろ・ミキサー席・花壇・街灯・ベンチ・入口の通り道に立たない
+    const lv = park.gen.rides.live, F = lv.fan, ST = lv.stage, cl = Math.cos(lv.yaw), sl = Math.sin(lv.yaw), zf = ST.back + ST.d, half = F.ang * Math.PI / 360;
+    const loc = (x, z) => { const dx = x - lv.x, dz = z - lv.z; return [dx * cl - dz * sl, dx * sl + dz * cl]; };
+    const L2 = slots.filter((q) => q.kind === 2), mix = [lv.x + (zf + 38) * sl, lv.z + (zf + 38) * cl];
+    let out = 0, fence = 0, tent = 0, near = 0;
+    for (const q of L2) {
+      const [u, v] = loc(q.x, q.z);
+      if (v < zf + 17 || v > F.apexV + F.R || Math.abs(u) > (v - F.apexV) * Math.tan(half) + 0.5) { out++; continue; }
+      if (Math.hypot(q.x - mix[0], q.z - mix[1]) < 6) tent++;
+      if ([...park.gen.beds, ...park.gen.lamps, ...park.gen.benches].some((o) => Math.hypot(q.x - o[0], q.z - o[1]) < 0.9)) near++;
+    }
+    check('ライブの客席: 400 か所以上・扇の中で前の柵より後ろ・ミキサー席・花壇・街灯・ベンチの上ではない', L2.length >= 400 && out === 0 && tent === 0 && near === 0, { n: L2.length, out, tent, near });
+  }
 }
 const watch = (nowSec, center, preset = '昼', seconds = 30) => {
   const sim = new CrowdSim(crowd, { ...OPT, cap: 120, radius: 130, seed: 5 });
@@ -166,13 +180,15 @@ const watch = (nowSec, center, preset = '昼', seconds = 30) => {
 // ---- 地図の印・ワープ先 ----
 {
   const sp = park.spots, names = sp.map((s) => s.name);
-  check('地図の印: ゲート・プラザ・パレード (= アベニュー)・観覧車・コースター・湖・6 エリア', sp.length >= 13 && ['ゲート', 'サンライズ・プラザ', '観覧車', 'ムーンレイク（花火）', 'リール・キャッスル'].every((n) => names.includes(n)) && park.gen.areas.filter((a) => a.name !== 'ネオン・アベニュー').every((a) => names.includes(a.name)), names.join('・'));
+  check('地図の印: ゲート・プラザ・パレード (= アベニュー)・観覧車・ライブ会場・湖・6 エリア', sp.length >= 14 && ['ゲート', 'サンライズ・プラザ', '観覧車', 'サンライズ・ライブステージ', 'ムーンレイク（花火）', 'リール・キャッスル'].every((n) => names.includes(n)) && park.gen.areas.filter((a) => a.name !== 'ネオン・アベニュー').every((a) => names.includes(a.name)), names.join('・'));
   check('印は敷地の中で、建物・木・湖の中ではない', sp.every((s) => inPoly(s.x, s.z, park.site) && !inBuilding(s.x, s.z, 2) && !park.gen.trees.some((t) => Math.hypot(t[0] - s.x, t[1] - s.z) < 1.5)));
-  // 乗り物・コースターの柱・塔・特別な物・街灯などから離れている (ワープで押し出されない)
-  const rd = park.gen.rides, cp = rd.coaster.pts, cd = (x, z) => Math.min(...cp.map((q, i) => segD(x, z, q, cp[(i + 1) % cp.length])));
-  const blocked = sp.filter((s) => s.kind !== 'plaza' && s.kind !== 'gate' && (Math.hypot(s.x - rd.ferris.x, s.z - rd.ferris.z) < rd.ferris.R + 5 || Math.hypot(s.x - rd.carousel.x, s.z - rd.carousel.z) < rd.carousel.R + 3.5 || cd(s.x, s.z) < 7
+  // 乗り物・ライブ会場のステージ・ミキサー席・塔・特別な物・街灯などから離れている (ワープで押し出されない)
+  const rd = park.gen.rides, lv = rd.live, lzf = lv.stage.back + lv.stage.d;
+  const liveLocal = (x, z) => { const dx = x - lv.x, dz = z - lv.z; return [dx * Math.cos(lv.yaw) - dz * Math.sin(lv.yaw), dx * Math.sin(lv.yaw) + dz * Math.cos(lv.yaw)]; };
+  const liveBlocked = (s) => { const [u, v] = liveLocal(s.x, s.z); return (Math.abs(u) < 6 && Math.abs(v - (lzf + 38)) < 4) || (v < lzf + 17 && Math.abs(u) < lv.stage.wing + 2); };
+  const blocked = sp.filter((s) => s.kind !== 'plaza' && s.kind !== 'gate' && (Math.hypot(s.x - rd.ferris.x, s.z - rd.ferris.z) < rd.ferris.R + 5 || Math.hypot(s.x - rd.carousel.x, s.z - rd.carousel.z) < rd.carousel.R + 3.5 || liveBlocked(s)
     || Math.hypot(s.x - park.tower.at[0], s.z - park.tower.at[1]) < park.tower.radius + 4 || park.gen.props.some((q) => Math.hypot(q.x - s.x, q.z - s.z) < q.r + 2) || park.gen.lamps.some((q) => Math.hypot(q[0] - s.x, q[1] - s.z) < 1.2) || park.gen.beds.some((q) => Math.hypot(q[0] - s.x, q[1] - s.z) < 2.5))).map((s) => s.name);
-  check('印は乗り物・コースターの柱・塔・特別な物・街灯・植え込みから離れている (ワープで押し出されない)', blocked.length === 0, blocked.join('・'));
+  check('印は乗り物・ライブ会場のステージとミキサー席・塔・特別な物・街灯・植え込みから離れている (ワープで押し出されない)', blocked.length === 0, blocked.join('・'));
   const lake = park.ellipses['ムーンレイク'];
   check('湖の印は湖の外 (散歩道の上)', Math.hypot((sp.find((s) => s.kind === 'lake').x - lake.center[0]) / lake.rx, (sp.find((s) => s.kind === 'lake').z - lake.center[1]) / lake.rz) > 1.03);
   check('印の種類 (tier) は 0〜2・名前・色・字がある', sp.every((s) => [0, 1, 2].includes(s.tier) && s.name && /^#/.test(s.color) && s.glyph.length === 1 && Number.isFinite(s.face)));

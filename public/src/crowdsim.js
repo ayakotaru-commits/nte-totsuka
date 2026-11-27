@@ -20,7 +20,7 @@ export function pedState(t, it) {
   return u < GREEN - PED_FLASH ? 'g' : u < GREEN ? (Math.floor(t * 2) % 2 ? 'g' : 'o') : 'r';
 }
 // 動きの種類 (描画の姿勢): 0 歩く / 1 スマホを見る (両手を胸の前) / 2 立ち話 (手を少し動かす) / 3 待つ (立つだけ)
-export const MODE = { walk: 0, phone: 1, chat: 2, wait: 3 };
+export const MODE = { walk: 0, phone: 1, chat: 2, wait: 3, cheer: 4 };   // 5 以上は演者 (ライブ会場の歌・ギター・ドラム・キーボード・ダンス。crowd.js のシェーダ。parklive.js が使う)
 
 // 時間帯ごとの決まり。level = 人の多さ (0〜1)、flow = 駅へ向かう (+) / 駅から来る (-) 流れの強さ、pub = 居酒屋の前に集まる度合い、mix = 種類の割合
 // 種類: 0 学生 1 スーツ 2 私服 3 子ども 4 高齢者
@@ -320,7 +320,7 @@ export class CrowdSim {
     return { id: 1e6 + i, type, x, z, y: this.ground(x, z), yaw: sl.yaw + (r() - 0.5) * 0.5, scale: SCALE[type] * (type === 3 ? 0.9 + r() * 0.2 : 0.95 + r() * 0.1), phase: r() * 6.28, amp: 0, mode: MODE.wait, grow: 0, o: outfit(type, r), slot: i };
   }
 
-  // want = { parade, fw: 立つ人の多さ (0〜1。ショーの時刻から決まる)、paradeOn・fwOn: 今まさに山車が通る・花火が上がっている }。(cx, cz) = 出し入れの中心
+  // want = { parade, fw, live: 立つ人の多さ (0〜1。ショーの時刻から決まる)、paradeOn・fwOn・liveOn: 今まさに山車が通る・花火が上がっている・ライブの曲の最中 }。(cx, cz) = 出し入れの中心
   updateViewers(dt, cx, cz, want) {
     if (!this.slots) return;
     this.boost = 1 + 0.5 * Math.max(want.parade, want.fw);
@@ -329,7 +329,7 @@ export class CrowdSim {
       this.viewAt = 0.5;
       const sel = [];
       for (let i = 0; i < this.slots.length; i++) {
-        const sl = this.slots[i], d = sl.kind ? want.fw : want.parade;
+        const sl = this.slots[i], d = sl.kind === 2 ? (want.live || 0) : sl.kind ? want.fw : want.parade;
         if (sl.u >= d * 0.6) continue;
         const dist = Math.hypot(sl.x - cx, sl.z - cz);
         if (dist < this.R) sel.push([dist, i]);
@@ -343,6 +343,11 @@ export class CrowdSim {
       v.grow = clamp(v.grow + (on ? 1 : -1) * dt * 0.8, 0, 1);
       if (!on && v.grow <= 0) { this.viewers.delete(i); continue; }
       const kind = this.slots[i].kind, wave = kind ? want.fwOn : want.paradeOn;
+      if (kind === 2) {   // ライブの客席: 曲の最中は手を上げて揺れる (人ごとに少しずつ速さを変える) / 曲の間・開演前は立って待つ
+        v.mode = want.liveOn ? MODE.cheer : MODE.wait; v.amp = want.liveOn ? 0.45 : 0;
+        if (want.liveOn) v.phase += dt * (5.0 + (v.id % 5) * 0.45);
+        continue;
+      }
       v.mode = kind ? (want.fwOn ? MODE.phone : MODE.wait) : (want.paradeOn ? MODE.chat : MODE.wait);   // 花火 = スマホを掲げる / パレード = 手を振る / ショーの前 = 待つ
       v.amp = wave && !kind ? 0.9 : 0;
       if (wave && !kind) v.phase += dt * (4.6 + (v.id % 5) * 0.4);
