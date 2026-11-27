@@ -18,7 +18,9 @@ export class PhotoMode {
     this.hintT = 0; this.exitT = 0;
     const $ = (id) => document.getElementById(id);
     this.hint = $('photo-hint'); this.exitBtn = $('photo-exit');
-    this.exitBtn.addEventListener('click', () => this.exit());
+    // click ではなく、指を離したときに反応させる (長く押したときはブラウザが click を出さないため)
+    this.exitBtn.addEventListener('pointerup', () => this.exit());
+    this.exitBtn.addEventListener('keydown', (e) => { if (e.code === 'Enter') this.exit(); });
     this.exitBtn.addEventListener('pointerdown', (e) => e.stopPropagation()); // 下の画面のタップ判定に渡さない
   }
 
