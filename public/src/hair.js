@@ -13,15 +13,19 @@ import { fitOutfit } from './outfit.js';
 
 // 元の顔 (s) を今のキャラの顔 (p) に合わせる、頭の骨を中心にした倍率とずらし量。座標は元の座標 (前が -z)。
 //   高さは 目の上端 → 目の上端、頭頂 → 頭頂 の 2 点で合わせる。前後は 顔の前 → 顔の前、顔の後ろ → 顔の後ろ。幅は顔の幅の比。
-export function headAdjust(s, p, { width = 1, keepWidth = 0.5 } = {}) {
+export function headAdjust(s, p, { width = 1, keepWidth = 0.5, puff = 1 } = {}) {
   const sy = (p.top - p.eyeTop) / (s.top - s.eyeTop);
   const sz = (p.back - p.front) / (s.back - s.front);
   // 幅は、顔の幅の比をそのまま使うと髪が痩せるので、keepWidth (0..1) だけ元の幅を残す
   const sw = (p.width / s.width) * (1 - keepWidth) + keepWidth;
   const oy = p.eyeTop - sy * s.eyeTop;
   const oz = p.front - sz * s.front; // 元の座標 (前が -z)
-  // 座標系は、今のキャラの親の座標系 (前が +z) なので z の向きを逆にする
-  return { s: [sw * width, sy, sz], off: [0, oy, -oz] };
+  // puff: 頭の中心から見て髪全体を少し膨らませる。今のキャラの頭の表面 + 頭皮の殻の厚みで、髪の殻や前髪が埋もれないように
+  //   (中心 = 今のキャラの頭の高さ・前後の真ん中。膨らませる前の変換 y' = sy*y + oy、z' = sz*z + oz を、中心のまわりに P 倍する)
+  const P = puff, cy = (p.top + p.chin) / 2, cz = (p.front + p.back) / 2;
+  const fy = P * sy, fz = P * sz;
+  return { s: [sw * width * P, fy, fz], off: [0, P * oy + (1 - P) * cy, -(P * oz + (1 - P) * cz)] };
+  // 座標系は、今のキャラの親の座標系 (前が +z) なので、前後 (z) の向きは逆にしてある
 }
 
 // 頭皮の殻: 今のキャラの肌のメッシュ (顔・体) から、頭皮の三角形だけを取り出して、法線の向きに少し膨らませる。
@@ -81,9 +85,9 @@ function scalpMaterial(src, color) {
   return new THREE.MeshToonMaterial({ color: c });
 }
 
-export async function fitHair(src, vrm, playerFit, { scalp = true, scalpLift = 0.004, adjust = true, keepWidth = 0.5 } = {}) {
+export async function fitHair(src, vrm, playerFit, { scalp = true, scalpLift = 0.004, adjust = true, keepWidth = 0.5, puff = 1.12 } = {}) {
   const sfit = src.parser.json.extras?.fit;
-  const head = adjust && sfit && playerFit?.metrics ? headAdjust(sfit, playerFit.metrics, { keepWidth }) : null;
+  const head = adjust && sfit && playerFit?.metrics ? headAdjust(sfit, playerFit.metrics, { keepWidth, puff }) : null;
   const { group, used } = await fitOutfit(src, vrm, { parts: /./, scale: 1.04, head });
   vrm.scene.add(group);
   let caps = [], capMat = null;
