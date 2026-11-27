@@ -53,7 +53,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   // ---- 段階 3: 乗り物 (観覧車に乗って降りる・メリーゴーラウンドが動く・当たり判定。コースターは廃止してライブ会場) ----
   async function stage3(page) {
     const rd = park.gen.rides || {};
-    check('設定に乗り物 2 つとライブ会場がある (gen.rides。コースターは廃止)', rd.ferris && rd.carousel && !rd.coaster && rd.live && rd.live.width >= 80 && rd.live.depth >= 90, rd.live);
+    check('設定に乗り物 2 つとライブ会場がある (gen.rides。コースターは廃止)', rd.ferris && rd.carousel && !rd.coaster && rd.live && rd.live.fan && rd.live.width >= 100 && rd.live.depth >= 90, rd.live);
     const g0 = park.gate.at, gh0 = await page.evaluate(async ([x, z]) => (await import('/src/terrain.js')).H(x, z), g0);
     await page.evaluate(([x, y, z]) => window.__ride.place(x, y, z, 0), [rd.ferris.x, gh0 + 0.2, rd.ferris.z + 30]);
     for (let k = 0; k < 60; k++) { await frames(page, 3); await extIdle(page); if (await page.evaluate(() => !!window.__g.scene.getObjectByName('park_rides'))) break; }
@@ -103,10 +103,10 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
       await toward(sx, sz, C.x, C.z, 'メリーゴーラウンドの台のふちで止まる (中には入れない)', C.R - 0.5, C.R + 2.2, C.x, C.z);
     }
     {   // ライブ会場: 客席からステージの前の柵 (ステージの前の端から 16 m) へ向かって、柵で止まる / ステージの本体へ向かって止まる
-      const Lv = rd.live, zFront = -Lv.depth / 2 + 1.5 + 22;
-      const [sx, sz] = W(Lv, -30, zFront + 28), [fx, fz] = W(Lv, -30, zFront + 16);
+      const Lv = rd.live, zFront = Lv.stage.back + Lv.stage.d;
+      const [sx, sz] = W(Lv, -10, zFront + 28), [fx, fz] = W(Lv, -10, zFront + 16);
       await toward(sx, sz, fx, fz, 'ライブ会場の前の柵で止まる (通り抜けない)', 0.3, 3.5, fx, fz);
-      const [tx, tz] = W(Lv, 20, zFront + 28), [ux, uz] = W(Lv, 20, zFront - 8);
+      const [tx, tz] = W(Lv, 10, zFront + 28), [ux, uz] = W(Lv, 10, zFront - 8);
       await toward(tx, tz, ux, uz, 'ライブ会場の前の柵 (右側) で止まる (ステージの本体の手前 23〜26 m)', 23, 26.5, ux, uz);
     }
 
@@ -120,7 +120,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
         return { meshes, tris: v.stats.tris, tower: v.stats.tower, swap: a !== b && b !== d, far: d === e };
       });
       console.log(JSON.stringify(lv));
-      check('ライブ会場の部品が出ている (park_live。三角形 6 万以下・塔 20 m 以上)', lv && lv.meshes >= 25 && lv.tris < 60000 && lv.tower >= 20, lv);
+      check('ライブ会場の部品が出ている (park_live。三角形 8 万以下・塔 20 m 以上)', lv && lv.meshes >= 25 && lv.tris < 80000 && lv.tower >= 20, lv);
       check('大画面の絵が 8 秒ごとに切り替わる・遠いときは動かさない', lv && lv.swap && lv.far, lv);
     }
 

@@ -155,9 +155,10 @@
     "ferris": {"area": "スイート・ヒル", "R": 13.5, "hub": 16.8, "cars": 12, "rev": 150},
     "carousel": {"area": "スイート・ヒル", "R": 7.4},
     "live": {
-      "name": "サンライズ・ライブステージ", "roman": "Sunrise Live Stage", "near": "ロスト・バレー", "faceTo": "サンライズ・プラザ", "clear": 7,
-      "width": 84, "depth": 96,
-      "_doc": "ライブ会場 (コースターの跡地)。幅 width × 奥行き depth m の長方形を、サンライズ・プラザ (faceTo) の中心へ向けて、エリア・湖・道から clear m 離れた空き地に置く。奥の 22 m がステージ、手前が客席。"
+      "name": "サンライズ・ライブステージ", "roman": "Sunrise Live Stage", "near": "ロスト・バレー", "faceTo": "サンライズ・プラザ", "style": "スイート・ヒル", "clear": 7,
+      "fan": {"R": 76, "ang": 100, "apexV": -26},
+      "stage": {"w": 46, "d": 22, "back": -46.5, "backstage": 8, "wing": 44},
+      "_doc": "ライブ会場 (コースターの跡地)。ローカル座標 (u 右・v 前 = サンライズ・プラザの中心の向き)。fan = 客席の扇形 (apexV = 扇の要の v、R = 半径 m、ang = 開き角 °)。stage = ステージ (w 幅・d 奥行き・back = 奥の端の v)、backstage = 裏方の置き場の奥行き、wing = 両わきの小屋の置き場の幅 (u ±)。style = 木・街灯・道の色を借りるエリア。置き場所は、扇・ステージ・裏方・両わき全体が、エリア・湖・道から clear m 離れる空き地を探して決める。"
     }
   }
 }

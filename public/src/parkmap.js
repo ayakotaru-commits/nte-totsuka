@@ -58,10 +58,13 @@ export function createParkMap(cfg) {
     if (rd) {
       c.strokeStyle = '#d94f3a'; c.lineWidth = Math.max(1.5, 2 * scale);
       if (rd.ferris) { c.beginPath(); c.arc(X(rd.ferris.x), Z(rd.ferris.z), Math.max(3, rd.ferris.R * scale), 0, Math.PI * 2); c.stroke(); }
-      if (rd.live) {   // ライブ会場: 客席の枠と、奥のステージ (塗り)
-        const L = rd.live, w = L.width * scale, d = L.depth * scale;
+      if (rd.live) {   // ライブ会場: 客席の扇と、奥のステージ (塗り)
+        const L = rd.live, F = L.fan, ST = L.stage, h = F.ang * Math.PI / 360;
         c.save(); c.translate(X(L.x), Z(L.z)); c.rotate(-L.yaw);
-        c.strokeRect(-w / 2, -d / 2, w, d); c.fillStyle = '#d94f3a'; c.fillRect(-w * 0.24, -d / 2, w * 0.48, 22 * scale); c.restore();
+        c.beginPath(); c.moveTo(0, F.apexV * scale);
+        for (let i = 0; i <= 24; i++) { const th = -h + 2 * h * i / 24; c.lineTo(F.R * Math.sin(th) * scale, (F.apexV + F.R * Math.cos(th)) * scale); }
+        c.closePath(); c.stroke();
+        c.fillStyle = '#d94f3a'; c.fillRect(-ST.w / 2 * scale, ST.back * scale, ST.w * scale, ST.d * scale); c.restore();
       }
     }
     c.restore();

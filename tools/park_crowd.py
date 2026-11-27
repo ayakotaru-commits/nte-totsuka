@@ -129,6 +129,15 @@ def generate(out):
             for k in (2, 7, 12):
                 u = s * (Hh["laneFrom"] + (k + 0.5) * Hh["pitch"])
                 add([tuple(gap), EW(-4, 44), EW(0, 31), EW(u, 29), EW(u, 20), EW(u, 8), EW(u * 0.5, 8), EW(0, 0)], 1.6, "entrance")
+    # ライブ会場: 扇の先 (広場からの道の終わり) から客席の前の柵の手前まで歩き、柵の前を横に行き来する (人が客席に集まる)
+    lv = out["gen"].get("rides", {}).get("live")
+    if lv:
+        cl_, sl_ = math.cos(lv["yaw"]), math.sin(lv["yaw"])
+        LW = lambda u, v: (lv["x"] + u * cl_ + v * sl_, lv["z"] - u * sl_ + v * cl_)
+        zf_ = lv["stage"]["back"] + lv["stage"]["d"]
+        far_ = lv["fan"]["apexV"] + lv["fan"]["R"]
+        add([LW(0, far_ - 1.0), LW(0, zf_ + 34), LW(0, zf_ + 22)], 8, "live")
+        add([LW(-20, zf_ + 22), LW(0, zf_ + 22), LW(20, zf_ + 22)], 6, "live")
     lanes = weave(lanes)
     lanes = [L for L in lanes if poly_len(L["p"]) >= 3]
     lane_out = []
@@ -160,11 +169,11 @@ def generate(out):
         for key, extra in (("ferris", 6.0), ("carousel", 4.0)):
             if key in rd and math.hypot(rd[key]["x"] - x, rd[key]["z"] - z) < rd[key]["R"] + extra:
                 return False
-        if "live" in rd:   # ライブ会場のステージ (奥の 30 m) と、その両わきの機材
+        if "live" in rd:   # ライブ会場のステージ・裏方・両わきの小屋 (前の柵より奥) は通らない
             L = rd["live"]
             lx, lz = x - L["x"], z - L["z"]
             u, v = lx * math.cos(L["yaw"]) - lz * math.sin(L["yaw"]), lx * math.sin(L["yaw"]) + lz * math.cos(L["yaw"])
-            if abs(u) < L["width"] / 2 + 2 and v < -L["depth"] / 2 + 30:
+            if abs(u) < L["stage"]["wing"] + 2 and v < L["stage"]["back"] + L["stage"]["d"] + 12:
                 return False
         if math.hypot(x - out["tower"]["at"][0], z - out["tower"]["at"][1]) < out["tower"]["radius"] + 5:
             return False
@@ -204,12 +213,13 @@ def generate(out):
         f = rd["ferris"]
         q = near(f["x"], f["z"], f["R"] + 12)
         spot("観覧車", "ferris", q[0], q[1], f["x"], f["z"], 1, "輪", "#00bbf9")
-    if "live" in rd:   # ライブ会場: 前の柵のすぐ後ろの客席 (ステージの前の端から 34 m) に立ってステージを見る
+    if "live" in rd:   # ライブ会場: 前の柵のすぐ後ろの客席 (ステージの前の端から 22 m) に立ってステージを見る
         k = rd["live"]
         cs_, sn_ = math.cos(k["yaw"]), math.sin(k["yaw"])
         wp = lambda u, v: (k["x"] + u * cs_ + v * sn_, k["z"] - u * sn_ + v * cs_)
-        sx, sz = wp(0, -k["depth"] / 2 + 46)
-        tx, tz = wp(0, -k["depth"] / 2 + 12)
+        zf = k["stage"]["back"] + k["stage"]["d"]
+        sx, sz = wp(0, zf + 22)
+        tx, tz = wp(0, zf - 10)
         spot(k["name"], "live", sx, sz, tx, tz, 1, "歌", "#ff6b35")
     # 城: 前の堤道の入口 (門の前の前庭。湖の中なので歩ける点を直接決める)
     if cas:
@@ -231,6 +241,11 @@ def generate(out):
         x, z = next((dp[k] for k in order if clear(*dp[k])), dp[mid])
         spot(a["name"], "area", x, z, c[0], c[1], 2, "街", "#8338ec")
     hubs = [[rl(c[0]), rl(c[1])], [rl(gate[0]), rl(gate[1])], [rl(lk["center"][0]), rl(lk["center"][1])]]
+    lv = out["gen"].get("rides", {}).get("live")
+    if lv:   # ライブ会場の客席 (柵の後ろ。人が集まる)
+        cl, sl = math.cos(lv["yaw"]), math.sin(lv["yaw"])
+        zf = lv["stage"]["back"] + lv["stage"]["d"] + 26
+        hubs.append([rl(lv["x"] + zf * sl), rl(lv["z"] + zf * cl)])
     return {"crowd": {"lanes": lane_out, "hubs": hubs}, "spots": spots}
 
 
