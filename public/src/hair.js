@@ -85,9 +85,9 @@ function scalpMaterial(src, color) {
   return new THREE.MeshToonMaterial({ color: c });
 }
 
-export async function fitHair(src, vrm, playerFit, { scalp = true, scalpLift = 0.004, adjust = true, keepWidth = 0.5, puff = 1, forward = 0 } = {}) {
+export async function fitHair(src, vrm, playerFit, { scalp = true, scalpLift = 0.004, adjust = true, keepWidth = 0.5, puff = 1, forward = 0, width = 1 } = {}) {
   const sfit = src.parser.json.extras?.fit;
-  const head = adjust && sfit && playerFit?.metrics ? headAdjust(sfit, playerFit.metrics, { keepWidth, puff }) : null;
+  const head = adjust && sfit && playerFit?.metrics ? headAdjust(sfit, playerFit.metrics, { keepWidth, puff, width }) : null;
   if (head) head.off[2] += forward; // 前 (+z) へずらす量 (m)。髪ごとの調整 (public/models/hairs/hairs.json の tune)
   const { group, used } = await fitOutfit(src, vrm, { parts: /./, scale: 1.04, head });
   vrm.scene.add(group);
