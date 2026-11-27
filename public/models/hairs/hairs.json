@@ -13,7 +13,7 @@
       "body": "male",
       "tune": {
         "puff": 1.12,
-        "forward": 0.024
+        "forward": 0.032
       }
     },
     {
@@ -36,7 +36,9 @@
       "id": "avatar_e",
       "name": "丸いボブ",
       "body": "female",
-      "tune": {}
+      "tune": {
+        "puff": 0.92
+      }
     },
     {
       "id": "avatar_f",
