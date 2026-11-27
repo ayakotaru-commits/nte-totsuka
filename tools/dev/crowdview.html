@@ -1,0 +1,72 @@
+<!doctype html>
+<!-- 歩く人の人形 (public/src/crowdfigure.js) だけを並べて見る確認ページ。街を読み込まないので数秒〜十数秒で撮れる。
+  node tools/dev/charshot.js out --page crowdview "n=10" "n=10&far=1" "old=1"
+    n = 人数 (既定 12。種類 0〜4 が順に並ぶ)、far=1 で遠くの細かさ (分割の少ない形)、old=1 で以前の直方体の人形 (tools/dev/.cache/oldfigure.js。比較用)、
+    t = 歩きの位相の進み (秒)、amp = 振り幅 (0 で立つ)、mode = 行動 (0 歩く 1 スマホ 2 立ち話 3 待つ)、
+    seed = 色・髪型の乱数、tri=1 で三角形の数を画面に出す。 -->
+<html lang="ja"><head><meta charset="utf-8"><title>crowdview</title>
+<style>html,body{margin:0;overflow:hidden;background:#8fa3b8}</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
+</head><body><script type="module">
+import * as THREE from 'three';
+import { outfit } from '../../public/src/crowdsim.js';
+const qs = new URLSearchParams(location.search);
+const n = +(qs.get('n') || 12), old = qs.has('old'), far = qs.has('far'), t = +(qs.get('t') || 0.3), amp = +(qs.get('amp') ?? 0.7), mode = +(qs.get('mode') || 0), seed = +(qs.get('seed') || 1);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight); document.body.appendChild(renderer.domElement);
+renderer.setScissorTest(true);
+renderer.shadowMap.enabled = true;
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#8fa3b8');
+scene.add(new THREE.HemisphereLight('#ffffff', '#778', 1.6));
+const sun = new THREE.DirectionalLight('#fff', 2.2); sun.position.set(3, 6, 4); sun.castShadow = true;
+Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 40 }); sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshStandardMaterial({ color: '#8a8d86', roughness: 1 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+
+let tier, put, finish, tris = 0;
+const mulberry = (a) => () => { a = (a + 0x6d2b79f5) >>> 0; let x = a; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+const r = mulberry(seed);
+const people = [];
+for (let i = 0; i < n; i++) { const type = i % 5; people.push({ type, id: seed * 100 + i, o: outfit(type, r), scale: [0.99, 1, 1, 0.72, 0.95][type] }); }
+const m = new THREE.Matrix4();
+const SP = 0.95;
+if (old) {
+  const { buildGeometry, buildMaterial } = await import('./.cache/oldfigure.js');
+  const geo = buildGeometry();
+  const attr = (nm, size) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(n * size), size); geo.setAttribute(nm, a); return a; };
+  const A = { top: attr('iTop', 3), bottom: attr('iBottom', 3), hair: attr('iHair', 3), skin: attr('iSkin', 3), anim: attr('iAnim', 3) };
+  const mesh = new THREE.InstancedMesh(geo, buildMaterial(), n); mesh.castShadow = true; mesh.frustumCulled = false; scene.add(mesh);
+  tris = geo.attributes.position.count / 3;
+  put = (i, mm, cc, ph, am, mo) => { mesh.setMatrixAt(i, mm); A.top.setXYZ(i, cc[0].r, cc[0].g, cc[0].b); A.bottom.setXYZ(i, cc[1].r, cc[1].g, cc[1].b); A.hair.setXYZ(i, cc[2].r, cc[2].g, cc[2].b); A.skin.setXYZ(i, cc[3].r, cc[3].g, cc[3].b); A.anim.setXYZ(i, ph, am, mo); };
+  finish = () => { mesh.count = n; };
+} else {
+  const { createTier, styleFor } = await import('../../public/src/crowdfigure.js');
+  tier = createTier(n, !far, true); scene.add(tier.mesh);
+  tris = tier.mesh.geometry.attributes.position.count / 3;
+  put = (i, mm, cc, ph, am, mo, st) => tier.put(i, mm, cc, ph, am, mo, st);
+  finish = () => tier.finish(n);
+  for (const p of people) p.style = styleFor(p.type, p.id);
+}
+people.forEach((p, i) => {
+  const cc = ['top', 'bottom', 'hair', 'skin'].map((k) => new THREE.Color(p.o[k]));
+  const x = (i - (n - 1) / 2) * SP, yaw = -0.3;   // yaw: +Z が前。ここでは手前 (+Z 側のカメラ) を向く
+  const co = Math.cos(yaw), si = Math.sin(yaw), s = p.scale;
+  m.set(co * s, 0, si * s, x, 0, s, 0, 0, -si * s, 0, co * s, 0, 0, 0, 0, 1);
+  put(i, m, cc, i * 1.7 + t * 6, amp, mode, p.style || 0);
+});
+finish();
+const W = innerWidth, Hh = innerHeight;
+const views = [
+  { x: 0, y: Hh / 2, w: W, h: Hh / 2, eye: [4.5, 1.5, 7], at: [0, 0.9, 0], fov: 28 },            // 手前の斜めから (全員)
+  { x: 0, y: 0, w: W / 2, h: Hh / 2, eye: [-(n - 1) * SP / 2 - 2.4, 1.4, 2.6], at: [-(n - 1) * SP / 2 + 0.9, 0.85, 0], fov: 34 },   // 左端の人を寄って
+  { x: W / 2, y: 0, w: W / 2, h: Hh / 2, eye: [-4, 1.3, -5], at: [0, 0.85, 0], fov: 30 },        // 後ろから
+];
+for (const v of views) {
+  renderer.setViewport(v.x, v.y, v.w, v.h); renderer.setScissor(v.x, v.y, v.w, v.h);
+  const cam = new THREE.PerspectiveCamera(v.fov, v.w / v.h, 0.1, 100); cam.position.set(...v.eye); cam.lookAt(...v.at);
+  renderer.render(scene, cam);
+}
+if (qs.has('tri')) console.log('tris/person', tris);
+document.title = 'done';
+</script></body></html>
