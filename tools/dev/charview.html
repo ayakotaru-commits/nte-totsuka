@@ -8,7 +8,7 @@
   攻撃の姿勢: ?atk=1&ph=0&t=0.26 (&handmade で手作りの動きに) (手順 1〜5、局面、局面の中の時間 秒)。ph 0 の頭から t まで 1/60 秒刻みで動かして止める (剣と軌跡も出る)。
     空中の局面 (4 の ph 1、5 の ph 0) は &air=1 を付ける。&spin=1.57 でその場で回した向き (3・4 の体ごとの回転はゲームと同じく足される)。画面は 正面 / 真横 / 真後ろ / 斜め後ろ。
   扉を開ける動き: ?door=0.45 (進み具合 0〜1)。&pose=1.6 で歩きながら。
-  肌の色: &skin=rrggbb。
+  肌の色: &skin=rrggbb。身長: &height=cm (145〜190。160 が元)。
   画面は 4 分割: 正面 / 真後ろ / 斜め後ろ / 左手のアップ。?live を付けると止めずに動かし続ける。?face で手の代わりに顔のアップ。 -->
 <html lang="ja">
 <head>
@@ -54,6 +54,7 @@ scene.add(floor);
 const ch = makeCharacter();
 window.__ch = ch; // 確認用スクリプトから骨の向きを読めるように
 if (qs.has('skin')) ch.setSkinColor('#' + qs.get('skin')); // 肌の色 (&skin=rrggbb)
+if (qs.has('height')) ch.setHeight(+qs.get('height') / 160); // 身長 (&height=cm。160 が元)
 ch.root.position.y = air ? 1 : 0;
 scene.add(ch.root);
 

@@ -937,8 +937,9 @@ export function makeCharacter(opt = {}) {
       vrm.scene.updateMatrixWorld(true);
       const baseY = root.matrixWorld.elements[13]; // キャラの足元 (地形) の高さ。足の位置はここからの差で見る
       let low = Infinity;
-      for (const f of vrmRig.soles) low = Math.min(low, f.node.getWorldPosition(tmpV).y - baseY - f.off * scale);
-      nodes.hips.position.y -= low / scale * gnd;
+      const sw = scale * vrmRig.hs; // 表示の大きさ (身長を変えたぶん)。足裏・手の高さは世界の長さなので、骨の座標へはこれで割る
+      for (const f of vrmRig.soles) low = Math.min(low, f.node.getWorldPosition(tmpV).y - baseY - f.off * sw);
+      nodes.hips.position.y -= low / sw * gnd;
     }
     // 腰の高さは足の入れ替わりで急に向きを変える。そのままだと髪の揺れ (ばね) が跳ね上がるので、少しなまらせる
     const hy = nodes.hips.position.y;
@@ -947,7 +948,7 @@ export function makeCharacter(opt = {}) {
     if (st.anchor && nodes.haL && nodes.haR) { // パルクール: 手が縁の高さに来るよう腰を動かす
       root.updateMatrixWorld(true);
       const baseY = root.matrixWorld.elements[13];
-      nodes.hips.position.y += anchorShift((n) => nodes[n].getWorldPosition(tmpV).y - baseY) / scale;
+      nodes.hips.position.y += anchorShift((n) => nodes[n].getWorldPosition(tmpV).y - baseY) / (scale * vrmRig.hs);
     }
     // まばたき (約 4 秒おきに 0.15 秒)
     const bt = st.t % 4;
@@ -967,6 +968,20 @@ export function makeCharacter(opt = {}) {
   const setEyeColor = (hex) => { wantEyeColor = hex || null; eyedresser?.setColor(wantEyeColor); }; // 目の色 ('#rrggbb'。null = 元の色)
   let skindresser = null, wantSkinColor = null;
   const setSkinColor = (hex) => { wantSkinColor = hex || null; skindresser?.setColor(wantSkinColor); }; // 肌の色 ('#rrggbb'。null = 元の色)
+  // 身長 (キャラメイク): setHeight(倍率)。1 = 今のキャラ (約 1.60 m)。体 (頭から下) を同じ倍率で拡大し、頭は半分の倍率だけ (頭が大きくなりすぎない)。
+  //   ゲーム上の寸法 (当たり判定・ジャンプの高さ・速さ) は変えない。見た目だけ。VRM の読み込み前に呼ばれたら読み込み後に反映する
+  let wantHeight = 1, armBase = null;
+  const applyHeight = () => {
+    if (!vrmRig) return;
+    const hs = wantHeight, { vrm, scale, nodes } = vrmRig;
+    vrmRig.hs = hs;
+    vrm.scene.scale.setScalar(scale * hs);
+    if (armBase) { [SH_UP, ARM_A, ARM_B] = armBase.map((v) => v * hs); } // 腕の長さ (パルクールで縁へ手を伸ばす計算)。体と同じ倍率
+    const hk = (1 + (hs - 1) * 0.5) / hs; // 頭の骨の倍率 (全体の hs とあわせて、頭は 1 + (hs - 1) / 2 倍になる)
+    nodes.head.scale.setScalar(hk); // 髪・帽子など、頭の骨につけたもの
+    vrm.humanoid.getRawBoneNode('head')?.scale.setScalar(hk); // キャラの頭の模型 (標準化した骨の倍率は元の骨へ伝わらない)
+  };
+  const setHeight = (hs) => { wantHeight = hs > 0 ? hs : 1; applyHeight(); };
   const setHairColor = (hex) => { wantHairColor = hex || null; hairdresser?.setColor(wantHairColor); }; // 髪色 ('#rrggbb'。null = 元の色)。いつもの髪にも効く
 
   async function loadVRM(url) {
@@ -1013,9 +1028,10 @@ export function makeCharacter(opt = {}) {
       if (nodes.haL) {
         SH_UP = (wp('shL').y - wp('hips').y) * scale;
         ARM_A = wp('shL').distanceTo(wp('elL')) * scale; ARM_B = wp('elL').distanceTo(wp('haL')) * scale;
+        armBase = [SH_UP, ARM_A, ARM_B];
         console.info(`VRM の寸法: 腰→肩 ${SH_UP.toFixed(2)} m、上腕 ${ARM_A.toFixed(2)} m、前腕 ${ARM_B.toFixed(2)} m`);
       }
-      vrmRig = { vrm, scale, nodes, minY, soles, fingers, flip: vrm.meta?.metaVersion === '0', hx0: nodes.hips.position.x, hz0: nodes.hips.position.z }; // 腰の高さは、以後 applyVRM が毎フレーム決める
+      vrmRig = { vrm, scale, hs: 1, nodes, minY, soles, fingers, flip: vrm.meta?.metaVersion === '0', hx0: nodes.hips.position.x, hz0: nodes.hips.position.z }; // 腰の高さは、以後 applyVRM が毎フレーム決める
       body.visible = false;
       root.add(vrm.scene);
       outfitter = new Outfitter(vrm); // 着せ替え (VRM のときだけ。ほかの人の組み立て式のキャラは対象外)
@@ -1024,6 +1040,7 @@ export function makeCharacter(opt = {}) {
       if (wantEyeColor) eyedresser.setColor(wantEyeColor);
       skindresser = new Skindresser(vrm);
       if (wantSkinColor) skindresser.setColor(wantSkinColor);
+      applyHeight();
       hairdresser = new Hairdresser(vrm);
       if (wantHairColor) hairdresser.setColor(wantHairColor);
       if (wantHair) hairdresser.set(wantHair);
@@ -1046,5 +1063,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor, setHeight };
 }
