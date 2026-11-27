@@ -8,7 +8,7 @@
   攻撃の姿勢: ?atk=1&ph=0&t=0.26 (&handmade で手作りの動きに) (手順 1〜5、局面、局面の中の時間 秒)。ph 0 の頭から t まで 1/60 秒刻みで動かして止める (剣と軌跡も出る)。
     空中の局面 (4 の ph 1、5 の ph 0) は &air=1 を付ける。&spin=1.57 でその場で回した向き (3・4 の体ごとの回転はゲームと同じく足される)。画面は 正面 / 真横 / 真後ろ / 斜め後ろ。
   扉を開ける動き: ?door=0.45 (進み具合 0〜1)。&pose=1.6 で歩きながら。
-  肌の色: &skin=rrggbb。身長: &height=cm (145〜190。160 が元)。
+  肌の色: &skin=rrggbb。身長: &height=cm (145〜190。160 が元)。体: &body=male。顔のパーツ: &fp=eyeSize:0.5,noseSize:-0.5 (-1〜1。キーは public/src/face.js の FACE_KEYS)。&facefull で 4 分割とも顔のアップ (正面 / 斜め / 真横 / 少し引き)、&nohair で今のキャラの髪を隠す、&hair=<id> で髪型。
   画面は 4 分割: 正面 / 真後ろ / 斜め後ろ / 左手のアップ。?live を付けると止めずに動かし続ける。?face で手の代わりに顔のアップ。 -->
 <html lang="ja">
 <head>
@@ -54,6 +54,9 @@ scene.add(floor);
 const ch = makeCharacter();
 window.__ch = ch; // 確認用スクリプトから骨の向きを読めるように
 if (qs.has('skin')) ch.setSkinColor('#' + qs.get('skin')); // 肌の色 (&skin=rrggbb)
+if (qs.has('fp')) ch.setFace(Object.fromEntries(qs.get('fp').split(',').map((kv) => { const [k, v] = kv.split(':'); return [k, +v]; }))); // 顔のパーツ (&fp=eyeSize:0.5,noseSize:-0.5。-1〜1)
+let hairEntry = null;
+if (qs.has('hair')) { const cat = await fetch('../../public/models/hairs/hairs.json').then((r) => r.json()); hairEntry = cat.hairs.find((h) => h.id === qs.get('hair')) || null; ch.setHair(hairEntry); } // &hair=<id> (髪型。public/models/hairs/hairs.json の id)
 if (qs.has('height')) ch.setHeight(+qs.get('height') / 160); // 身長 (&height=cm。160 が元)
 ch.root.position.y = air ? 1 : 0;
 scene.add(ch.root);
@@ -74,7 +77,8 @@ if (actType) {
 const cam = new THREE.PerspectiveCamera(35, 1, 0.05, 50);
 // [水平の角度 (0 = 正面), 距離, 注視点の高さ] または 'hand'
 const vy = 0.8 + actH * 0.6, vd = 4.6 + actH;
-const views = atkStep ? [[0, 3.4, 0.9], [Math.PI / 2, 3.4, 0.9], [Math.PI, 3.4, 0.9], [Math.PI * 0.78, 3.4, 0.9]] : act ? [[Math.PI / 2, vd, vy], [Math.PI * 0.2, vd, vy], [Math.PI, vd, vy], [Math.PI * 0.75, vd, vy]]
+const FF = qs.has('facefull'); // &facefull: 4 分割とも顔のアップ (正面 / 斜め / 真横 / 正面の少し引き)
+const views = FF ? [[0, 0.5], [Math.PI * 0.2, 0.5], [Math.PI * 0.5, 0.5], [0, 1.0]] : atkStep ? [[0, 3.4, 0.9], [Math.PI / 2, 3.4, 0.9], [Math.PI, 3.4, 0.9], [Math.PI * 0.78, 3.4, 0.9]] : act ? [[Math.PI / 2, vd, vy], [Math.PI * 0.2, vd, vy], [Math.PI, vd, vy], [Math.PI * 0.75, vd, vy]]
   : [[0, 3.4, 0.85], [Math.PI, 3.4, 0.85], [Math.PI * 0.78, 3.4, 0.85], 'hand'];
 const tmp = new THREE.Vector3();
 function draw() {
@@ -84,7 +88,13 @@ function draw() {
     const x = (i % 2) * w, y = (1 - Math.floor(i / 2)) * h;
     renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h);
     cam.aspect = w / h; cam.updateProjectionMatrix();
-    if (v === 'hand' && qs.has('face')) { // ?face で、手の代わりに顔のアップ
+    if (FF) { // 顔のアップ。v = [水平の角度, 距離]
+      let head = null;
+      ch.root.traverse((o) => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
+      (head || ch.bones.head).getWorldPosition(tmp);
+      tmp.y += 0.04; tmp.z += 0.0;
+      cam.position.set(tmp.x + Math.sin(v[0]) * v[1], tmp.y + 0.02, tmp.z + Math.cos(v[0]) * v[1]); cam.lookAt(tmp.x, tmp.y, tmp.z);
+    } else if (v === 'hand' && qs.has('face')) { // ?face で、手の代わりに顔のアップ
       let head = null;
       ch.root.traverse((o) => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
       (head || ch.bones.head).getWorldPosition(tmp);
@@ -122,6 +132,10 @@ function start() {
     const s1 = +qs.get('door'), n = Math.max(1, Math.round(s1 * 0.9 * fps));
     for (let i = 1; i <= n; i++) ch.update(1 / fps, speed, true, 0, 0, { type: 'door', s: s1 * i / n });
   }
+  if (qs.has('expr')) { // &expr=Fcl_EYE_Close:1,Fcl_MTH_A:1 顔のモーフ (表情・口・まばたき) の値を直接入れる (顔のパーツを変えたあとの崩れを見る用)
+    const want = Object.fromEntries(qs.get('expr').split(',').map((kv) => { const [k, v] = kv.split(':'); return [k, +v]; }));
+    ch.root.traverse((o) => { if (o.isMesh && o.morphTargetDictionary) for (const [k, v] of Object.entries(want)) if (k in o.morphTargetDictionary) o.morphTargetInfluences[o.morphTargetDictionary[k]] = v; });
+  }
   scene.updateMatrixWorld(true);
   draw();
   document.title = 'done';
@@ -129,7 +143,12 @@ function start() {
 // ヘッドレス Chrome の --virtual-time-budget は、読み込み (画像の展開など) を待たずに時間を進めてしまう。
 // 読み込みが済むまで、タイマーの中で実時間を少しずつ使って待たせる
 const hold = setInterval(() => { let x = 0; for (let i = 0; i < 4e6; i++) x += Math.sqrt(i); return x; }, 100); // 時計も仮想なので、回数で待つ
-ch.ready.then(() => { clearInterval(hold); start(); });
+ch.ready.then(async () => {
+  if (hairEntry) await ch.setHair(hairEntry); // 髪の取り込みが済むまで待つ
+  clearInterval(hold);
+  if (qs.has('nohair')) ch.root.traverse((o) => { if (o.isMesh && (Array.isArray(o.material) ? o.material : [o.material]).every((m) => /HAIR/.test(m.name))) o.visible = false; }); // &nohair: 今のキャラの髪を隠す (顔の確認用。前髪が目にかかるので)
+  start();
+});
 </script>
 </body>
 </html>
