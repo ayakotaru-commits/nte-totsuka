@@ -157,6 +157,7 @@ async function main() {
   player.model.setHairColor(hairStyle.color);                   // 選んでいた髪色にする
   player.model.setEyeColor(hairStyle.eyeColor);                 // 選んでいた目の色にする
   player.model.setSkinColor(hairStyle.skinColor);               // 選んでいた肌の色にする
+  player.model.setHeight(hairStyle.heightScale());              // 選んでいた身長にする
   let menu = null;                                              // メニュー (下で作る)
   let shops = null;                                             // 洋服屋の入口 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);

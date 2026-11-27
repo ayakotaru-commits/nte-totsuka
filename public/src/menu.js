@@ -5,7 +5,7 @@
 // キャラメイクの画面は、タブで 髪型の一覧・髪色・目の色の色見本 (hairstyle.js)。選ぶとすぐ変わる。
 // カメラは、着替え・キャラメイクの画面で、キャラの正面へ寄せる。
 import { yen, SLOTS } from './wardrobe.js';
-import { PALETTE, EYE_PALETTE, SKIN_PALETTE } from './hairstyle.js';
+import { PALETTE, EYE_PALETTE, SKIN_PALETTE, HEIGHTS, HEIGHT_BASE } from './hairstyle.js';
 
 export class Menu {
   constructor({ wardrobe, hairStyle, player, cam, dom, lock, unlock, actions }) {
@@ -70,7 +70,7 @@ export class Menu {
   go(screen) {
     this.screen = screen; this.msg = ''; this.sel = 0;
     if (screen === 'wardrobe' || screen === 'charmake') {
-      this.sel = screen === 'charmake' ? (this.cmTab === 'style' ? this.hairIndex() : this.colorIndex()) : this.selIndex();
+      this.sel = screen === 'charmake' ? (this.cmIndex()) : this.selIndex();
       // カメラをキャラの正面・近くへ (戻すときのために今の値を覚える)
       if (!this.saved) this.saved = { yaw: this.cam.yaw, pitch: this.cam.pitch, dist: this.cam.dist };
       this.cam.yaw = this.player.facing + 0.35; this.cam.pitch = 0.12; this.cam.dist = 3.4;
@@ -134,7 +134,17 @@ export class Menu {
   }
 
   // キャラメイクのタブを切り替える
-  setCmTab(t) { this.cmTab = t; this.sel = t === 'style' ? this.hairIndex() : this.colorIndex(); this.msg = ''; this.render(); }
+  // 身長の一覧 (先頭は「元の身長」)・いまの位置
+  heightList() { return [{ cm: null, name: `元の身長（約 ${HEIGHT_BASE} cm）` }, ...HEIGHTS.filter((c) => c !== HEIGHT_BASE).map((c) => ({ cm: c, name: c + ' cm' }))]; }
+  heightIndex() { const c = this.hairStyle?.height || null; return Math.max(0, this.heightList().findIndex((o) => o.cm === (c === HEIGHT_BASE ? null : c))); }
+  cmIndex() { return this.cmTab === 'style' ? this.hairIndex() : this.cmTab === 'height' ? this.heightIndex() : this.colorIndex(); }
+  pickHeight(cm) {
+    if (!this.hairStyle || !this.hairStyle.setHeight(cm)) return;
+    this.player.model.setHeight(this.hairStyle.heightScale());
+    this.msg = ''; this.sel = this.heightIndex(); this.render();
+  }
+
+  setCmTab(t) { this.cmTab = t; this.sel = this.cmIndex(); this.msg = ''; this.render(); }
 
   // 髪型を選ぶ (すぐ髪が変わる)
   pickHair(id) {
@@ -162,7 +172,7 @@ export class Menu {
     if (this.screen === 'main') {
       h += `<div class="mn-list">
         <button class="mn-item" data-do="wardrobe">着替え<small>持っている服に着替える</small></button>
-        <button class="mn-item" data-do="charmake">キャラメイク<small>髪型・髪色・目の色・肌の色</small></button>
+        <button class="mn-item" data-do="charmake">キャラメイク<small>髪型・髪色・目の色・肌の色・身長</small></button>
         <button class="mn-item" data-do="map">地図<small>M</small></button>
         <button class="mn-item" data-do="time">時間帯を変える<small>T</small></button>
         <button class="mn-item" data-do="photo">撮影モード<small>I　画面の表示を消す</small></button>
@@ -191,9 +201,17 @@ export class Menu {
       h += `</div><div class="mn-msg">${this.msg || (items.length ? '' : 'いまは売っている服がありません')}</div><button class="mn-item mn-close" data-do="place">もどる<small>Esc</small></button>`;
     } else if (this.screen === 'charmake') {
       // キャラメイク: タブ (髪型 / 髪色) + 一覧
-      const tabs = [['style', '髪型'], ['color', '髪色'], ['eye', '目の色'], ['skin', '肌の色']];
+      const tabs = [['style', '髪型'], ['color', '髪色'], ['eye', '目の色'], ['skin', '肌の色'], ['height', '身長']];
       h += '<div class="mn-tabs">' + tabs.map(([k, n]) => `<button class="mn-tab${k === this.cmTab ? ' on' : ''}" data-cmtab="${k}">${n}</button>`).join('') + '</div>';
-      if (this.cmTab !== 'style') {
+      if (this.cmTab === 'height') {
+        const cur = this.hairStyle?.height === HEIGHT_BASE ? null : this.hairStyle?.height || null;
+        h += '<div class="mn-list">';
+        this.heightList().forEach((o, i) => {
+          const on = o.cm === cur;
+          h += `<button class="mn-item${on ? ' on' : ''}${i === this.sel ? ' sel' : ''}" data-height="${o.cm || 'none'}">${o.name}<small>${on ? '選んでいる' : ''}</small></button>`;
+        });
+        h += `</div><div class="mn-msg">${this.msg || '選ぶとすぐ背の高さが変わります。ゲームの中の当たり判定・ジャンプ・速さは変わりません'}</div>`;
+      } else if (this.cmTab !== 'style') {
         const cur = this.curColor();
         h += '<div class="mn-swatches">';
         this.colorList().forEach((o, i) => {
@@ -263,6 +281,7 @@ export class Menu {
     if (b.dataset.slot) return this.setSlot(b.dataset.slot);
     if (b.dataset.cmtab) return this.setCmTab(b.dataset.cmtab);
     if (b.dataset.color) { this.sel = this.colorList().findIndex((o) => (o.hex || 'none') === b.dataset.color); this.pickColor(b.dataset.color); return this.render(); }
+    if (b.dataset.height) { this.sel = this.heightList().findIndex((o) => (o.cm || 'none') == b.dataset.height); return this.pickHeight(b.dataset.height); }
     if (b.dataset.hair) { this.sel = this.hairList().findIndex((o) => o.id === b.dataset.hair); return this.pickHair(b.dataset.hair); }
     if (b.dataset.wear) { this.sel = this.list().findIndex((o) => o.id === b.dataset.wear); return this.wear(b.dataset.wear); }
     if (b.dataset.shop) { this.shop = this.place.shops.find((s) => s.key === b.dataset.shop); this.go('shop'); return; }
@@ -303,16 +322,16 @@ export class Menu {
       this.setSlot(SLOTS[(i + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return;
     }
     // キャラメイクのタブは ← → で切り替える
-    if (this.screen === 'charmake' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { const T = ['style', 'color', 'eye', 'skin'], n = T.length; this.setCmTab(T[(T.indexOf(this.cmTab) + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return; }
+    if (this.screen === 'charmake' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) { const T = ['style', 'color', 'eye', 'skin', 'height'], n = T.length; this.setCmTab(T[(T.indexOf(this.cmTab) + (e.code === 'ArrowRight' ? 1 : n - 1)) % n]); e.preventDefault(); return; }
     // 一覧 (着替え・店・服) の選び方: ↑↓ で動かし、Enter で決める
-    const rows = this.screen === 'wardrobe' ? this.list() : this.screen === 'charmake' ? (this.cmTab === 'style' ? this.hairList() : this.colorList()) : this.screen === 'place' ? this.place.shops : this.screen === 'shop' ? this.stock(this.shop) : null;
+    const rows = this.screen === 'wardrobe' ? this.list() : this.screen === 'charmake' ? (this.cmTab === 'style' ? this.hairList() : this.cmTab === 'height' ? this.heightList() : this.colorList()) : this.screen === 'place' ? this.place.shops : this.screen === 'shop' ? this.stock(this.shop) : null;
     if (!rows || !rows.length) return;
     const n = rows.length;
     if (e.code === 'ArrowDown') { this.sel = (this.sel + 1) % n; this.render(); e.preventDefault(); }
     else if (e.code === 'ArrowUp') { this.sel = (this.sel + n - 1) % n; this.render(); e.preventDefault(); }
     else if (e.code === 'Enter') {
       if (this.screen === 'wardrobe') this.wear(rows[this.sel].id);
-      else if (this.screen === 'charmake') { if (this.cmTab !== 'style') { this.pickColor(rows[this.sel].hex); this.render(); } else this.pickHair(rows[this.sel].id); }
+      else if (this.screen === 'charmake') { if (this.cmTab === 'height') this.pickHeight(rows[this.sel].cm); else if (this.cmTab !== 'style') { this.pickColor(rows[this.sel].hex); this.render(); } else this.pickHair(rows[this.sel].id); }
       else if (this.screen === 'place') { this.shop = rows[this.sel]; this.go('shop'); }
       else this.buy(rows[this.sel].id);
     }
