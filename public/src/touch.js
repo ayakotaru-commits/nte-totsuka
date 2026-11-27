@@ -31,7 +31,7 @@ export function setupTouch({ dom, input, cam, streetView, warp, photo }) {
     dom.setPointerCapture?.(e.pointerId);
     if (photo?.active) { // 撮影モード: 画面のどこでも視点 (スティックは出さない)
       look.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      tap = look.size === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp } : null; // 時刻は、処理した時ではなく指が触れた時 (重くて処理が遅れても、タップと読めるように)
+      tap = look.size === 1 ? { id: e.pointerId, x: e.clientX, y: e.clientY } : null; // 時間の長さは見ない (動かさずに離せばタップ。重くてイベントの時刻が開いても読める)
       if (look.size === 2) pinch = spread();
       return;
     }
@@ -67,7 +67,7 @@ export function setupTouch({ dom, input, cam, streetView, warp, photo }) {
       move = null; input.ax = input.az = 0;
       stick.classList.remove('on');
     }
-    if (tap && tap.id === e.pointerId && e.type === 'pointerup' && e.timeStamp - tap.t < 500) photo?.showExit();
+    if (tap && tap.id === e.pointerId && e.type === 'pointerup') photo?.showExit();
     if (tap && tap.id === e.pointerId) tap = null;
     look.delete(e.pointerId);
     if (look.size === 2) pinch = spread();
