@@ -331,3 +331,11 @@ body.photo #photo-ui { display: block; }
 #photo-hint.show { opacity: 1; }
 #photo-exit { position: fixed; right: calc(14px + env(safe-area-inset-right)); top: calc(14px + env(safe-area-inset-top)); z-index: 41; height: 40px; padding: 0 16px; border-radius: 20px; border: 1px solid rgba(255,255,255,.7); background: rgba(10,20,35,.7); color: #fff; font: inherit; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .4s; }
 #photo-exit.show { opacity: 1; pointer-events: auto; }
+/* キャラメイクの髪色: 色見本 */
+.mn-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 8px; }
+.mn-sw { width: 100%; aspect-ratio: 1; min-height: 44px; border-radius: 50%; border: 2px solid rgba(255,255,255,.45); cursor: pointer; padding: 0; font: inherit; font-size: 13px; color: #fff; }
+.mn-sw-orig { background: rgba(255,255,255,.12); }
+.mn-sw.sel { outline: 2px solid #5fd3ff; outline-offset: 2px; }
+.mn-sw.on { border-color: #fff; box-shadow: 0 0 0 3px #5fd3ff; }
+.mn-pick { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; }
+.mn-pick input { width: 64px; height: 40px; padding: 0; border: 1px solid rgba(255,255,255,.45); border-radius: 8px; background: transparent; cursor: pointer; }

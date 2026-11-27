@@ -960,6 +960,8 @@ export function makeCharacter(opt = {}) {
   // 髪型 (キャラメイク): setHair(entry) entry は models/hairs/hairs.json の 1 件か null (= いつもの髪)。VRM の読み込み前に呼ばれたら、読み込み後に付ける
   let hairdresser = null, wantHair = null;
   const setHair = (entry) => { wantHair = entry || null; return hairdresser ? hairdresser.set(wantHair) : Promise.resolve(); };
+  let wantHairColor = null;
+  const setHairColor = (hex) => { wantHairColor = hex || null; hairdresser?.setColor(wantHairColor); }; // 髪色 ('#rrggbb'。null = 元の色)。いつもの髪にも効く
 
   async function loadVRM(url) {
     try {
@@ -1013,6 +1015,7 @@ export function makeCharacter(opt = {}) {
       outfitter = new Outfitter(vrm); // 着せ替え (VRM のときだけ。ほかの人の組み立て式のキャラは対象外)
       if (wantOutfits) outfitter.set(wantOutfits);
       hairdresser = new Hairdresser(vrm);
+      if (wantHairColor) hairdresser.setColor(wantHairColor);
       if (wantHair) hairdresser.set(wantHair);
       console.info('VRM を読み込みました: ' + url);
     } catch (e) {
@@ -1033,5 +1036,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor };
 }
