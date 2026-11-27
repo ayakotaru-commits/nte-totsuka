@@ -771,33 +771,40 @@ def make_rides(cfg, R, info, out, site, ellipses, circles, inner, park_paths, el
         d, q = nearest_path_pt(pl["x"], pl["z"])
         rides["carousel"] = {"x": pl["x"], "z": pl["z"], "yaw": rl(math.atan2(q[0] - pl["x"], q[1] - pl["z"])), "R": c["R"], "a": ai}
 
-    # ライブ会場: コースターの跡地。広場の中心へ向いた長方形 (幅 width × 奥行き depth。奥にステージ、手前が客席) を、
-    # エリアの外・湖・道・敷地の縁から離れた空き地に置く。near の中心に近い順に探す (乱数なし)。
+    # ライブ会場: コースターの跡地。ステージを奥に、広場の中心へ向けて開く扇形の客席 (fan) を、
+    # エリアの外・湖・道・敷地の縁から離れた空き地に置く。置き場所は、扇・ステージ・両わきの小屋の置き場・裏方の置き場 (footprint) の全体で探す。
+    # near の中心に近い順 (乱数なし)。木・花壇・街灯・ベンチ・広場へつなぐ道・人の溜まり場 (hubs の元) も、ここで gen に足す (ここより前の出力は変わらない)。
     k = R.get("live")
     if k:
-        W, D, clear = k["width"], k["depth"], k.get("clear", 7)
+        F, ST, clear = k["fan"], k["stage"], k.get("clear", 7)
+        R_, ANG, AV = F["R"], math.radians(F["ang"]), F["apexV"]
         face = ellipses[k["faceTo"]]["center"]
         near = cfg["areas"][k["near"]]
         ncx, ncz = sum(q[0] for q in near) / len(near), sum(q[1] for q in near) / len(near)
         area_polys = [a for n, a in cfg["areas"].items() if not n.startswith("_")]
         xs, zs = [q[0] for q in site], [q[1] for q in site]
+        sw = ST["w"]
+        # footprint: ローカル (u 右・v 前) の点。扇の中 + ステージ・裏方・両わき (u ±wing、v back-backstage 〜 前)
+        fp = []
+        for r in range(6, int(R_) + 1, 6):
+            n = max(1, int(r * ANG / 6))
+            for i in range(n + 1):
+                th = -ANG / 2 + ANG * i / n
+                fp.append((r * math.sin(th), AV + r * math.cos(th)))
+        wing = ST.get("wing", 52)
+        for u in range(-int(wing), int(wing) + 1, 6):
+            for v in range(int(ST["back"] - ST.get("backstage", 12)), int(AV + 14), 6):
+                fp.append((u, v))
         cands = sorted((math.hypot(cx - ncx, cz - ncz), cx, cz) for cx in range(int(min(xs)), int(max(xs)), 4) for cz in range(int(min(zs)), int(max(zs)), 4))
         chosen = None
         for dist, cx, cz in cands:
             yaw = math.atan2(face[0] - cx, face[1] - cz)   # 前 = 広場の中心の向き (ローカル z が前)
             cs, sn = math.cos(yaw), math.sin(yaw)
             ok = True
-            for iu in range(int(W // 5) + 1):
-                for iv in range(int(D // 5) + 1):
-                    u, v = -W / 2 + iu * W / int(W // 5), -D / 2 + iv * D / int(D // 5)
-                    x, z = cx + u * cs + v * sn, cz - u * sn + v * cs
-                    if not inside(x, z, site, 12) or ell_hit(x, z, 2.0) or any(math.hypot(x - c0[0], z - c0[1]) < c0[2] + 4 for c0 in circles) or not path_clear(x, z, 4.0):
-                        ok = False
-                    elif any(inpoly(x, z, ap) or poly_edge_dist(x, z, ap) < clear for ap in area_polys):
-                        ok = False
-                    if not ok:
-                        break
-                if not ok:
+            for u, v in fp:
+                x, z = cx + u * cs + v * sn, cz - u * sn + v * cs
+                if not inside(x, z, site, 12) or ell_hit(x, z, 2.0) or any(math.hypot(x - c0[0], z - c0[1]) < c0[2] + 4 for c0 in circles) or not path_clear(x, z, 4.0) or any(inpoly(x, z, ap) or poly_edge_dist(x, z, ap) < clear for ap in area_polys):
+                    ok = False
                     break
             if ok:
                 chosen = (cx, cz, yaw)
@@ -805,7 +812,63 @@ def make_rides(cfg, R, info, out, site, ellipses, circles, inner, park_paths, el
         if chosen is None:
             sys.exit("park_areas: ライブ会場を置ける空き地が無い")
         cx, cz, yaw = chosen
-        rides["live"] = {"name": k["name"], "roman": k.get("roman", k["name"]), "x": cx, "z": cz, "yaw": rl(yaw), "width": W, "depth": D, "near": k["near"]}
+        cs, sn = math.cos(yaw), math.sin(yaw)
+        W_ = lambda u, v: (cx + u * cs + v * sn, cz - u * sn + v * cs)
+        far = AV + R_
+        rides["live"] = {"name": k["name"], "roman": k["roman"] if "roman" in k else k["name"], "x": cx, "z": cz, "yaw": rl(yaw), "fan": dict(F), "stage": dict(ST),
+                         "width": rl(2 * R_ * math.sin(ANG / 2)), "depth": rl(far - ST["back"]), "near": k["near"]}
+        # ---- 周りのつくり (スイート・ヒルの桜・キャンディー街灯・桃色の道を借りる)。ローカル → ワールドで足す ----
+        ai = next(i for i, a in enumerate(out["areas"]) if a["name"] == k.get("style", "スイート・ヒル"))
+        edge_ok = lambda x, z, m: inside(x, z, site, 8) and not ell_hit(x, z, 0.0) and path_clear(x, z, m) and not any(inpoly(x, z, ap) or poly_edge_dist(x, z, ap) < 3 for ap in area_polys)
+        # 花壇: 扇の弧の外側 (R + 2.2)。入口 (中央 ±7 m) はあける
+        arc_len = R_ * ANG
+        nb = int(arc_len / 4.6)
+        for i in range(nb):
+            th = -ANG / 2 + ANG * (i + 0.5) / nb
+            if abs(R_ * math.sin(th)) < 7.5:
+                continue
+            u, v = (R_ + 2.2) * math.sin(th), AV + (R_ + 2.2) * math.cos(th)
+            x, z = W_(u, v)
+            if not edge_ok(x, z, 1.0):
+                continue
+            tx, tz = W_(math.cos(th), -math.sin(th))[0] - cx, W_(math.cos(th), -math.sin(th))[1] - cz   # 弧の接線 (ワールド)
+            out["beds"].append([rl(x), rl(z), rl(math.atan2(-tz, tx)), 1.6, 0.7, i % 3, ai])
+        # 街灯: 弧の外側 (R + 0.4) に 7 本・ステージのわきに 2 本ずつ。ベンチ: 弧の内側 (R - 1.8) から中心へ向けて 6 脚
+        for th in [-ANG / 2 + ANG * (j + 0.5) / 7 for j in range(7)]:
+            if abs(R_ * math.sin(th)) < 7.5:
+                continue
+            x, z = W_((R_ + 0.4) * math.sin(th), AV + (R_ + 0.4) * math.cos(th))
+            if edge_ok(x, z, 0.6):
+                out["lamps"].append([rl(x), rl(z), ai])
+        for th in [-ANG / 2 + ANG * (j + 0.5) / 6 for j in range(6)]:
+            if abs(R_ * math.sin(th)) < 7.5:
+                continue
+            x, z = W_((R_ - 2.2) * math.sin(th), AV + (R_ - 2.2) * math.cos(th))
+            rx, rz = W_(math.sin(th), math.cos(th))[0] - cx, W_(math.sin(th), math.cos(th))[1] - cz
+            out["benches"].append([rl(x), rl(z), rl(math.atan2(-rx, -rz)), ai])
+        # 木: 弧の外側 (R + 8〜13 m、桜と丸い木を交互) と、ステージの裏 (裏方の置き場のさらに奥) の列
+        kinds = ["blossom", "round", "blossom", "round", "pine"]
+        nt = int(arc_len / 7.0)
+        for i in range(nt):
+            th = -ANG / 2 + ANG * (i + 0.5) / nt
+            if abs(R_ * math.sin(th)) < 10:
+                continue
+            rr = R_ + 9 + 3.5 * math.sin(i * 2.3)
+            x, z = W_(rr * math.sin(th), AV + rr * math.cos(th))
+            if edge_ok(x, z, 2.5) and not any(math.hypot(x - t[0], z - t[1]) < 4 for t in out["trees"]):
+                out["trees"].append([rl(x), rl(z), kinds[i % 5], rl(0.95 + 0.14 * math.sin(i * 1.7)), ai])
+        back_v = ST["back"] - ST.get("backstage", 12) - 5
+        for i in range(-8, 9):
+            u, v = i * 7.0 + 2.0 * math.sin(i * 1.3), back_v - 2.5 * (i % 2) + 1.5 * math.cos(i * 0.9)
+            x, z = W_(u, v)
+            if edge_ok(x, z, 2.5) and not any(math.hypot(x - t[0], z - t[1]) < 4 for t in out["trees"]):
+                out["trees"].append([rl(x), rl(z), kinds[(i + 8) % 5], rl(1.0 + 0.15 * math.sin(i * 2.1)), ai])
+        # 広場へつなぐ道: 扇の先の中央 → 広場の縁 (桃色の道)
+        sx, sz = W_(0, far - 1.0)
+        e = ellipses[k["faceTo"]]; ex, ez = sx - e["center"][0], sz - e["center"][1]
+        t = 1.0 / math.sqrt((ex / e["rx"]) ** 2 + (ez / e["rz"]) ** 2)
+        px, pz = e["center"][0] + ex * t * 0.97, e["center"][1] + ez * t * 0.97
+        out["paths"].append({"a": ai, "w": 7, "pts": [[rl(sx), rl(sz)], [rl((sx + px) / 2), rl((sz + pz) / 2)], [rl(px), rl(pz)]], "k": "stone"})
     return rides
 
 

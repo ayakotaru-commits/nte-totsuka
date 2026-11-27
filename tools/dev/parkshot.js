@@ -13,12 +13,14 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
 
 const VIEWS = [
   // ライブ会場 (サンライズ・ライブステージ。コースターの跡地。中心 31353, -25583、前 = (0.84, -0.545) = 広場の向き)
-  { name: 'lv1_stage_front', at: [31350, -25581], look: [-0.84, 0.545], pitch: 0.14, dist: 30 },        // 客席の中から、ステージと大画面
-  { name: 'lv2_aerial', at: [31353, -25583], look: [0.84, -0.545], pitch: 1.0, dist: 230 },              // 上から (会場・広場・湖・城)
+  { name: 'lv1_stage_front', at: [31362, -25593], look: [-0.853, 0.522], pitch: 0.14, dist: 30 },        // 客席の中から、ステージと大画面
+  { name: 'lv2_aerial', at: [31373, -25600], look: [0.853, -0.522], pitch: 1.0, dist: 230 },              // 上から (会場・広場・湖・城)
   { name: 'lv3_from_avenue', at: [31490, -25735], look: [0, 1], pitch: 0.12, dist: 22 },                  // アベニューの出口から (城が隠れないか)
-  { name: 'lv4_from_plaza', at: [31450, -25672], look: [-0.9, 0.43], pitch: 0.1, dist: 20 },            // 広場の西から会場へ
-  { name: 'lv5_stage_close', at: [31334, -25571], look: [-0.84, 0.545], pitch: 0.25, dist: 12 },
-  { name: 'lv7_night', at: [31350, -25581], look: [-0.84, 0.545], pitch: 0.2, dist: 30, show: { idle: true } },   // 夜のステージ (光線・大画面・電球。--night)
+  { name: 'lv4_from_plaza', at: [31450, -25672], look: [-0.64, 0.77], pitch: 0.1, dist: 20 },            // 広場の西から会場へ
+  { name: 'lv5_stage_close', at: [31355, -25589], look: [-0.853, 0.522], pitch: 0.25, dist: 12 },      // ステージの前の花道
+  { name: 'lv7_night', at: [31362, -25593], look: [-0.853, 0.522], pitch: 0.2, dist: 30, show: { idle: true } },   // 夜のステージ (光線・大画面・電球。--night)
+  { name: 'lv8_back', at: [31305, -25558], look: [0.853, -0.522], pitch: 0.12, dist: 25 },                   // ステージの裏 (楽屋・テント・木)
+  { name: 'lv9_far_end', at: [31403, -25618], look: [-0.853, 0.522], pitch: 0.16, dist: 28 },                // 扇の先 (入口の門・広場から来る道) からステージへ
   { name: 'lv6_castle_axis', at: [31490, -25690], look: [0, 1], pitch: 0.08, dist: 16 },                  // 広場の軸 (城の方向)。会場は左に入る
   { name: 'e1_arch_night', at: [31121, -25830], look: [-0.230, -0.973], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)
   { name: 'e2_arch_town', at: [31367, -25675], look: [-0.992, -0.129], pitch: 0.17, dist: 12 },       // エリアの門 (英語の名前・字体)

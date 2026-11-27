@@ -166,13 +166,15 @@ const watch = (nowSec, center, preset = '昼', seconds = 30) => {
 // ---- 地図の印・ワープ先 ----
 {
   const sp = park.spots, names = sp.map((s) => s.name);
-  check('地図の印: ゲート・プラザ・パレード (= アベニュー)・観覧車・コースター・湖・6 エリア', sp.length >= 13 && ['ゲート', 'サンライズ・プラザ', '観覧車', 'ムーンレイク（花火）', 'リール・キャッスル'].every((n) => names.includes(n)) && park.gen.areas.filter((a) => a.name !== 'ネオン・アベニュー').every((a) => names.includes(a.name)), names.join('・'));
+  check('地図の印: ゲート・プラザ・パレード (= アベニュー)・観覧車・ライブ会場・湖・6 エリア', sp.length >= 14 && ['ゲート', 'サンライズ・プラザ', '観覧車', 'サンライズ・ライブステージ', 'ムーンレイク（花火）', 'リール・キャッスル'].every((n) => names.includes(n)) && park.gen.areas.filter((a) => a.name !== 'ネオン・アベニュー').every((a) => names.includes(a.name)), names.join('・'));
   check('印は敷地の中で、建物・木・湖の中ではない', sp.every((s) => inPoly(s.x, s.z, park.site) && !inBuilding(s.x, s.z, 2) && !park.gen.trees.some((t) => Math.hypot(t[0] - s.x, t[1] - s.z) < 1.5)));
-  // 乗り物・コースターの柱・塔・特別な物・街灯などから離れている (ワープで押し出されない)
-  const rd = park.gen.rides, cp = rd.coaster.pts, cd = (x, z) => Math.min(...cp.map((q, i) => segD(x, z, q, cp[(i + 1) % cp.length])));
-  const blocked = sp.filter((s) => s.kind !== 'plaza' && s.kind !== 'gate' && (Math.hypot(s.x - rd.ferris.x, s.z - rd.ferris.z) < rd.ferris.R + 5 || Math.hypot(s.x - rd.carousel.x, s.z - rd.carousel.z) < rd.carousel.R + 3.5 || cd(s.x, s.z) < 7
+  // 乗り物・ライブ会場のステージ・ミキサー席・塔・特別な物・街灯などから離れている (ワープで押し出されない)
+  const rd = park.gen.rides, lv = rd.live, lzf = lv.stage.back + lv.stage.d;
+  const liveLocal = (x, z) => { const dx = x - lv.x, dz = z - lv.z; return [dx * Math.cos(lv.yaw) - dz * Math.sin(lv.yaw), dx * Math.sin(lv.yaw) + dz * Math.cos(lv.yaw)]; };
+  const liveBlocked = (s) => { const [u, v] = liveLocal(s.x, s.z); return (Math.abs(u) < 6 && Math.abs(v - (lzf + 38)) < 4) || (v < lzf + 17 && Math.abs(u) < lv.stage.wing + 2); };
+  const blocked = sp.filter((s) => s.kind !== 'plaza' && s.kind !== 'gate' && (Math.hypot(s.x - rd.ferris.x, s.z - rd.ferris.z) < rd.ferris.R + 5 || Math.hypot(s.x - rd.carousel.x, s.z - rd.carousel.z) < rd.carousel.R + 3.5 || liveBlocked(s)
     || Math.hypot(s.x - park.tower.at[0], s.z - park.tower.at[1]) < park.tower.radius + 4 || park.gen.props.some((q) => Math.hypot(q.x - s.x, q.z - s.z) < q.r + 2) || park.gen.lamps.some((q) => Math.hypot(q[0] - s.x, q[1] - s.z) < 1.2) || park.gen.beds.some((q) => Math.hypot(q[0] - s.x, q[1] - s.z) < 2.5))).map((s) => s.name);
-  check('印は乗り物・コースターの柱・塔・特別な物・街灯・植え込みから離れている (ワープで押し出されない)', blocked.length === 0, blocked.join('・'));
+  check('印は乗り物・ライブ会場のステージとミキサー席・塔・特別な物・街灯・植え込みから離れている (ワープで押し出されない)', blocked.length === 0, blocked.join('・'));
   const lake = park.ellipses['ムーンレイク'];
   check('湖の印は湖の外 (散歩道の上)', Math.hypot((sp.find((s) => s.kind === 'lake').x - lake.center[0]) / lake.rx, (sp.find((s) => s.kind === 'lake').z - lake.center[1]) / lake.rz) > 1.03);
   check('印の種類 (tier) は 0〜2・名前・色・字がある', sp.every((s) => [0, 1, 2].includes(s.tier) && s.name && /^#/.test(s.color) && s.glyph.length === 1 && Number.isFinite(s.face)));
