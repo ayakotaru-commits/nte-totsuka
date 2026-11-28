@@ -7,6 +7,7 @@ const FOLLOW_PITCH = 0.3;      // 落ち着く見下ろし角 (rad、約 17°)
 const FOLLOW_PITCH_RATE = 1.5; // 見下ろし角が戻る速さ
 
 const MIN_DIST = 0.8;          // ホイール・ピンチで寄れる最短距離 (m。以前は 1.8)
+export const DEFAULT_MAX_DIST = 120; // 引ける最長距離 (m。以前は 30)
 
 export class ThirdPersonCamera {
   constructor(camera, world, dom) {
@@ -21,7 +22,7 @@ export class ThirdPersonCamera {
     this.targetY = null; // 注視点の高さ (足元から m)。null = 足元 + 1.45 m (キャラメイクの顔のアップで、頭の高さにする)
     this.view = null;    // 画面の中心をずらす割合 { x, y } (メニューに隠れない側へキャラを寄せる。+ = 左・上へ寄る)
     this.freeRotate = false; // 修正モード: マウス解放中に右ドラッグで回転
-    this.maxDist = 30;
+    this.maxDist = DEFAULT_MAX_DIST;
     // 自動追従: 歩き出すと、キャラの後ろ・少し上へゆっくり回り込む。マウスで視点を動かした直後は手動を優先
     this.autoFollow = !new URLSearchParams(location.search).has('nofollow');
     this.idle = 9; // マウスで視点を動かしてからの秒数

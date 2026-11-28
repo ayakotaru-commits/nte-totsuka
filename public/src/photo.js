@@ -5,7 +5,7 @@
 //         スマホは画面を 1 回タップ (動かさずに離す) すると右上に「×」が 3 秒出る。そこを押す。
 // 消す範囲は style.css の body.photo (#app と #photo-ui 以外の body 直下を全部消す)。
 const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight'];
-const MAX_DIST = 80;     // 撮影中のズームの上限 (ふだんは cam.maxDist = 30)
+const MAX_DIST = 200;    // 撮影中のズームの上限 (ふだんは cam.maxDist = 120)
 const HINT_SEC = 3.5;    // 入った直後の案内を出す秒数
 const EXIT_SEC = 3;      // タップで出る「×」を出す秒数
 
