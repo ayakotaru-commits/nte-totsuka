@@ -2,6 +2,7 @@
 // 「保存して反映」で tools/server.py に送り、data/corrections.json に追記 → city.json を再生成して再読み込み。
 import * as THREE from 'three';
 import { H } from './terrain.js';
+import { DEFAULT_MAX_DIST } from './camera.js';
 
 const RESTORE_KEY = 'totsuka-restore';
 
@@ -105,8 +106,8 @@ export class Editor {
     this.panel.hidden = true;
     this.cancelDraw();
     this.select(null);
-    this.cam.maxDist = 30;
-    this.cam.dist = Math.min(this.cam.dist, 30);
+    this.cam.maxDist = DEFAULT_MAX_DIST;
+    this.cam.dist = Math.min(this.cam.dist, DEFAULT_MAX_DIST);
     this.cam.freeRotate = false;
     this.renderer.domElement.requestPointerLock();
   }
