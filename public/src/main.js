@@ -38,6 +38,7 @@ import { Status } from './status.js';
 import { PhotoMode } from './photo.js';
 import { loadShops, ShopTrigger } from './shop.js';
 import { ShopEntrances } from './shopentrance.js';
+import { SpotRings } from './spotring.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
 import { startMultiplayer } from './net/index.js';
 import { Look } from './look.js';
@@ -299,6 +300,13 @@ async function main() {
     ...ride.stationSpots().map((q) => ({ name: q.label || `${q.name}駅（${q.sub ? q.sub + 'ホーム' : 'ホーム'}）`, x: q.x, z: q.z, color: '#1f5fae', glyph: '電', active: () => false })),
   ].filter((e) => !e.off);
   minimap.events = bigmap.events = EVENTS;
+  // 足元の光の輪 (spotring.js): 立つと始まる・入れる場所を、地面の輪で知らせる。イベントは反応する区域そのものを縁取る。洋服屋の入口は下の ShopEntrances
+  const spotRings = new SpotRings({ scene, world, player });
+  window.__spotRings = spotRings;   // 確認用 (tools/dev/ringcheck.js)
+  if (!swarm.disabled) spotRings.addPolygon(SWARM_SITE.yard, { color: '#2f9e64' });
+  if (!rhythm.disabled) spotRings.addPolygon(RHYTHM_SITE.area, { color: '#d23c34' });
+  if (!arcade.disabled) spotRings.addPolygon(ARCADE_SITE.zone, { color: '#ff6fae' });
+  if (!ride.disabled && ride.gates.length) spotRings.addCircle(ride.gates[0].top.x, ride.gates[0].top.z, 2.4, { color: '#3f86e0', y: ride.gates[0].top.y, level: ride.gates[0].top.y });   // 電車の改札 (F で乗る)
 
   // マルチプレイ (サーバーが設定されているときだけ。net/config.js)
   const mp = startMultiplayer({ scene, player, respawn, bigmapOpen: () => bigmap.open });
@@ -377,7 +385,7 @@ async function main() {
   });
   $('menu-btn').addEventListener('click', () => { if (!bigmap.open && !arcade.active) menu.toggle(); });
   shops = new ShopTrigger({ places: shopPlaces, player, menu }); // 洋服屋の入口 (とどまると「入りますか？」)
-  shopEntrances = new ShopEntrances({ scene, places: shopPlaces, world, player, trigger: shops, menu }); // 入口の扉・庇・看板と、光の柱・輪・案内文
+  shopEntrances = new ShopEntrances({ scene, places: shopPlaces, world, player, trigger: shops, menu, rings: spotRings }); // 入口の扉・庇・看板と、足元の輪・案内文
   addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Escape' && bigmap.open) toggleMap();
@@ -439,6 +447,7 @@ async function main() {
       }
       if (!menu.open && !arcade.active && !rhythm.playing) shops.update(dt); // 洋服屋の入口
       shopEntrances?.update(dt);
+      spotRings.update(dt);
       if (rhythm.playing) rhythm.view();
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);

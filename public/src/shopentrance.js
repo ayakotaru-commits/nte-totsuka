@@ -1,14 +1,11 @@
 // 洋服屋の入口の見た目と「ここから入れます」の案内 (data/shops.json の entrances。入りかたは shop.js)。
 //   ・door のある入口: 壁に、ガラスの自動ドア (両開き)・黒い枠・紫の庇 (下に明かり)・光る看板・足元のマットを置く
-//   ・すべての入口: 遠くから見える光の柱、足元の光の輪 (近づくと強くなり、立ち止まっている間は輪が埋まっていく)、
+//   ・すべての入口: 足元の光の輪 (spotring.js。近づくと強くなり、立ち止まっている間は白い輪が一周する)、
 //     近くに来たときの画面下の案内文
-// 光の柱・輪は半透明の色付き (昼でも見える)。三角形は入口 1 か所で 100 に満たない。
 import * as THREE from 'three';
 
 const COL = 0xd79bff;            // 光の色 (地図の「服」の印と同じ紫)
-const FAR = 140;                 // 光の柱が見える距離 (m)
 const NEAR = 14;                 // 看板・扉が明るくなり始める距離 (m)
-const BEAM_H = 22;
 
 // 看板の字 (canvas)。紫の地に白
 function signTexture(text) {
@@ -22,25 +19,9 @@ function signTexture(text) {
   return t;
 }
 
-// 光の柱: 下が濃く上へ薄れる (頂点の y で決める)。距離で太さを変えて、遠くでも見えるようにする
-function beamMaterial() {
-  return new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
-    uniforms: { uCol: { value: new THREE.Color(COL) }, uK: { value: 0 }, uT: { value: 0 } },
-    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: `varying vec2 vUv; uniform vec3 uCol; uniform float uK, uT;
-      void main(){
-        float h = 1.0 - vUv.y;
-        float a = pow(h, 1.6) * 0.62 * uK;
-        a *= 0.8 + 0.2 * sin(uT * 2.4 + vUv.y * 9.0);
-        gl_FragColor = vec4(mix(uCol, vec3(1.0), 0.35 * h), a);
-      }`,
-  });
-}
-
 export class ShopEntrances {
   // places: shops.json の places。trigger: ShopTrigger (list の各要素 t = { e, dwell, hold })
-  constructor({ scene, places, world, player, trigger, menu }) {
+  constructor({ scene, places, world, player, trigger, menu, rings }) {
     this.player = player; this.trigger = trigger; this.menu = menu;
     this.items = [];
     this.root = new THREE.Group(); this.root.name = 'shop_entrances'; scene.add(this.root);
@@ -57,21 +38,13 @@ export class ShopEntrances {
       const t = trigger.list.find((q) => q.e === e);
       const gy = e.y === undefined || e.y === null ? world.groundAt(e.x, e.z, 3) : e.y - 0.17;   // 足元の高さ (入口の y はキャラの足元 + 持ち上げ)
       const it = { e, t, gy, mats: {} };
-      // ---- 光の柱と輪 ----
-      const beamM = beamMaterial(); it.beamM = beamM;
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, BEAM_H, 16, 1, true), beamM);
-      beam.position.set(e.x, gy + BEAM_H / 2, e.z); beam.renderOrder = 6; beam.frustumCulled = false; it.beam = beam;
-      const ringM = new THREE.MeshBasicMaterial({ color: COL, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false });
-      const ring = new THREE.Mesh(new THREE.RingGeometry(e.r * 0.78, e.r * 0.9, 48), ringM);
-      ring.rotation.x = -Math.PI / 2; ring.position.set(e.x, gy + 0.06, e.z); ring.renderOrder = 6;
-      const discM = new THREE.MeshBasicMaterial({ color: COL, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false });
-      const disc = new THREE.Mesh(new THREE.CircleGeometry(e.r * 0.78, 48), discM);
-      disc.rotation.x = -Math.PI / 2; disc.position.set(e.x, gy + 0.05, e.z); disc.renderOrder = 5;
+      // ---- 足元の輪 (反応する範囲。階が違うときは出さない) と、立ち止まった時間の輪 ----
+      it.spot = rings.addCircle(e.x, e.z, e.r * 0.85, { color: COL, y: gy, level: e.y === undefined || e.y === null ? null : e.y });
       const prM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, fog: false });
       const pr = new THREE.Mesh(new THREE.RingGeometry(e.r * 0.9, e.r * 1.0, 48, 1, 0, 0.001), prM);   // 立ち止まった時間に合わせて伸ばす輪
-      pr.rotation.x = -Math.PI / 2; pr.position.set(e.x, gy + 0.07, e.z); pr.renderOrder = 7;
-      Object.assign(it, { ring, ringM, disc, discM, pr, prM });
-      this.root.add(beam, ring, disc, pr);
+      pr.rotation.x = -Math.PI / 2; pr.position.set(e.x, gy + 0.14, e.z); pr.renderOrder = 7;
+      Object.assign(it, { pr, prM });
+      this.root.add(pr);
       // ---- 扉・庇・看板 ----
       if (e.door) {
         const d = e.door, w = d.w, dy = d.y !== undefined ? d.y : gy;
@@ -125,17 +98,8 @@ export class ShopEntrances {
       const dv = e.y === undefined || e.y === null ? 0 : Math.abs(pl.y - e.y);
       const sameLevel = e.y === undefined || e.y === null || dv <= 2.5;
       const dist = Math.hypot(dh, sameLevel ? 0 : dv + 4);   // 階が違うときは遠いものとして扱う
-      const k = Math.max(0, Math.min(1, 1 - (dist - 4) / FAR));   // 遠くほど 0 (ほんのり見える)
-      it.beamM.uniforms.uT.value = this.time;
-      it.beamM.uniforms.uK.value = 0.55 + 0.45 * k;
-      const s = 1 + dist / 26;   // 遠いほど太く (見失わない)
-      it.beam.scale.set(Math.min(s, 4), 1, Math.min(s, 4));
-      it.beam.visible = dist < FAR && !closed;
       const pulse = 0.5 + 0.5 * Math.sin(this.time * 3);
-      const near = dh < e.r + 10 && sameLevel;
-      it.ringM.opacity = near ? 0.55 + 0.35 * pulse : 0;
-      it.discM.opacity = near ? 0.1 + 0.1 * pulse : 0;
-      it.ring.visible = it.disc.visible = near;
+      it.spot.enabled = !closed;
       // 立ち止まっている間に輪が埋まっていく (shop.js の dwell)
       const prog = t && !t.hold && dh <= e.r && sameLevel && !closed ? Math.min(1, t.dwell / 0.5) : 0;
       it.pr.visible = prog > 0;
