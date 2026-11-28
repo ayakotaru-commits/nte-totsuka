@@ -16,6 +16,8 @@ export class ThirdPersonCamera {
     this.curDist = 5.5;
     this.target = new THREE.Vector3();
     this.locked = false;
+    this.targetY = null; // 注視点の高さ (足元から m)。null = 足元 + 1.45 m (キャラメイクの顔のアップで、頭の高さにする)
+    this.view = null;    // 画面の中心をずらす割合 { x, y } (メニューに隠れない側へキャラを寄せる。+ = 左・上へ寄る)
     this.freeRotate = false; // 修正モード: マウス解放中に右ドラッグで回転
     this.maxDist = 30;
     // 自動追従: 歩き出すと、キャラの後ろ・少し上へゆっくり回り込む。マウスで視点を動かした直後は手動を優先
@@ -54,7 +56,7 @@ export class ThirdPersonCamera {
         this.pitch += (FOLLOW_PITCH - this.pitch) * (1 - Math.exp(-FOLLOW_PITCH_RATE * s * dt));
       }
     }
-    const want = new THREE.Vector3(playerPos.x, playerPos.y + 1.45, playerPos.z);
+    const want = new THREE.Vector3(playerPos.x, playerPos.y + (this.targetY ?? 1.45), playerPos.z);
     if (snap) this.target.copy(want);
     else this.target.lerp(want, 1 - Math.exp(-dt * 18));
 
@@ -72,5 +74,7 @@ export class ThirdPersonCamera {
 
     this.camera.position.copy(this.target).addScaledVector(dir, this.curDist);
     this.camera.lookAt(this.target);
+    if (this.view) { const w = innerWidth, h = innerHeight; this.camera.setViewOffset(w, h, this.view.x * w, this.view.y * h, w, h); this.viewSet = true; }
+    else if (this.viewSet) { this.camera.clearViewOffset(); this.viewSet = false; }
   }
 }

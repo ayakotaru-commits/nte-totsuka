@@ -4,6 +4,7 @@
 // 着替えの画面は 枠 (トップス・ボトムス・くつ・ワンピース) ごとのタブで、選ぶとすぐ着替える。服は買ってから (wardrobe.js)。
 // キャラメイクの画面は、タブで 髪型の一覧・髪色・目の色の色見本 (hairstyle.js)。選ぶとすぐ変わる。
 // カメラは、着替え・キャラメイクの画面で、キャラの正面へ寄せる。
+import * as THREE from 'three';
 import { yen, SLOTS } from './wardrobe.js';
 import { PALETTE, EYE_PALETTE, SKIN_PALETTE, HEIGHTS, BODIES, FACE_ITEMS } from './hairstyle.js';
 
@@ -84,14 +85,29 @@ export class Menu {
       this.sel = screen === 'charmake' ? (this.cmIndex()) : this.selIndex();
       // カメラをキャラの正面・近くへ (戻すときのために今の値を覚える)
       if (!this.saved) this.saved = { yaw: this.cam.yaw, pitch: this.cam.pitch, dist: this.cam.dist };
-      this.cam.yaw = this.player.facing + 0.35; this.cam.pitch = 0.12; this.cam.dist = 3.4;
+      this.cam.yaw = this.player.facing + 0.35;
       this.cam.idle = 0;
+      this.applyCmCam();
     } else this.restoreCam();
     this.render();
   }
 
+  // キャラメイクのカメラ: 「顔」タブは顔のアップ (頭の高さ・近く。メニューに隠れない側へ顔を寄せる)、ほかは全身
+  applyCmCam() {
+    const c = this.cam;
+    if (this.screen === 'charmake' && this.cmTab === 'face') {
+      let head = null; this.player.model.root.traverse((o) => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
+      const root = this.player.model.root, a = new THREE.Vector3(), b = new THREE.Vector3();
+      c.targetY = head ? head.getWorldPosition(a).y - root.getWorldPosition(b).y + 0.04 : 1.5;
+      const portrait = innerWidth <= 700 && innerHeight > innerWidth; // 縦長の画面では、メニューが下の 55% を覆う
+      c.pitch = 0.05; c.dist = portrait ? 1.0 : 0.75;
+      c.view = portrait ? { x: 0, y: 0.27 } : { x: Math.min(340, innerWidth) / 2 / innerWidth, y: 0 };
+    } else { c.pitch = 0.12; c.dist = 3.4; c.targetY = null; c.view = null; }
+  }
+
   restoreCam() {
     if (!this.saved) return;
+    this.cam.targetY = null; this.cam.view = null;
     Object.assign(this.cam, this.saved); this.saved = null;
   }
 
@@ -187,7 +203,7 @@ export class Menu {
     if (el) el.focus({ preventScroll: false });
   }
 
-  setCmTab(t) { this.cmTab = t; this.sel = this.cmIndex(); this.msg = ''; this.render(); }
+  setCmTab(t) { this.cmTab = t; this.applyCmCam(); this.sel = this.cmIndex(); this.msg = ''; this.render(); }
 
   // 髪型を選ぶ (すぐ髪が変わる)
   pickHair(id) {
