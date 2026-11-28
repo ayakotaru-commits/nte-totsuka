@@ -22,7 +22,7 @@ export class Wardrobe {
     this.money = START_MONEY;
     this.owned = new Set();   // 買った服の id (「いつもの」は数えない。いつでも着られる)
     this.worn = { tops: null, bottoms: null, shoes: null, onepiece: null };
-    this.body = 'female';     // 今の体 (キャラメイク)。服の body (female / male。無ければ female) が合うものだけ、一覧・店に出て、着られる
+    this.body = 'female';     // 今の体 (キャラメイク)。服の body (female / male。無ければ female) が合うものだけ、一覧・店に出て、着られる (女性の体は男性の服も可)
     this.listeners = [];
     const q = new URLSearchParams(location.search);
     if (q.has('resetsave')) { try { localStorage.removeItem(KEY); } catch (e) { /* 保存できない環境 */ } }
@@ -62,8 +62,8 @@ export class Wardrobe {
     return u;
   }
 
-  // 服が今の体に合うか
-  fits(o) { return !!o && (o.body || 'female') === this.body; }
+  // 服が今の体に合うか。女性の体は男性の服も着られる (持ち主の判断)。男性の体は男性の服だけ
+  fits(o) { return !!o && (this.body === 'female' || (o.body || 'female') === this.body); }
 
   // 体が変わった (キャラメイク)。合わない服は脱ぐ (持ち物は残る。体を戻せばまた着られる)
   setBody(body, notify = true) {
