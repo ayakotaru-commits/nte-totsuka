@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { drape } from '../terrain.js';
 import { buildClockhouse, buildCourtArch, buildCarpark, polyGeometry } from './clockhouse.js';
+import { FountainFx } from './fountainfx.js';
+import { TOUCH } from '../touch.js';
 
 const stoneMat = () => new THREE.MeshStandardMaterial({ color: '#f1ece2', roughness: 0.7 });
 
@@ -65,6 +67,7 @@ export function buildSiteExtras({ site, group }) {
     const col = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 0.9, 12), stone); col.position.y = 0.9;
     const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.15, 0.18, 20), stone); bowl.position.y = 1.4;
     f.add(shadow(basin), water, shadow(col), shadow(bowl));
+    new FountainFx().add({ x: 0, z: 0, y0: 1.52, yw: 0.5, R: 1.1, up: 0.7 }).build(f, { low: TOUCH });   // しぶきと波紋
     group.add(disc, f);
   }
 

@@ -6,6 +6,7 @@ import { Bridges } from './bridges.js';
 import { buildStairs } from './stairs.js';
 import { buildWalls } from './walls.js';
 import { TreeLayer } from './trees.js';
+import { makeWaterMaterial } from './detail/water.js';
 
 const FACADE = {
   office: { bay: 4.0, floor: 3.6 },
@@ -1205,6 +1206,7 @@ export function buildCity(city, world, props = null) {
     map: tex.map, emissiveMap: tex.emissiveMap, emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0,
     vertexColors: true, roughness: 0.82, metalness: 0.05,
   });
+  const waterM = makeWaterMaterial(city);   // 川・池の水面 (岸の浅さ・波・泡。detail/water.js)
   const mats = {
     office: wallMat(officeTex),
     house: wallMat(houseTex),
@@ -1212,7 +1214,7 @@ export function buildCity(city, world, props = null) {
     euro: wallMat(facadeTextures('euro')),
     pitched: new THREE.MeshStandardMaterial({ vertexColors: true, map: roofTileTexture(), roughness: 0.75, side: THREE.DoubleSide }),
     ground: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
-    water: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.15, metalness: 0.2 }),
+    water: waterM.mat,
   };
 
   const bg = buildBuildings(city.buildings, city.looks || {},
@@ -1236,6 +1238,7 @@ export function buildCity(city, world, props = null) {
   const gr = buildGround(city, bridges);
   const ground = new THREE.Mesh(gr.ground, mats.ground); ground.name = 'roads_and_areas';
   const water = new THREE.Mesh(gr.water, mats.water); water.name = 'water';
+  if (waterM.onRender) water.onBeforeRender = waterM.onRender;
   ground.receiveShadow = water.receiveShadow = true;
   const roadsM = new THREE.Mesh(gr.roads, mats.ground); roadsM.name = 'road_areas'; roadsM.receiveShadow = true;
   group.add(ground, water, roadsM, bridges.build(), buildStairs(city), buildWalls(city.walls));

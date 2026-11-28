@@ -13,6 +13,7 @@ import { makeFacadeKit, facadeDetail, floorLayout } from './parkfacade.js';
 import { buildBunting, buildSmoke } from './parkfx.js';
 import { buildFurn } from './parkfurn.js';
 import { TreeLayer } from '../trees.js';
+import { FountainFx } from './fountainfx.js';
 
 const C = (s) => new THREE.Color(s);
 const mulberry = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -348,6 +349,7 @@ export function buildAreas(ctx) {
       const water = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.88, R * 0.88, 0.05, 20), new THREE.MeshStandardMaterial({ color: '#7fc6e8', roughness: 0.15, metalness: 0.1 })); water.position.y = 0.66; g2.add(water);
       const col2 = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, 2.4, 10), std('#e9e2d4', 0.7)); col2.position.y = 1.5; col2.castShadow = true; g2.add(col2);
       const top = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 8), std('#bfe6f7', 0.3)); top.position.y = 2.9; g2.add(top);
+      new FountainFx().add({ x: 0, z: 0, y0: 3.5, yw: 0.69, R: R * 0.88, up: 0.8 }).build(g2, { low });   // しぶきと波紋 (fountainfx.js)
       api.group.add(g2);
       col.circle.push([pl.x, pl.z, R + 0.2, y - 1, y + 1.2]);
     }
