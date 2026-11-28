@@ -37,6 +37,8 @@ import { Menu } from './menu.js';
 import { Status } from './status.js';
 import { PhotoMode } from './photo.js';
 import { loadShops, ShopTrigger } from './shop.js';
+import { ShopEntrances } from './shopentrance.js';
+import { SpotRings } from './spotring.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
 import { startMultiplayer } from './net/index.js';
 import { Look } from './look.js';
@@ -171,6 +173,7 @@ async function main() {
   player.model.setHeight(hairStyle.heightScale());              // 選んでいた身長にする
   let menu = null;                                              // メニュー (下で作る)
   let shops = null;                                             // 洋服屋の入口 (下で作る)
+  let shopEntrances = null;                                     // 入口の見た目と光の案内 (下で作る)
   const cam = new ThirdPersonCamera(camera, world, renderer.domElement);
   const minimap = new Minimap(city, $('minimap'));
   // 千葉ドリームランド (段階 5): 地図の下絵・印・ワープ先・ショーの案内・園内の人 (観客の場所)。?nopark で全部無し
@@ -199,6 +202,12 @@ async function main() {
     if (ps) {
       player.teleport(ps.x, ps.z); player.pos.y = park.ground.level + 0.3;   // 地形が読めるまでは仮の高さ。読めたら地面へ降りる
       player.facing = ps.face; cam.yaw = ps.face + Math.PI; cam.update(0, player.pos, true); toggleMap(); return;
+    }
+    // 洋服屋の入口の印: 入口の反応範囲の外 (ワープ先 warp) に、入口の方を向いて立つ。2 階のデッキは高さも合わせる
+    const sh = shopPlaces.flatMap((pl) => pl.entrances).find((e) => e.warp && Math.hypot(e.x - x, e.z - z) < 3);
+    if (sh) {
+      player.teleport(sh.warp.x, sh.warp.z); if (sh.y) player.pos.y = sh.y + 0.3;
+      player.facing = sh.warp.face; cam.yaw = sh.warp.face + Math.PI; cam.update(0, player.pos, true); toggleMap(); return;
     }
     const p = findFree(world, x, z);
     player.teleport(p.x, p.z);
@@ -274,6 +283,7 @@ async function main() {
   window.__arcade = arcade; // 確認用 (tools/dev/arcadecheck.js)
   const NOIN = { ax: 0, az: 0, pressed: () => false, held: () => false, press() {}, setHeld() {}, endFrame() {} }; // ゲーム画面の間、キャラに渡す (S D F J K L で歩かない)
 
+  const shopPlaces = await loadShops();   // 洋服屋 (data/shops.json)。入口の印 (地図) と、入口の見た目・入りかたに使う
   // イベントの場所の印 (ミニマップ・大きい地図。eventmarks.js)。大きい地図で印をクリック・タップすると、そこをワープ先に選ぶ
   const EVENTS = [
     { name: 'うな○ー大量発生クエスト', x: SWARM_SITE.center[0], z: SWARM_SITE.center[1], color: '#2f9e64', active: () => swarm.running, off: swarm.disabled },
@@ -284,10 +294,19 @@ async function main() {
     // 千葉ドリームランド (park.json の spots。tools/park_crowd.py)。印を選んでワープすると、その場所へ (warpTo)。パレード・花火の印は、始まる 40 秒前から最中まで点滅する
     ...parkSpots.map((q) => ({ name: q.name, x: q.x, z: q.z, color: q.color, glyph: q.glyph, minScale: [0, 0.5, 0.9][q.tier] || 0,
       active: () => !!parkInfo?.sch && (q.kind === 'parade' ? parkInfo.sch.parade.on || parkInfo.sch.parade.startsIn < 40 : q.kind === 'live' ? !!parkInfo.sch.live && (parkInfo.sch.live.on || (parkInfo.sch.live.phase === 'wait' && parkInfo.sch.live.startsIn < 40)) : q.kind === 'lake' ? parkInfo.sch.fw.on || parkInfo.sch.fw.startsIn < 40 : q.kind === 'castle' ? !!parkInfo.sch.castle && (parkInfo.sch.castle.on || parkInfo.sch.castle.startsIn < 40) : false) })),
+    // 洋服屋の入口 (data/shops.json。紫の「服」。印を選んでワープすると、入口の少し手前に立つ。warpTo)。モディの 2 つ目以降は、縮小したときは出さない
+    ...shopPlaces.flatMap((pl, i) => pl.entrances.filter((e) => e.name).map((e, j) => ({ name: e.name, x: e.x, z: e.z, color: '#9b59d0', glyph: '服', minScale: j ? 1.2 : 0, active: () => false, shopEntrance: e }))),
     // 延ばした先の駅 (rail_ext.json の stations)。印を選んでワープすると、その駅のホームの上に立つ (warpTo)。駅舎のある駅 (舞浜) は北口の広場の印も
     ...ride.stationSpots().map((q) => ({ name: q.label || `${q.name}駅（${q.sub ? q.sub + 'ホーム' : 'ホーム'}）`, x: q.x, z: q.z, color: '#1f5fae', glyph: '電', active: () => false })),
   ].filter((e) => !e.off);
   minimap.events = bigmap.events = EVENTS;
+  // 足元の光の輪 (spotring.js): 立つと始まる・入れる場所を、地面の輪で知らせる。イベントは反応する区域そのものを縁取る。洋服屋の入口は下の ShopEntrances
+  const spotRings = new SpotRings({ scene, world, player });
+  window.__spotRings = spotRings;   // 確認用 (tools/dev/ringcheck.js)
+  if (!swarm.disabled) spotRings.addPolygon(SWARM_SITE.yard, { color: '#2f9e64' });
+  if (!rhythm.disabled) spotRings.addPolygon(RHYTHM_SITE.area, { color: '#d23c34' });
+  if (!arcade.disabled) spotRings.addPolygon(ARCADE_SITE.zone, { color: '#ff6fae' });
+  if (!ride.disabled && ride.gates.length) spotRings.addCircle(ride.gates[0].top.x, ride.gates[0].top.z, 2.4, { color: '#3f86e0', y: ride.gates[0].top.y, level: ride.gates[0].top.y });   // 電車の改札 (F で乗る)
 
   // マルチプレイ (サーバーが設定されているときだけ。net/config.js)
   const mp = startMultiplayer({ scene, player, respawn, bigmapOpen: () => bigmap.open });
@@ -365,7 +384,8 @@ async function main() {
     actions: { photo: () => photo.enter(), map: () => { rhythm.stop(); toggleMap(); }, time: () => { $('hud-time').textContent = tod.next(); }, help: () => { $('help').hidden = !$('help').hidden; } },
   });
   $('menu-btn').addEventListener('click', () => { if (!bigmap.open && !arcade.active) menu.toggle(); });
-  shops = new ShopTrigger({ places: await loadShops(), player, menu }); // 洋服屋の入口 (とどまると「入りますか？」)
+  shops = new ShopTrigger({ places: shopPlaces, player, menu }); // 洋服屋の入口 (とどまると「入りますか？」)
+  shopEntrances = new ShopEntrances({ scene, places: shopPlaces, world, player, trigger: shops, menu, rings: spotRings }); // 入口の扉・庇・看板と、足元の輪・案内文
   addEventListener('keydown', (e) => {
     if (e.target && e.target.tagName === 'INPUT') return;
     if (e.code === 'Escape' && bigmap.open) toggleMap();
@@ -426,6 +446,8 @@ async function main() {
         cam.update(dt, player.pos, false, player);
       }
       if (!menu.open && !arcade.active && !rhythm.playing) shops.update(dt); // 洋服屋の入口
+      shopEntrances?.update(dt);
+      spotRings.update(dt);
       if (rhythm.playing) rhythm.view();
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
