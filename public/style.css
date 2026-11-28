@@ -386,3 +386,12 @@ body.touch #skl { bottom: calc(30% - 13px); width: 150px; }
 .mn-el { font: inherit; color: #fff; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.3); border-radius: 8px; padding: 6px 2px; cursor: pointer; }
 .mn-el.on { border-color: #5fd3ff; background: rgba(95,211,255,.35); }
 .mn-el:hover { background: rgba(95,211,255,.22); }
+
+/* 必殺技: 必殺ゲージの帯・スマホのボタン (src/status.js) */
+#ult { position: fixed; left: 50%; bottom: calc(17% - 24px); transform: translateX(-50%); width: 200px; height: 6px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 3px; overflow: hidden; pointer-events: none; }
+#ult[hidden] { display: none; }
+#ult i { display: block; height: 100%; width: 0; background: #b58a3a; }
+#ult.ready i { background: linear-gradient(90deg, #ffd34d, #fff3b0); animation: ultglow .7s ease-in-out infinite alternate; }
+@keyframes ultglow { from { opacity: .65; } to { opacity: 1; } }
+body.touch #ult { bottom: calc(30% - 24px); width: 150px; }
+#tb-ult { width: 62px; height: 62px; right: calc(22px + env(safe-area-inset-right)); bottom: calc(220px + env(safe-area-inset-bottom)); z-index: 5; }

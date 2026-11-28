@@ -3,6 +3,7 @@
 //   ページ A (?lv=10 でうな○ー戦): レベル 10 の HP (160) で始まる・敵に体当たりされると 20 減る・ダッシュで約 12 秒で息切れ・息切れの間は走りに落ちる・
 //                                    息切れの間は攻撃を始められない・クリアで経験値と初回のボーナス (攻撃力 +0.1)・2 回目のクリアではボーナスが増えない
 //                                    特殊攻撃 (K): 技ゲージ 50 を使って 4 → 5 と続く・属性の相性 (有利は倒れる、不利は体力が残る)・ゲージ不足では出ない
+//                                    必殺技 (U): ゲージ満タンで 3 回転・全方位 (前後横は倒れる、9 m 先は届かない)・出している間は無敵・ゲージ不足では出ない
 //   ページ B (同じブラウザで開き直す): 保存されている (レベル・ボーナス) → リズム地獄の「吉」以上でクリア → 体力 +0.1 → メニューのステータス画面を撮る
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -143,6 +144,34 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
       S.stop(true); S.state = 'idle'; S.disabled = true;
       o.special = SP;
     }
+    // 7. 必殺技 (U): 必殺ゲージが満タンのとき、まわり全部 (前・後ろ・横) へ 3 回転。遠い敵には届かない。出している間は当たらない。ゲージ不足では出ない
+    {
+      const UL = {};
+      S.disabled = false; S.start(); S.spawned = TOTAL; for (const e of S.list.splice(0)) S.herd.hide(e.slot);
+      st.setSpElement('fire');
+      const mkE = (dx, dz, el) => ({ slot: S.freeSlot(), st: 'chase', t: 0, x: pl.pos.x + dx, z: pl.pos.z + dz, y: pl.pos.y, yaw: 0, s: 1, el, hp: 2, speed: 0, seed: 0, ph: 0, cd: 99, tint: 0, hit: -1, dx: 0, dz: 0, vx: 0, vz: 0, vy: 0, ring: { x: 0, y: 0, z: 0, r: 0 } });
+      const trial = (gauge) => {
+        for (const e of S.list.splice(0)) S.herd.hide(e.slot);
+        S.hp = S.hpMax; S.inv = 0; S.killed = 0;
+        st.refill(); st.ult = gauge; st.skill = 100; st.delay = 0;
+        pl.revive?.(); pl.atk = null; pl.act = null; pl.comboGrace = 0;
+        pl.teleport(-246, 1449); pl.facing = Math.PI / 2; g.cam.yaw = pl.facing + Math.PI;
+        for (let k = 0; k < 8; k++) tick(mk());
+        const fx = Math.sin(pl.facing), fz = Math.cos(pl.facing);
+        const E = { front: mkE(fx * 1.8, fz * 1.8, 'light'), back: mkE(-fx * 2.6, -fz * 2.6, 'light'), side: mkE(fz * 3.4, -fx * 3.4, 'light'), far: mkE(fx * 9, fz * 9, 'light') };
+        for (const e of Object.values(E)) S.list.push(e);
+        const n0 = pl.atkN;
+        tick(mk([], ['KeyU']));
+        const r = { started: !!pl.atk, ult0: pl.atk ? pl.atk.ult : 0, gaugeAfter: st.ult, invMax: 0, spins: new Set(), tint: pl._trailEl };
+        for (let k = 0; k < 150 && pl.atk; k++) { tick(mk()); if (pl.atk) r.spins.add(pl.atk.ult); r.invMax = Math.max(r.invMax, S.inv); }
+        r.spins = [...r.spins].sort(); r.swings = pl.atkN - n0;
+        r.died = {}; for (const [k, e] of Object.entries(E)) r.died[k] = e.st === 'die' || !S.list.includes(e);
+        return r;
+      };
+      UL.full = trial(100); UL.low = trial(60);
+      S.stop(true); S.state = 'idle'; S.disabled = true;
+      o.ult = UL;
+    }
     o.save = localStorage.getItem('totsuka.status.v1');
     return o;
   });
@@ -172,6 +201,14 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   ok(sp.neu.hpAfterFirst !== null && sp.neu.hpAfterFirst <= 0 && sp.neu.died, `A: 相性なし (火 → 光) は 1 撃目で倒れる (${sp.neu.hpAfterFirst})`);
   ok(!sp.empty.started, 'A: 技ゲージが足りない (30) と、K を押しても始まらない');
   ok(sp.tintFn && sp.adv.trailTint === 'fire', 'A: 特殊攻撃の間、剣の軌跡の属性の色を切り替える');
+  const ul = ra.ult;
+  console.log(JSON.stringify(ul));
+  ok(ul.full.started && ul.full.ult0 === 1 && ul.full.gaugeAfter === 0, 'A: U で必殺技が始まり、必殺ゲージが 0 になる');
+  ok(ul.full.swings === 3 && ul.full.spins.includes(2) && ul.full.spins.includes(3), `A: 回転斬りが 3 回続く (${ul.full.swings} 回振る)`);
+  ok(ul.full.died.front && ul.full.died.back && ul.full.died.side && !ul.full.died.far, `A: 前・後ろ・横の敵は倒れ、遠い敵 (9 m) には届かない (${JSON.stringify(ul.full.died)})`);
+  ok(ul.full.invMax >= 0.3, `A: 必殺技の間は当たらない (無敵 ${ul.full.invMax.toFixed(2)} 秒)`);
+  ok(!ul.low.started, 'A: 必殺ゲージが 60 では出ない');
+  ok(ul.full.tint === 'fire', 'A: 必殺技の剣の軌跡も属性の色');
 
   await A.close();
 

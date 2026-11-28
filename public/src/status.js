@@ -65,6 +65,10 @@ export const BONUS_EVENTS = {
 // ---- 特殊攻撃 (K): 技ゲージを cost 使い、跳び斬り上げ (4) → 急降下の十字斬り (5) を出す。mult = 手順ごとのダメージの倍率 (特殊攻撃力・属性が掛かる) ----
 export const SKILL = { cost: 50, mult: { 4: 1.5, 5: 2 } };
 
+// ---- 必殺技 (U): 必殺ゲージが満タンのとき、全方位の回転斬りを spins 回続けて出す。mult = ダメージの倍率 (必殺技力・属性が掛かる)、
+//      reach = 届く距離 (m)、inv = 出している間に当たらない時間 (秒) ----
+export const ULT = { mult: 2.5, spins: 3, reach: 5.5, inv: 0.45 };
+
 // ---- スタミナの消費 (1 回 / 1 秒あたり) と回復の待ち ----
 export const COST = { dash: 100 / 12, parkour: 10, atk: 6 };  // ダッシュは満タンから約 12 秒
 const REGEN_DELAY = 0.7;       // 使ったあと、この秒数は回復しない
@@ -183,6 +187,10 @@ export class Status {
   hurtAmount(base, element = null) {
     return base * 100 / (100 + this.cur.def);
   }
+
+  // ---- 必殺技 ----
+  canUlt() { return !this.winded && this.ult >= this.cur.ultGauge - 1e-9; }
+  useUlt() { this.ult = 0; }
 
   // ---- 特殊攻撃 ----
   canSkill() { return !this.winded && this.skill >= SKILL.cost; }

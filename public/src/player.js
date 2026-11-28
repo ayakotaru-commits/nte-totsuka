@@ -5,7 +5,7 @@ import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
 import { getMotion, hipsAt } from './motion.js';
-import { COST, elementRGB } from './status.js';
+import { COST, ULT, elementRGB } from './status.js';
 import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, COMBO_MAX, MOCAP, spinAt } from './attack.js';
 
 export const R = 0.35; // 体の半径 (m)
@@ -89,6 +89,8 @@ export class Player {
     const atkPress = input.pressed('KeyJ') || input.pressed('Mouse0');
     // 特殊攻撃 (K・画面の「特殊」): 技ゲージを使って、跳び斬り上げ (4) → 急降下の十字斬り (5) を続けて出す (status.js の SKILL)
     if (st && !this.atk && this.onGround && input.pressed('KeyK') && st.canSkill()) { st.useSkill(); this.startStep(4, len > 0 ? [dx, dz] : null, true); }
+    // 必殺技 (U・画面の「必殺」): 必殺ゲージが満タンのとき、全方位の回転斬りを続けて出す (status.js の ULT)
+    if (st && !this.atk && this.onGround && input.pressed('KeyU') && st.canUlt()) { st.useUlt(); this.startStep(3, len > 0 ? [dx, dz] : null, false, 1); }
     this.armedT += dt;
     this.comboGrace = Math.max(0, this.comboGrace - dt);
     if ((atkPress || this.atk) && this.updateAtk(dt, atkPress, len > 0 ? [dx, dz] : null)) return;
@@ -220,9 +222,10 @@ export class Player {
 
   // 攻撃の 1 手順を始める。動かしている向きがあればそちらへ向き直る
   // sp = 特殊攻撃の一部 (4 → 5 を自動でつなげる。ダメージは特殊攻撃力・属性で決まる)
-  startStep(step, dir, sp = false) {
+  // ult = 必殺技の何回転目か (1〜。0 = 必殺技ではない)
+  startStep(step, dir, sp = false, ult = 0) {
     if (dir) this.facing = Math.atan2(dir[0], dir[1]);
-    this.atk = { step, ph: 0, t: 0, queued: sp && step === 4, v0: 0, sp };
+    this.atk = { step, ph: 0, t: 0, queued: sp && step === 4, v0: 0, sp, ult };
     this.atkN++;
     if (this.status) this.status.spend(COST.atk); // スタミナを使う
     this.armedT = 0;
@@ -268,6 +271,7 @@ export class Player {
       }
       const next = a.step < COMBO_MAX ? a.step + 1 : 1; // 最後の手順 (COMBO_MAX) の次は 1 から
       if (a.queued && a.t >= S.cancel && next > 1 && (!this.status || this.status.canSpend())) { this.spin = 0; this.startStep(next, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
+      if (a.t >= dur && a.ult && a.ult < ULT.spins) { this.spin = 0; this.startStep(3, null, false, a.ult + 1); a = this.atk; return this.finishAtk(dt, a, 0); } // 必殺技: 続けてもう 1 回転
       if (a.t >= dur) { this.endStep(next); return this.finishAtk(dt, null, 0); }
       return this.finishAtk(dt, a, v, sv);
     } else if (a.step === 4) {
@@ -318,7 +322,7 @@ export class Player {
     else this.vel.multiplyScalar(Math.exp(-14 * dt));
     if (!(a && a.hold > 0)) this.moveBody(dt); // ヒットストップの間は空中でも止める
     this.stair = 0;
-    this.show(dt, 0, a ? { type: 'atk', step: a.step, ph: a.ph, t: a.t, sp: !!a.sp } : null);
+    this.show(dt, 0, a ? { type: 'atk', step: a.step, ph: a.ph, t: a.t, sp: !!a.sp, ult: a.ult || 0 } : null);
     return true;
   }
 
@@ -404,7 +408,7 @@ export class Player {
 
   show(dt, sp, act = null) {
     // 特殊攻撃の間は、剣の軌跡を属性の色にする (終わると元の色)
-    const el = act && act.type === 'atk' && act.sp && this.status ? this.status.spElement : null;
+    const el = act && act.type === 'atk' && (act.sp || act.ult) && this.status ? this.status.spElement : null;
     if (el !== this._trailEl) { this._trailEl = el; this.model.setTrailTint?.(el ? elementRGB(el) : null); }
     this.lastAct = act; this.lastSp = this.poseSpeed ?? sp;
     this.model.root.position.copy(this.pos);

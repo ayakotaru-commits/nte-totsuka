@@ -18,7 +18,7 @@ import { H } from '../terrain.js';
 import { trailOn } from '../attack.js';
 import * as THREE from 'three';
 import { Herd, Fx, BODY } from './model.js';
-import { EXP, ELEMENTS, SKILL, elementColor } from '../status.js';
+import { EXP, ELEMENTS, SKILL, ULT, elementColor } from '../status.js';
 
 export const TOTAL = 100, ALIVE = 50;
 const G = 24;                                  // 重力 (player.js と同じ)
@@ -312,23 +312,25 @@ export class Swarm {
 
     // プレイヤーの攻撃が当たったか
     const a = pl.lastAct;
+    if (this.state === 'run' && a && a.type === 'atk' && a.ult) this.inv = Math.max(this.inv, ULT.inv); // 必殺技の間は当たらない
     if (this.state === 'run' && a && a.type === 'atk' && trailOn(a.step, a.ph, a.t)) {
       const fx = Math.sin(pl.facing), fz = Math.cos(pl.facing);
       for (const e of this.list) {
         if (e.hit === pl.atkN || e.st === 'die' || e.st === 'perch' || e.st === 'fall') continue;
         const dx = e.x - p.x, dz = e.z - p.z, d = Math.hypot(dx, dz);
-        if (d > REACH[a.step] * Math.max(1, e.s) || Math.abs(e.y - p.y) > 2) continue;
-        if (d > 0.7 && Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d))) > ARC[a.step]) continue;
+        if (d > (a.ult ? ULT.reach : REACH[a.step]) * Math.max(1, e.s) || Math.abs(e.y - p.y) > 2) continue;
+        if (!a.ult && d > 0.7 && Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d))) > ARC[a.step]) continue; // 必殺技は全方位
         e.hit = pl.atkN;
         // 通常攻撃 = 攻撃力・会心 (無属性)。特殊攻撃 (a.sp の 4・5) = 特殊攻撃力・倍率・属性の相性 (status.js)
-        const st = this.status, special = !!(st && a.sp && SKILL.mult[a.step]);
+        const st = this.status, special = !!(st && ((a.sp && SKILL.mult[a.step]) || a.ult));
         const hit = !st ? { dmg: DMG_E[a.step], crit: false, mul: 1 }
+          : a.ult ? st.rollAttack(DMG_E[a.step] * ULT.mult, { power: 'ultAtk', element: st.spElement, target: e.el })
           : special ? st.rollAttack(DMG_E[a.step] * SKILL.mult[a.step], { power: 'spAtk', element: st.spElement, target: e.el })
             : st.rollAttack(DMG_E[a.step]);
         e.hp -= hit.dmg;
         if (hit.crit) this.fx.burst(e.x, e.y + 1.1, e.z, 6, ['#fff7a8', '#ffd34d'], 5, 0.16, 0.4, 8);
         if (special) this.fx.burst(e.x, e.y + 1.0, e.z, hit.mul > 1 ? 14 : hit.mul < 1 ? 3 : 8, [elementColor(st.spElement), '#ffffff'], 5, 0.18, 0.45, 8); // 弱点は派手に、不利は控えめに
-        this.status?.gainUlt(2);
+        if (!a.ult) this.status?.gainUlt(2); // 必殺技自身ではゲージが溜まらない
         const nx = d > 0.05 ? dx / d : fx, nz = d > 0.05 ? dz / d : fz;
         e.yaw = Math.atan2(-nx, -nz);
         e.hold = 0.07; // ほんの少し止まる (手ごたえ)

@@ -1,5 +1,5 @@
 // ステータス (public/src/status.js) の式の確認。node tools/dev/statuscheck.mjs
-import { Status, SKILL, elementRGB, elementMul, levelFromExp, expForLevel, expNeed, MAX_LV, COST, STATS, BONUS_EVENTS, ELEMENTS } from '../../public/src/status.js';
+import { Status, SKILL, ULT, elementRGB, elementMul, levelFromExp, expForLevel, expNeed, MAX_LV, COST, STATS, BONUS_EVENTS, ELEMENTS } from '../../public/src/status.js';
 
 let bad = 0;
 const ok = (c, m) => { if (!c) { bad++; console.log('NG ', m); } else console.log('ok ', m); };
@@ -101,6 +101,18 @@ ok(near(k.rollAttack(3, { power: 'spAtk', rng: () => 0.99 }).dmg, 3 * 1.2), 'Lv1
 ok(k.spElement === 'fire' && k.setSpElement('water') && k.spElement === 'water' && !k.setSpElement('water') && !k.setSpElement('xxx') && k.spElement === 'water', '特殊攻撃の属性を選べる (同じ・知らない属性は変えない)');
 ok(SKILL.cost === 50 && SKILL.mult[4] === 1.5 && SKILL.mult[5] === 2, '消費 50・倍率 4 → ×1.5、5 → ×2');
 ok(elementRGB('fire').length === 3 && elementRGB('fire')[0] > 0.9 && elementRGB('nothing').every((v) => v === 1), '属性の RGB');
+
+// 10. 必殺技: 必殺ゲージ
+const u = new Status();
+ok(u.ult === 0 && !u.canUlt(), '必殺ゲージは 0 から始まり、撃てない');
+u.gainUlt(40); u.gainUlt(40); ok(u.ult === 80 && !u.canUlt(), '80 では撃てない');
+u.gainUlt(40); ok(u.ult === 100 && u.canUlt(), '満タン (100 で止まる) で撃てる');
+u.winded = true; ok(!u.canUlt(), '息切れの間は撃てない'); u.winded = false;
+u.useUlt(); ok(u.ult === 0 && !u.canUlt(), '撃つと 0');
+u.bonus.ultGain = 1; u.cur.ultGain = 1.5; u.gainUlt(10); ok(near(u.ult, 15), '溜まりやすさ ×1.5');
+ok(ULT.spins === 3 && ULT.mult === 2.5 && ULT.reach > 5, '必殺技: 3 回転・×2.5・半径 5.5 m');
+const w = new Status(); w.exp = expForLevel(11); w.recalc();
+ok(near(w.rollAttack(2, { power: 'ultAtk', rng: () => 0.99 }).dmg, 2 * 1.3), 'Lv11 の必殺技力 130 が掛かる');
 
 console.log(bad ? `\n${bad} 件 NG` : '\nすべて OK');
 process.exit(bad ? 1 : 0);

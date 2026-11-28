@@ -207,7 +207,7 @@ async function main() {
   const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z), touch: TOUCH });
   window.__bigmap = bigmap; window.__warpTo = warpTo; // 確認用
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
-  let hudTimeText = '', staHold = 0, sklHold = 0;
+  let hudTimeText = '', staHold = 0, sklHold = 0, ultHold = 0;
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
   // 街を歩く人 (crowd.js。動きは crowdsim.js、通り道は props.json の crowd)。?nocrowd で無し、?crowd=人数 で上限を変える (確認用)
   const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined, park, viewSlots: parkInfo ? makeViewSlots(park, parkInfo.route) : null });   // 園内の人は park (千葉ドリームランド) があるとき
@@ -431,6 +431,12 @@ async function main() {
       if (f < 0.999) sklHold = 1.2; else sklHold = Math.max(0, sklHold - dt);
       el.hidden = sklHold <= 0;
       if (!el.hidden) { el.firstChild.style.width = (f * 100) + '%'; el.classList.toggle('ready', stats.canSkill()); }
+    }
+    { // 必殺ゲージの帯: 溜まっている間 (0 でない・満タンでないとき) と、満タンのあいだ出す。撃てるときは金色に光る
+      const f = stats.ult / stats.value('ultGauge'), el = $('ult');
+      if (f > 0.001) ultHold = 1.2; else ultHold = Math.max(0, ultHold - dt);
+      el.hidden = ultHold <= 0;
+      if (!el.hidden) { el.firstChild.style.width = (f * 100) + '%'; el.classList.toggle('ready', stats.canUlt()); }
     }
     { const lb = tod.label(); if (lb !== hudTimeText) { hudTimeText = lb; $('hud-time').textContent = lb; } }
     let parkWant;
