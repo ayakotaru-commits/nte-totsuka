@@ -76,6 +76,22 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   ok(await page.evaluate(() => __g.menu.hairStyle.face.noseSize) === 0.6, '開き直すと保存した顔 (noseSize 0.6)');
   await open('&face=eyeSize:1,bogus:3,chin:9'); // 試し用 URL: 知らないキーは無視、範囲は -1〜1
   ok(JSON.stringify(await page.evaluate(() => __g.menu.hairStyle.face)) === '{"eyeSize":1,"chin":1}', '?face= の不正値を無視');
+  // 顔のアップのカメラ: 「顔」タブで頭の高さ・近く、ほかのタブで全身に戻る。横長・縦長 (スマホ) の画面を撮る
+  await open('&resetsave'); await page.keyboard.press('Tab'); await frames(3);
+  await page.click('[data-do=charmake]'); await frames(3);
+  ok(await page.evaluate(() => __g.cam.targetY === null && __g.cam.dist === 3.4), '髪型のタブ: 全身のカメラ (距離 3.4)');
+  await page.click('[data-cmtab=face]'); await frames(40);
+  const cf = await page.evaluate(() => ({ ty: __g.cam.targetY, d: __g.cam.dist, v: __g.cam.view }));
+  ok(cf.ty > 1.3 && cf.ty < 1.7 && cf.d < 1.2 && cf.v, '顔のタブ: 頭の高さ・近く ' + JSON.stringify(cf));
+  await page.screenshot({ path: path.join(out, 'd_faceup_landscape.png') });
+  await page.click('[data-cmtab=style]'); await frames(3);
+  ok(await page.evaluate(() => __g.cam.targetY === null && __g.cam.view === null && __g.cam.dist === 3.4), '別のタブへ: 全身に戻る');
+  await page.click('[data-cmtab=face]'); await frames(3);
+  await page.setViewportSize({ width: 390, height: 844 }); await frames(5);
+  await page.evaluate(() => __g.menu.applyCmCam()); await frames(40);
+  await page.screenshot({ path: path.join(out, 'e_faceup_portrait.png') });
+  await page.keyboard.press('Escape'); await frames(3); await page.keyboard.press('Escape'); await frames(3);
+  ok(await page.evaluate(() => __g.cam.targetY === null && __g.cam.view === null), 'メニューを閉じると、カメラが元に戻る');
   await browser.close(); server.close();
   console.log(bad ? `NG ${bad} 件` : '全部 OK'); process.exit(bad ? 1 : 0);
 })();
