@@ -51,7 +51,8 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
           __g.cam.yaw = Math.atan2(-dx, -dz);
           return { x: p.x, z: p.z, y: p.y, d: Math.hypot(dx, dz) };
         }, [tx, tz]);
-        if (s.d < 1.5) break;
+        if (s.d < 2.5) break;
+        if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); }
         await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW'); await frames(3); await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
         if (n % 10 === 9) ys.push(s.y.toFixed(1));
       }
