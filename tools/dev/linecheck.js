@@ -83,6 +83,9 @@ function terrain() {
   const press = (key) => page.evaluate((key) => window.__ride.update(0, { pressed: (k) => k === key }), key);
   // ---------- ここから新しい線の確認 ----------
   const LINE = lineName || 'keiyo';
+  // 線の名前・上りの言い方・最初の駅が終点か (設定から。京葉線以外の線でも通るように)
+  const CFGL = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'rail_ext_config.json'), 'utf8')).lines.find((l) => l.id === LINE);
+  const LN = CFGL.name, INW = CFGL.dirs.in.split(' ')[0], TERM0 = !!CFGL.stations[0].terminal;
   await page.evaluate(() => { window.__trains.hold = Date.now() / 1000; });
   const info = await page.evaluate((LINE) => {
     const R = window.__ride, T = window.__trains, rs = T.R.filter((r) => r.line === LINE);
@@ -134,7 +137,7 @@ function terrain() {
   const b1 = await beside({ line: LINE, dir: 'out', from: S0 });
   await frames(2);
   s = await st();
-  check(`${S0}: 止まっている電車が ${b1.cars} 両とも見える・横で「乗る」`, b1.vis === b1.cars && !b1.fail && /乗る/.test(s.hint) && /京葉線/.test(s.hint), { b1, hint: s.hint, info: s.info });
+  check(`${S0}: 止まっている電車が ${b1.cars} 両とも見える・横で「乗る」`, b1.vis === b1.cars && !b1.fail && /乗る/.test(s.hint) && s.hint.includes(LN), { b1, hint: s.hint, info: s.info });
   await page.waitForTimeout(2500);
   await page.screenshot({ path: path.join(out, 'l2_train.png'), timeout: 240000 });
   await press('KeyF'); await frames(2);
@@ -160,6 +163,7 @@ function terrain() {
   await page.screenshot({ path: path.join(out, 'l4_tunnel_in.png'), timeout: 240000 });
   await press('KeyQ'); await frames(1);
   // 4. 次の駅 (八丁堀) に止まる・降りる
+  if (TERM0) {
   await page.evaluate((name) => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === name); T.hold += r.tArrs[si] + 8 - (T.hold - rd.dep); }, S1);
   await frames(3);
   s = await st();
@@ -167,7 +171,7 @@ function terrain() {
   await press('KeyF'); await frames(3);
   s = await st();
   const g1 = await page.evaluate(() => { const p = window.__g.player.pos, W = window.__g.world; return { y: +p.y.toFixed(2), g: +W.groundAt(p.x, p.z, p.y + 0.3).toFixed(2), surf: +window.__H(p.x, p.z).toFixed(2) }; });
-  check(`${S1}で降りる (地下のホームの上・案内)`, !s.riding && s.onPlat && s.info.includes(S1 + '駅 京葉線 ホーム') && Math.abs(g1.y - g1.g) < 0.05 && g1.surf - g1.y > 10, { s, g1 });
+  check(`${S1}で降りる (地下のホームの上・案内)`, !s.riding && s.onPlat && s.info.includes(S1 + '駅 ' + LN + ' ホーム') && Math.abs(g1.y - g1.g) < 0.05 && g1.surf - g1.y > 10, { s, g1 });
   const edge = await page.evaluate(() => { const R = window.__ride, g = window.__g, p = g.player.pos, pf = R.onPlatform().pf, m = pf.left.length >> 1;
     const ux = pf.left[m][0] - pf.right[m][0], uz = pf.left[m][1] - pf.right[m][1], l = Math.hypot(ux, uz);
     const q = { x: p.x, y: p.y, z: p.z }; for (let k = 0; k < 40; k++) { q.x += ux / l * 0.25; q.z += uz / l * 0.25; g.world.resolve(q, 0.35); }
@@ -181,7 +185,7 @@ function terrain() {
   await frames(2);
   await press('KeyF'); await frames(2);
   s = await st();
-  check(`${S1}で上りに乗る`, !b2.fail && s.riding && /上り/.test(s.info), { b2, info: s.info });
+  check(`${S1}で上りに乗る`, !b2.fail && s.riding && s.info.includes(INW), { b2, info: s.info });
   await page.evaluate((name) => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === name); T.hold += r.tArrs[si] + 8 - (T.hold - rd.dep); }, S0);
   await frames(3);
   s = await st();
@@ -189,7 +193,15 @@ function terrain() {
   await page.evaluate(() => { window.__trains.hold += 30; });
   await frames(2); await page.waitForFunction(() => !window.__ride.busy); await frames(2);
   s = await st();
-  check(`止まった後、電車が消えると${S0}のホームに戻る`, !s.riding && s.visible && s.onPlat && s.info.includes(S0 + '駅 京葉線 ホーム'), s);
+  check(`止まった後、電車が消えると${S0}のホームに戻る`, !s.riding && s.visible && s.onPlat && s.info.includes(S0 + '駅 ' + LN + ' ホーム'), s);
+  } else {   // 最初の駅が終点でない線: 乗ったまま範囲の端まで行くと、最後に止まった駅のホームに戻る
+    await page.evaluate(() => { const R = window.__ride, r = R.riding.r, T = window.__trains, t = T.now() - R.riding.dep;
+      for (let d = 0; d < 6000; d += 1) { if (T.front(r, t + d) > r.len - 25) { T.hold += d; break; } } });
+    await frames(2); await page.waitForFunction(() => !window.__ride.busy); await frames(2);
+    s = await st();
+    const lastIn = info.routes.find((r) => r.dir === 'in').stops.slice(-1)[0].split('@')[0];
+    check(`上りで範囲の端まで乗ると、最後に止まった ${lastIn}のホームに戻る`, !s.riding && s.onPlat && s.info.includes(lastIn + '駅'), s);
+  }
   // 6. 下りで範囲の端まで乗ると、最後に止まった駅 (段階 3b からは舞浜) のホームに戻る
   await beside({ line: LINE, dir: 'out', from: S0 }); await frames(2);
   await press('KeyF'); await frames(2);
