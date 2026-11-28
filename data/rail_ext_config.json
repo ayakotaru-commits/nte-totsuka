@@ -22,7 +22,7 @@
      "_doc": "大手町 → 竹橋 → 九段下 (日本武道館の最寄り)。作業中・未確認: 駅の位置は国土地理院の「駅部分」の中央から仮に決めた (大手町は東西線かどうか未確認)。深さは推定",
      "stations": [
         {"name": "大手町", "kana": "おおてまち", "roman": "Otemachi", "lat": 35.686683, "lon": 139.765178, "city": "東京都", "ward": "千代田区", "length": 210, "spread": 10, "depth": 22},
-        {"name": "竹橋", "kana": "たけばし", "roman": "Takebashi", "lat": 35.690067, "lon": 139.758859, "city": "東京都", "ward": "千代田区", "length": 210, "spread": 10, "depth": 20},
+        {"name": "竹橋", "kana": "たけばし", "roman": "Takebashi", "lat": 35.689514, "lon": 139.760731, "city": "東京都", "ward": "千代田区", "length": 210, "spread": 10, "depth": 20},
         {"name": "九段下", "kana": "くだんした", "roman": "Kudanshita", "lat": 35.695404, "lon": 139.751094, "city": "東京都", "ward": "千代田区", "length": 210, "spread": 10, "depth": 20}
      ]}
   ],
