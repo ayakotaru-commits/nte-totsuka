@@ -39,7 +39,10 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   const goto = async (x, z, y) => { await page.evaluate(([x, z, y]) => { __g.player.teleport(x, z); if (y > 1) { __g.player.pos.y = y; __g.player.vy = 0; } __g.cam.update(0, __g.player.pos, true); }, [x, z, y ?? null]); };
   const waitAsk = async () => { for (let i = 0; i < 14; i++) { await frames(2); if ((await st()).open) return true; } return false; };
   // 経路 (x, z) を W キーで歩く。カメラの向きを次の点へ合わせてから押す。点の 1.5 m 以内に着いたら次へ。着けなければ止まった所と高さを出す。
+  const TRACE = process.argv.includes('--trace');
+  const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7);
   const walk = async (name, start, pts, yEnd) => {
+    if (ONLY && !name.startsWith(ONLY)) return;
     await goto(start[0], start[1], start[2]); await frames(6);
     if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); }
     const ys = [];
@@ -51,6 +54,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
           __g.cam.yaw = Math.atan2(-dx, -dz);
           return { x: p.x, z: p.z, y: p.y, d: Math.hypot(dx, dz) };
         }, [tx, tz]);
+        if (TRACE) console.log(`  ${name} ${n} (${s.x.toFixed(1)}, ${s.z.toFixed(1)}) y=${s.y.toFixed(2)} -> (${tx}, ${tz}) d=${s.d.toFixed(1)}`);
         if (s.d < 2.5) break;
         if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); }
         await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW'); await frames(3); await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
