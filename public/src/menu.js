@@ -1,9 +1,9 @@
 // メニュー画面 (Tab / 画面の「メニュー」ボタン)。着替え・キャラメイク・地図・時間帯・ヘルプ。
-// 洋服屋の入口 (shop.js) からも開く: 入りますか？ → 店の一覧 → 服を買う。
+// 洋服屋の入口 (shop.js) からも開く: 入りますか？ → 店の一覧 → 服を試着 (お金が足りなくても可) → 買う。
 // 開いている間は、キャラ・イベントへの操作を止める (main.js が menu.open を見る)。街は動き続ける。
 // 着替えの画面は 枠 (トップス・ボトムス・くつ・ワンピース) ごとのタブで、選ぶとすぐ着替える。服は買ってから (wardrobe.js)。
 // キャラメイクの画面は、タブで 髪型の一覧・髪色・目の色の色見本 (hairstyle.js)。選ぶとすぐ変わる。
-// カメラは、着替え・キャラメイクの画面で、キャラの正面へ寄せる。
+// カメラは、着替え・キャラメイク・洋服屋の画面で、キャラの正面へ寄せる (顔・上半身・全身はタブで変える)。
 import * as THREE from 'three';
 import { yen, SLOTS } from './wardrobe.js';
 import { PALETTE, EYE_PALETTE, SKIN_PALETTE, HEIGHTS, BODIES, FACE_ITEMS } from './hairstyle.js';
@@ -25,13 +25,14 @@ export class Menu {
     this.place = null;     // 洋服屋の入口から開いたとき: { name, entrances, shops }
     this.entrance = null;  // 入った入口 { label, ... }
     this.shop = null;      // 見ている店 { key, name, floor }
+    this.tryId = null;     // 店で試着している服の id (買う前の見た目。保存しない。店を出ると元の服に戻る)
     this.onLeave = null;   // 洋服屋の画面を閉じたとき (断った・店を出た) に呼ぶ (shop.js が、入口を離れるまで聞かない印にする)
     this.el = document.getElementById('menu');
     this.el.addEventListener('click', (e) => this.click(e));
     // 画面の外をクリックしても閉じない (誤タップ防止)。キーボード
     addEventListener('keydown', (e) => this.key(e));
     // 着替え・キャラメイクの画面で、マウスのドラッグで キャラのまわりを回る (タッチは touch.js が視点を回す)
-    dom.addEventListener('pointermove', (e) => { if (this.open && (this.screen === 'wardrobe' || this.screen === 'charmake') && e.pointerType === 'mouse' && e.buttons) this.cam.rotate(e.movementX * 0.008, e.movementY * 0.006); });
+    dom.addEventListener('pointermove', (e) => { if (this.open && (this.screen === 'wardrobe' || this.screen === 'charmake' || this.screen === 'shop') && e.pointerType === 'mouse' && e.buttons) this.cam.rotate(e.movementX * 0.008, e.movementY * 0.006); });
     wardrobe.onChange(() => { if (this.open) this.render(); });
     status?.onChange(() => { if (this.open && (this.screen === 'status' || this.screen === 'bless' || this.screen === 'main')) this.render(); });
     hairStyle?.onChange(() => { if (this.open && !this.quiet) this.render(); });
@@ -72,6 +73,7 @@ export class Menu {
 
   close() {
     if (!this.open) return;
+    this.endTry();
     this.restoreCam();
     const fromShop = !!this.place;
     this.open = false;
@@ -84,8 +86,9 @@ export class Menu {
   decline() { this.close(); }
 
   go(screen) {
+    if (screen !== 'shop') this.endTry();
     this.screen = screen; this.msg = ''; this.sel = 0;
-    if (screen === 'wardrobe' || screen === 'charmake') {
+    if (screen === 'wardrobe' || screen === 'charmake' || screen === 'shop') {
       this.sel = screen === 'charmake' ? (this.cmIndex()) : this.selIndex();
       // カメラをキャラの正面・近くへ (戻すときのために今の値を覚える)
       if (!this.saved) this.saved = { yaw: this.cam.yaw, pitch: this.cam.pitch, dist: this.cam.dist };
@@ -96,17 +99,29 @@ export class Menu {
     this.render();
   }
 
-  // キャラメイクのカメラ: 「顔」タブは顔のアップ (頭の高さ・近く。メニューに隠れない側へ顔を寄せる)、ほかは全身
+  // 着替え・キャラメイク・洋服屋のカメラ。キャラの正面へ寄せ、メニューに隠れない側へずらす。
+  // 寄せ方 (frame): face = 顔のアップ、half = 頭から胸 (髪・肌)、full = 全身 (体・身長・試着)
+  cmFrame() {
+    if (this.screen === 'charmake') return this.cmTab === 'face' || this.cmTab === 'eye' ? 'face' : this.cmTab === 'style' || this.cmTab === 'color' || this.cmTab === 'skin' ? 'half' : 'full';
+    return 'full';
+  }
+
   applyCmCam() {
-    const c = this.cam;
-    if (this.screen === 'charmake' && this.cmTab === 'face') {
-      let head = null; this.player.model.root.traverse((o) => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
-      const root = this.player.model.root, a = new THREE.Vector3(), b = new THREE.Vector3();
-      c.targetY = head ? head.getWorldPosition(a).y - root.getWorldPosition(b).y + 0.04 : 1.5;
-      const portrait = innerWidth <= 700 && innerHeight > innerWidth; // 縦長の画面では、メニューが下の 55% を覆う
-      c.pitch = 0.05; c.dist = portrait ? 1.3 : 0.75;
-      c.view = portrait ? { x: 0, y: 0.25 } : { x: Math.min(340, innerWidth) / 2 / innerWidth, y: 0 };
-    } else { c.pitch = 0.12; c.dist = 3.4; c.targetY = null; c.view = null; }
+    const c = this.cam, f = this.cmFrame();
+    const portrait = innerWidth <= 700 && innerHeight > innerWidth; // 縦長の画面では、メニューが下の 55% を覆う
+    c.pitch = 0.05; c.targetY = null; c.view = null;
+    if (f === 'full') {
+      // 全身: 縦長ではキャラを上の 45% に収める (足元までメニューに隠さない)
+      c.pitch = 0.1; c.targetY = 0.9;
+      c.dist = portrait ? 4.8 : 3.4;
+      c.view = portrait ? { x: 0, y: 0.19 } : { x: Math.min(340, innerWidth) / 2 / innerWidth, y: 0 };
+      return;
+    }
+    let head = null; this.player.model.root.traverse((o) => { if (!head && o.isBone && /head/i.test(o.name)) head = o; });
+    const root = this.player.model.root, a = new THREE.Vector3(), b = new THREE.Vector3();
+    const headY = head ? head.getWorldPosition(a).y - root.getWorldPosition(b).y + 0.04 : 1.5;
+    if (f === 'face') { c.targetY = headY; c.dist = portrait ? 1.3 : 0.75; c.view = portrait ? { x: 0, y: 0.25 } : { x: Math.min(340, innerWidth) / 2 / innerWidth, y: 0 }; }
+    else { c.targetY = headY - 0.22; c.dist = portrait ? 2.7 : 1.9; c.view = portrait ? { x: 0, y: 0.19 } : { x: Math.min(340, innerWidth) / 2 / innerWidth, y: 0 }; }
   }
 
   restoreCam() {
@@ -266,12 +281,17 @@ export class Menu {
       });
       h += `</div><div class="mn-msg">${this.msg}</div><button class="mn-item mn-close" data-do="close">出る<small>Esc</small></button>`;
     } else if (this.screen === 'shop') {
+      const items = this.stock(this.shop), t = this.tryId && w.byId.get(this.tryId);
+      if (t) { // 試着中: 買う (持っていれば 着る) ボタン。お金が足りなくても試着はできる
+        const have = w.has(t.id), lack = !have && w.money < t.price;
+        h += `<div class="mn-try"><div>試着中: <b>${t.name}</b><small>${this.slotName(t.slot)}${have ? '・持っている' : '・' + yen(t.price)}</small></div>
+          <button class="mn-item mn-buy${lack ? ' locked' : ''}" data-do="buy">${have ? (w.isWorn(t.id) ? 'いま着ている' : 'これを着る') : lack ? `買えない (あと ${yen(t.price - w.money)})` : `買う ${yen(t.price)}`}<small>Enter</small></button></div>`;
+      } else if (items.length) h += '<div class="mn-note">服を選ぶと、その場で試着できます（買わなくても大丈夫）</div>';
       h += '<div class="mn-list">';
-      const items = this.stock(this.shop);
       items.forEach((o, i) => {
-        const have = w.has(o.id), on = w.isWorn(o.id);
-        const sub = `${this.slotName(o.slot)}・${on ? '着ている' : have ? '持っている・着る' : '買う ' + yen(o.price)}`;
-        h += `<button class="mn-item${on ? ' on' : ''}${i === this.sel ? ' sel' : ''}${have || w.money >= o.price ? '' : ' locked'}" data-item="${o.id}">${o.name}<small>${sub}</small></button>`;
+        const have = w.has(o.id), on = w.isWorn(o.id), tr = o.id === this.tryId;
+        const sub = `${this.slotName(o.slot)}・${on ? '着ている' : have ? '持っている' : yen(o.price)}`;
+        h += `<button class="mn-item${on ? ' on' : ''}${tr ? ' try' : ''}${i === this.sel ? ' sel' : ''}${have || w.money >= o.price ? '' : ' locked'}" data-item="${o.id}">${o.name}<small>${sub}</small></button>`;
       });
       h += `</div><div class="mn-msg">${this.msg || (items.length ? '' : 'いまは売っている服がありません')}</div><button class="mn-item mn-close" data-do="place">もどる<small>Esc</small></button>`;
     } else if (this.screen === 'charmake') {
@@ -396,7 +416,18 @@ export class Menu {
     return h;
   }
 
-  applyOutfit() { this.player.model.setOutfits(this.wardrobe.urls()); }
+  // 店で試着中ならその服を着た姿、でなければ本当に着ている服
+  applyOutfit() { this.player.model.setOutfits(this.tryId ? this.wardrobe.urlsWith(this.tryId) : this.wardrobe.urls()); }
+
+  // 試着をやめて、着ている服へ戻す
+  endTry() { if (!this.tryId) return; this.tryId = null; this.applyOutfit(); }
+
+  // 試着する (買わなくてよい。お金が足りなくても着られる)
+  tryOn(id) {
+    if (!this.wardrobe.byId.get(id)) return;
+    this.tryId = id; this.msg = ''; this.applyOutfit();
+    this.sel = this.stock(this.shop).findIndex((o) => o.id === id); this.render();
+  }
 
   // 着る (id が 'none:<枠>' なら、その枠を「いつもの」に戻す)
   wear(id) {
@@ -409,14 +440,14 @@ export class Menu {
     this.render();
   }
 
-  // 店で服を買う。持っている服を押すと、その場で着る
+  // 店で服を買う (試着中の服。持っていれば、その場で着る)。お金が足りなければ買えない (試着はできる)
   buy(id) {
     const w = this.wardrobe, o = w.byId.get(id);
     if (!o) return;
-    if (w.has(id)) { this.wear(id); this.msg = `「${o.name}」を着ました`; this.render(); return; }
+    if (w.has(id)) { this.tryId = null; this.wear(id); this.msg = `「${o.name}」を着ました`; this.render(); return; }
     const r = w.buy(id);
-    if (r.ok) { this.msg = `「${o.name}」を買いました。もう一度押すと着られます (メニューの「着替え」からも)`; }
-    else this.msg = r.reason === 'お金が足りません' ? `お金が足りません (あと ${yen(o.price - w.money)})` : r.reason;
+    if (r.ok) { this.tryId = null; this.wear(id); this.msg = `「${o.name}」を買って、着ました`; }
+    else this.msg = r.reason === 'お金が足りません' ? `お金が足りません (あと ${yen(o.price - w.money)})。試着はできます` : r.reason;
     this.render();
   }
 
@@ -438,13 +469,14 @@ export class Menu {
     if (b.dataset.hair) { this.sel = this.hairList().findIndex((o) => o.id === b.dataset.hair); return this.pickHair(b.dataset.hair); }
     if (b.dataset.wear) { this.sel = this.list().findIndex((o) => o.id === b.dataset.wear); return this.wear(b.dataset.wear); }
     if (b.dataset.shop) { this.shop = this.place.shops.find((s) => s.key === b.dataset.shop); this.go('shop'); return; }
-    if (b.dataset.item) { this.sel = this.stock(this.shop).findIndex((o) => o.id === b.dataset.item); return this.buy(b.dataset.item); }
+    if (b.dataset.item) return this.tryOn(b.dataset.item);
     const d = b.dataset.do;
     if (d === 'wardrobe') this.go('wardrobe');
     else if (d === 'charmake') this.go('charmake');
     else if (d === 'status') this.go('status');
     else if (d === 'bless') this.go('bless');
     else if (d === 'items') this.go('items');
+    else if (d === 'buy') { if (this.tryId) this.buy(this.tryId); }
     else if (d === 'facereset') this.resetFace();
     else if (d === 'back') this.go('main');
     else if (d === 'enter') this.enter();
@@ -493,13 +525,16 @@ export class Menu {
     const rows = this.screen === 'wardrobe' ? this.list() : this.screen === 'charmake' ? (this.cmTab === 'body' ? BODIES : this.cmTab === 'style' ? this.hairList() : this.cmTab === 'height' ? this.heightList() : this.colorList()) : this.screen === 'place' ? this.place.shops : this.screen === 'shop' ? this.stock(this.shop) : null;
     if (!rows || !rows.length) return;
     const n = rows.length;
-    if (e.code === 'ArrowDown') { this.sel = (this.sel + 1) % n; this.render(); e.preventDefault(); }
-    else if (e.code === 'ArrowUp') { this.sel = (this.sel + n - 1) % n; this.render(); e.preventDefault(); }
+    if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+      this.sel = (this.sel + (e.code === 'ArrowDown' ? 1 : n - 1)) % n; e.preventDefault();
+      if (this.screen === 'shop') this.tryOn(rows[this.sel].id); else this.render(); // 店では、動かすたびに試着する
+    }
     else if (e.code === 'Enter') {
       if (this.screen === 'wardrobe') this.wear(rows[this.sel].id);
       else if (this.screen === 'charmake') { if (this.cmTab === 'body') this.pickBody(rows[this.sel].id); else if (this.cmTab === 'height') this.pickHeight(rows[this.sel].cm); else if (this.cmTab !== 'style') { this.pickColor(rows[this.sel].hex); this.render(); } else this.pickHair(rows[this.sel].id); }
       else if (this.screen === 'place') { this.shop = rows[this.sel]; this.go('shop'); }
-      else this.buy(rows[this.sel].id);
+      else if (this.tryId) this.buy(this.tryId); // 店: Enter で試着中の服を買う (持っていれば着る)
+      else this.tryOn(rows[this.sel].id);
     }
   }
 }

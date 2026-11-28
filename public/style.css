@@ -370,6 +370,11 @@ body.touch #toast { right: calc(12px + env(safe-area-inset-right)); bottom: auto
 .mn-elems { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; font-size: 12px; }
 .mn-elems div { border: 1px solid rgba(255,255,255,.3); border-radius: 8px; padding: 6px 2px; background: rgba(255,255,255,.07); }
 .mn-elems .ec { display: inline-block; width: 22px; height: 22px; line-height: 22px; border-radius: 50%; color: #0a1423; font-weight: 700; margin-bottom: 2px; }
+.mn-try { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid #5fd3ff; border-radius: 8px; background: rgba(95,211,255,.14); font-size: 14px; }
+.mn-try small { margin-left: 6px; font-size: 11px; color: rgba(255,255,255,.7); }
+.mn-buy { justify-content: space-between; background: rgba(255,210,122,.25); border-color: #ffd27a; }
+.mn-buy.locked { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.3); }
+.mn-item.try { border-color: #ffd27a; }
 .mn-note { font-size: 12px; color: rgba(255,255,255,.7); line-height: 1.5; }
 .mn-bonus { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,.12); }
 .mn-bonus.got { color: #ffe08a; }
