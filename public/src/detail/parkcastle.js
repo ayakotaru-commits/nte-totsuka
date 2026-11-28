@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { canvasTexture } from './util.js';
 import { buildKeepInterior, KEEP } from './parkkeep.js';
+import { FountainFx } from './fountainfx.js';
 
 const TAU = Math.PI * 2;
 const C = (s) => new THREE.Color(s);
@@ -859,7 +860,7 @@ export function buildCastle(ctx) {
     // 島の庭 (改善 3): 噴水のある丸い花壇 6 つ (前の芝 2・裏の芝 2・東西の端 2)。石の縁・水・金の噴き口・花の輪。ふち石の輪は砂利色
     {
       const spots = []; for (const sd of [-1, 1]) spots.push([sd * 34, 34], [sd * 36, -31], [sd * 76, -2]);
-      const nS = spots.length, rg = mulberry(11), nF = low ? 12 : 34;
+      const nS = spots.length, rg = mulberry(11), nF = low ? 12 : 34, fxF = new FountainFx();
       const basinG = new THREE.CylinderGeometry(1.9, 2.0, 0.6, low ? 14 : 24).translate(0, 0.3, 0), waterG = new THREE.CircleGeometry(1.7, low ? 14 : 24).rotateX(-Math.PI / 2).translate(0, 0.56, 0);
       const spoutG = new THREE.CylinderGeometry(0.12, 0.3, 1.5, 8).translate(0, 1.1, 0), capG = new THREE.SphereGeometry(0.3, 8, 6).translate(0, 1.95, 0);
       const basinM = new THREE.InstancedMesh(basinG, new THREE.MeshStandardMaterial({ color: '#efe6d6', roughness: 0.6 }), nS), waterM = new THREE.InstancedMesh(waterG, new THREE.MeshStandardMaterial({ color: '#7fcfe6', roughness: 0.08, metalness: 0.1 }), nS);
@@ -875,8 +876,10 @@ export function buildCastle(ctx) {
         [basinM, waterM, spoutM, capM].forEach((m) => m.setMatrixAt(i, dd.matrix));
         for (let k = 0; k < nF; k++) { const a = (k + rg() * 0.8) / nF * TAU, r = 2.9 + rg() * 1.8; dd.position.set(x + Math.cos(a) * r, 0.32, z + Math.sin(a) * r); dd.scale.setScalar(0.7 + rg() * 0.5); dd.updateMatrix(); fl2.setMatrixAt(fj, dd.matrix); fl2.setColorAt(fj, cc2.set(fcols[Math.floor(rg() * fcols.length)])); fj++; }
         for (let k = 0; k < 4; k++) { const a = (k + 0.5) / 4 * TAU + 0.4; lamps.push([x + Math.cos(a) * 6.1, 1.9, z + Math.sin(a) * 6.1, k % 2 ? lampPink : lampCyan, 0.3]); parapet.box(x + Math.cos(a) * 6.1, 0.95, z + Math.sin(a) * 6.1, 0.14, 1.8, 0.14, 0, tint(goldC, 0.9)); }
+        fxF.add({ x, z, y0: 2.4, yw: 0.76, R: 1.7, up: 1.3 });
         const [wx, wz] = W(x, z); col.circle.push([wx, wz, 2.0, y0, y0 + 0.9]);
       });
+      fxF.build(api.group, { low });   // 6 つの噴水のしぶきと波紋 (fountainfx.js)
       fl2.count = fj; [basinM, waterM, spoutM, capM, fl2].forEach((m) => { m.instanceMatrix.needsUpdate = true; api.group.add(m); });
       if (fl2.instanceColor) fl2.instanceColor.needsUpdate = true;
       basinM.receiveShadow = true;

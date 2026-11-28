@@ -5,6 +5,8 @@ import * as THREE from 'three';
 import { Builder, canvasTexture } from './util.js';
 import { buildSiteExtras } from './site_extras.js';
 import { drape } from '../terrain.js';
+import { FountainFx } from './fountainfx.js';
+import { TOUCH } from '../touch.js';
 
 export function buildSites(props) {
   const group = new THREE.Group();
@@ -70,6 +72,7 @@ export function buildSites(props) {
         const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.3, 0.3, 24), stone); bowl.position.y = 1.85;
         for (const m of [basin, col, bowl]) m.castShadow = m.receiveShadow = true;
         f.add(basin, water, col, bowl);
+        new FountainFx().add({ x: 0, z: 0, y0: 2.05, yw: 0.46, R: 2.35, up: 0.9 }).build(f, { low: TOUCH });   // しぶきと波紋
         group.add(f);
       }
       // 白い縁の芝の区画 (縁石 + 一段明るい芝)
