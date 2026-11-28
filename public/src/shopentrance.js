@@ -14,7 +14,7 @@ const BEAM_H = 22;
 function signTexture(text) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 128;
   const g = c.getContext('2d');
-  g.fillStyle = '#5b3f78'; g.fillRect(0, 0, 512, 128);
+  g.fillStyle = '#34373a'; g.fillRect(0, 0, 512, 128);
   g.fillStyle = '#8dbf3b'; g.fillRect(0, 118, 512, 10);
   g.fillStyle = '#fff'; g.font = 'bold 66px "Yu Gothic UI","Hiragino Sans",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(text, 256, 60, 480);
@@ -46,9 +46,9 @@ export class ShopEntrances {
     this.root = new THREE.Group(); this.root.name = 'shop_entrances'; scene.add(this.root);
     const lit = new THREE.MeshBasicMaterial({ color: 0xfff1cf });
     this.mats = { lit };
-    const sharedGlass = new THREE.MeshStandardMaterial({ color: 0xaed4e2, roughness: 0.08, metalness: 0.2, transparent: true, opacity: 0.38, depthWrite: false });
-    const frameM = new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.55, metalness: 0.5 });
-    const canopyM = new THREE.MeshStandardMaterial({ color: 0x5b3f78, roughness: 0.6, metalness: 0.1 });
+    const sharedGlass = new THREE.MeshStandardMaterial({ color: 0x5d7480, roughness: 0.06, metalness: 0.3, transparent: true, opacity: 0.5, depthWrite: false });
+    const frameM = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.5, metalness: 0.55 });   // 濃いブロンズ色の枠 (モディの写真のガラスの塔の桟)
+    const canopyM = new THREE.MeshStandardMaterial({ color: 0xe3dccb, roughness: 0.8, metalness: 0.0 });   // 壁と同じクリーム色のタイル
     const matM = new THREE.MeshStandardMaterial({ color: 0x35383f, roughness: 0.95 });
     const inside = new THREE.MeshStandardMaterial({ color: 0x2c2a2e, roughness: 0.9, emissive: 0xffe9bd, emissiveIntensity: 0.4 });
     const stripM = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -86,12 +86,13 @@ export class ShopEntrances {
           box(frameM, 0.04, 0.5, 0.05, s * 0.2, 1.1, 0.14);                 // 取っ手
         }
         box(frameM, w / 2 - 0.08, 0.1, 0.06, -w / 4, 0.05, 0.1); box(frameM, w / 2 - 0.08, 0.1, 0.06, w / 4, 0.05, 0.1);   // 戸の下の枠
+        for (const q of [-0.75, -0.25, 0.25, 0.75]) box(frameM, 0.04, dh - 0.1, 0.05, q * w / 2, dh / 2, 0.13);   // ガラスの縦の桟 (写真の塔と同じ細い縦線)
         box(frameM, 0.14, dh + 0.2, 0.24, -w / 2 - 0.06, (dh + 0.2) / 2, 0.1); box(frameM, 0.14, dh + 0.2, 0.24, w / 2 + 0.06, (dh + 0.2) / 2, 0.1);   // 柱
         box(frameM, w + 0.34, 0.24, 0.28, 0, dh + 0.12, 0.1);             // 上の枠 (センサーの箱)
         box(matM, w + 0.2, 0.03, 1.5, 0, 0.015, 0.85);                   // 足元のマット
-        // 庇 (濃い紫の板。下に細い明かり。壁から 1.7 m)
+        // 庇 (壁と同じクリーム色の厚い軒。下に細い明かり。壁から 1.7 m。1 階の角の写真の、へこんだ開口の上の軒に合わせた)
         box(canopyM, w + 1.6, 0.18, 1.7, 0, 3.4, 0.85);
-        box(canopyM, w + 1.6, 0.34, 0.08, 0, 3.28, 1.66);                  // 前の縁の立ち上がり
+        box(frameM, w + 1.6, 0.05, 0.05, 0, 3.27, 1.7);                   // 前の縁の細い黒線
         box(stripM, w + 0.6, 0.02, 0.18, 0, 3.3, 1.45);                   // 庇の下の明かり
         // 看板 (庇の上の壁。字は canvas)
         const sg = new THREE.Mesh(new THREE.BoxGeometry(w + 1.6, 0.8, 0.1));
