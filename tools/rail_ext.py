@@ -816,6 +816,18 @@ def build_own_line(L, tracks, grid, lines):
         if d == "in":
             P, y, tun = P[::-1], y[::-1], tun[::-1]
         routes.append({"route": None, "own": L["id"], "line": L["id"], "dir": d, "at": "own", "P": P, "y": y, "tunnel": tun, "ug": tun})
+        runs, k = [], 0
+        while k < len(tun):   # トンネルの中の範囲 (道筋の始めからの m) と、駅の所のレールの高さ
+            if tun[k]:
+                k1 = k
+                while k1 < len(tun) and tun[k1]:
+                    k1 += 1
+                runs.append(f"{k * STEP:.0f}〜{k1 * STEP:.0f} m")
+                k = k1
+            else:
+                k += 1
+        if runs and L.get("viaduct") is not None and not L.get("rtcode"):
+            print(f"  {L['name']} {d}: トンネルの中 {', '.join(runs)} (道筋の始めから)")
     print(f"  {L['name']}: 道筋 {len(routes[0]['P']) * STEP:.0f} m・{len(routes[1]['P']) * STEP:.0f} m、"
           f"トンネルの中 {sum(routes[0]['ug']) * STEP:.0f} m、レールの高さ {min(routes[0]['y']):.1f}〜{max(routes[0]['y']):.1f} m")
     stations = []
