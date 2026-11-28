@@ -155,7 +155,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await B.click('[data-do=status]');
   await B.waitForFunction(() => /ステータス/.test(document.querySelector('#menu .mn-head b').textContent));
   const txt = await B.evaluate(() => document.getElementById('menu').innerText);
-  ok(/Lv 10/.test(txt) && /最大HP/.test(txt) && /防御力/.test(txt) && /会心率/.test(txt) && /回復速度/.test(txt) && /必殺ゲージ最大/.test(txt) && /移動速度/.test(txt) && /リズム地獄/.test(txt), 'B: ステータス画面に、レベル・各項目・イベントのボーナスが並ぶ');
+  ok(/Lv 12/.test(txt) && /最大HP/.test(txt) && /防御力/.test(txt) && /会心率/.test(txt) && /回復速度/.test(txt) && /必殺ゲージ最大/.test(txt) && /移動速度/.test(txt) && /リズム地獄/.test(txt), 'B: ステータス画面に、レベル・各項目・イベントのボーナスが並ぶ');
   await B.screenshot({ path: path.join(out, 'status_menu.png') });
   await B.evaluate(() => { const m = document.getElementById('menu'); m.scrollTop = m.scrollHeight; });
   await B.screenshot({ path: path.join(out, 'status_menu_bottom.png') });
