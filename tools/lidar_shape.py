@@ -11,7 +11,7 @@ build_city.py から apply() が呼ばれる (高さ格子があるときだけ)
  4. 部分ごとに屋根の形を当てはめる: 平ら / 切妻 / 寄棟 / 片流れ (向き・勾配・軒の高さ)
  5. 低い段から順に「その高さ以上の所」の輪郭を作って積み上げる。上の段は別の建物データ (part) として追加し、
     minH = 下の段の高さ にするので、壁は下から上まで1枚につながる
-標準ライブラリのみ。
+標準ライブラリのみ (中央プロムナードの溝を切る promenade.py だけ shapely を使う)。
 """
 import array
 import copy
@@ -19,6 +19,8 @@ import json
 import math
 import pathlib
 import sys
+
+import promenade
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DSM_BIN = ROOT / "data" / "raw" / "lidar_dsm.bin"
@@ -970,6 +972,7 @@ def main():
         mapillary_walls = None
     if mapillary_walls:
         mapillary_walls.undo(city["buildings"])
+    promenade.undo(city["buildings"], city.get("roads"))  # 溝は restore() の前に戻す (控えた元の外形は restore より前のもの)
     city["buildings"] = restore(city["buildings"])
     if "--undo" in sys.argv:
         city["looks"] = landmarks.apply(city["buildings"], city.get("roads"), city.get("pois"))
@@ -978,6 +981,7 @@ def main():
             raise SystemExit("data/raw/lidar_dsm.bin がありません。先に python tools/fetch_lidar.py を実行してください")
         ref = json.loads(TERRAIN.read_text(encoding="utf-8"))["ref"] if TERRAIN.exists() else 0.0
         city["buildings"] = apply(city["buildings"], ref)
+        promenade.apply(city["buildings"], city.get("roads"))  # 中央プロムナードの溝 (data/promenade.json)。landmarks の前
         note = "形と屋根の色: 神奈川県 点群・オルソ画像 (CC BY 4.0)"
         for old in (" / 建物の形: 神奈川県 3次元点群データ (CC BY 4.0)", " / 建物の形・屋根の色: 神奈川県 3次元点群データ・オルソ画像 (CC BY 4.0)"):
             city["attribution"] = city.get("attribution", "").replace(old, "")  # 以前の版の表記

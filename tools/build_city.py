@@ -979,6 +979,10 @@ def main():
         n_deck, rate = deck_heights.apply(roads, Hd, ref, lidar_shape.DSM(), levels, False, deck_heights.inside_any(buildings))
         print(f"deck heights: {n_deck} ways (measured {rate * 100:.0f}%)")
 
+    # 中央プロムナード (トツカーナ) の溝と、3 階のデッキ・階段 (data/promenade.json)。形と道の高さが決まった後、外観の前
+    import promenade
+    promenade.apply(buildings, roads)
+
     # 目印になる大きな建物の外観 (data/appearance.json の landmarks)。上の段にも付けるので、形を直した後に行う
     import landmarks
     looks = landmarks.apply(buildings, roads)
