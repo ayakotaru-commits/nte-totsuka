@@ -1,5 +1,5 @@
 {
- "_note": "着せ替えの服の一覧 (パーツごと)。slot = tops / bottoms / shoes / onepiece (ワンピースは トップスとボトムスの両方の枠を使う)。price (円)・shop (店の key。shops.json) は仮の値 (持ち主が決める)。source が null のものは配布ページの URL が未確認。服のファイルは tools/outfits.py で作る (材質名 Tops / Bottoms / Shoes / Onepiece ごとに 1 ファイル)。 body = 合う体 (female / male)。男性の体の服は、VRM 0.x の元から tools/hairs.py --outdir outfits --parts <材質> で取り出す。 男性の体の服 (body = male) は、女性の体でも着られる (2026-11、持ち主の判断。wardrobe.js の fits)。逆 (女性の服を男性の体) は着られない。",
+ "_note": "着せ替えの服の一覧 (パーツごと)。slot = tops / bottoms / shoes / onepiece (ワンピースは トップスとボトムスの両方の枠を使う)。price (円)・shop (店の key。shops.json。1 着を何軒かで売るときは key の配列) は仮の値 (持ち主が決める)。source が null のものは配布ページの URL が未確認。服のファイルは tools/outfits.py で作る (材質名 Tops / Bottoms / Shoes / Onepiece ごとに 1 ファイル)。 body = 合う体 (female / male)。男性の体の服は、VRM 0.x の元から tools/hairs.py --outdir outfits --parts <材質> で取り出す。 男性の体の服 (body = male) は、女性の体でも着られる (2026-11、持ち主の判断。wardrobe.js の fits)。逆 (女性の服を男性の体) は着られない。",
  "slots": [
   {
    "key": "tops",
@@ -24,7 +24,11 @@
    "name": "にじいろパーカー",
    "slot": "tops",
    "file": "lyla_hoodie.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "ユニクロ",
+    "AMERICAN HOLIC"
+   ],
    "price": 1200,
    "model": "Lyla",
    "author": "Lyrik",
@@ -37,7 +41,12 @@
    "name": "ゆったり T シャツ",
    "slot": "tops",
    "file": "nona_tshirt.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "ユニクロ",
+    "Green Parks topic",
+    "GUNZE グンゼ"
+   ],
    "price": 900,
    "model": "のなつー",
    "author": "いさん",
@@ -50,7 +59,12 @@
    "name": "レースのタンクトップ",
    "slot": "tops",
    "file": "lyla_tank.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "チュチュアンナ",
+    "AMERICAN HOLIC",
+    "GUNZE グンゼ"
+   ],
    "price": 1100,
    "model": "Lyla",
    "author": "Lyrik",
@@ -63,7 +77,11 @@
    "name": "デニムのショートパンツ",
    "slot": "bottoms",
    "file": "nona_shorts.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "ユニクロ",
+    "AMERICAN HOLIC"
+   ],
    "price": 900,
    "model": "のなつー",
    "author": "いさん",
@@ -76,7 +94,11 @@
    "name": "にじいろのショートパンツ",
    "slot": "bottoms",
    "file": "lyla_shorts.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "Green Parks topic",
+    "チュチュアンナ"
+   ],
    "price": 800,
    "model": "Lyla",
    "author": "Lyrik",
@@ -89,7 +111,10 @@
    "name": "黒のロングワンピース",
    "slot": "onepiece",
    "file": "nishi_dress.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "アンドア"
+   ],
    "price": 2200,
    "model": "Nishi",
    "author": "Nishimiya",
@@ -102,7 +127,11 @@
    "name": "白いドレス",
    "slot": "onepiece",
    "file": "celestia_dress.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "Té chichi",
+    "ONWARD CROSSET SELECT"
+   ],
    "price": 2800,
    "model": "celestia",
    "author": "PEPE",
@@ -115,7 +144,10 @@
    "name": "花柄の浴衣",
    "slot": "onepiece",
    "file": "tanuki_yukata.glb",
-   "shop": "しらやま",
+   "shop": [
+    "しらやま",
+    "きものやまと"
+   ],
    "price": 3000,
    "model": "たぬき",
    "author": "wayy",
@@ -128,7 +160,10 @@
    "name": "白いサンダル",
    "slot": "shoes",
    "file": "nona_sandals.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "シュープラザ"
+   ],
    "price": 900,
    "model": "のなつー",
    "author": "いさん",
@@ -141,7 +176,10 @@
    "name": "ピンクのブーツ",
    "slot": "shoes",
    "file": "lyla_boots.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "シュープラザ"
+   ],
    "price": 1300,
    "model": "Lyla",
    "author": "Lyrik",
@@ -154,7 +192,10 @@
    "name": "黒いローファー",
    "slot": "shoes",
    "file": "nishi_shoes.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "シュープラザ"
+   ],
    "price": 1200,
    "model": "Nishi",
    "author": "Nishimiya",
@@ -167,7 +208,10 @@
    "name": "白いブーツ",
    "slot": "shoes",
    "file": "celestia_boots.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "シュープラザ"
+   ],
    "price": 1600,
    "model": "celestia",
    "author": "PEPE",
@@ -180,7 +224,10 @@
    "name": "下駄",
    "slot": "shoes",
    "file": "tanuki_geta.glb",
-   "shop": "しらやま",
+   "shop": [
+    "しらやま",
+    "きものやまと"
+   ],
    "price": 1000,
    "model": "たぬき",
    "author": "wayy",
@@ -193,7 +240,11 @@
    "name": "白いパーカー",
    "slot": "tops",
    "file": "hairsample_male_tops.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "ユニクロ",
+    "DIFFERENCE"
+   ],
    "price": 1500,
    "body": "male",
    "model": "HairSample_Male",
@@ -206,7 +257,10 @@
    "name": "制服のベスト（赤いリボン）",
    "slot": "tops",
    "file": "basef_tops.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "CLAP HANDS"
+   ],
    "price": 1980,
    "body": "female",
    "model": "Base_Female",
@@ -219,7 +273,11 @@
    "name": "制服のベスト（オレンジのネクタイ）",
    "slot": "tops",
    "file": "basem_tops.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "DIFFERENCE",
+    "SUIT SELECT"
+   ],
    "price": 1980,
    "body": "male",
    "model": "Base_Male",
@@ -232,7 +290,10 @@
    "name": "制服のベスト（青いリボン）",
    "slot": "tops",
    "file": "shino_tops.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "CLAP HANDS"
+   ],
    "price": 1980,
    "body": "female",
    "model": "Sendagaya Shino",
@@ -245,7 +306,11 @@
    "name": "黒のゴシックコート",
    "slot": "tops",
    "file": "avdd_tops.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "ゴージ ビー ゴージビー",
+    "CLAP HANDS"
+   ],
    "price": 3290,
    "body": "female",
    "model": "AvatarSample_D_Darkness",
@@ -258,7 +323,12 @@
    "name": "白いふんわりチュニック",
    "slot": "tops",
    "file": "hsf_tops.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "coen",
+    "Green Parks topic",
+    "ONWARD CROSSET SELECT"
+   ],
    "price": 1490,
    "body": "female",
    "model": "HairSample_Female",
@@ -284,7 +354,12 @@
    "name": "紺のプリーツスカート",
    "slot": "bottoms",
    "file": "avd_bottoms.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "Té chichi",
+    "ONWARD CROSSET SELECT",
+    "CLAP HANDS"
+   ],
    "price": 1490,
    "body": "female",
    "model": "AvatarSample_D",
@@ -297,7 +372,11 @@
    "name": "紺のフレアスカート",
    "slot": "bottoms",
    "file": "shino_bottoms.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "アンドア",
+    "ONWARD CROSSET SELECT"
+   ],
    "price": 1390,
    "body": "female",
    "model": "Sendagaya Shino",
@@ -310,7 +389,10 @@
    "name": "紺のスラックス",
    "slot": "bottoms",
    "file": "basem_bottoms.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "SUIT SELECT"
+   ],
    "price": 1690,
    "body": "male",
    "model": "Base_Male",
@@ -323,7 +405,11 @@
    "name": "金のラインのスラックス",
    "slot": "bottoms",
    "file": "saku_bottoms.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "DIFFERENCE",
+    "SUIT SELECT"
+   ],
    "price": 1990,
    "body": "male",
    "model": "Sakurada Fumiriya",
@@ -336,7 +422,10 @@
    "name": "緑のエプロンドレス",
    "slot": "onepiece",
    "file": "ave_dress.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "Té chichi"
+   ],
    "price": 2690,
    "body": "female",
    "model": "AvatarSample_E",
@@ -349,7 +438,10 @@
    "name": "黒と水色のドレス",
    "slot": "onepiece",
    "file": "avf_dress.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "ゴージ ビー ゴージビー"
+   ],
    "price": 2990,
    "body": "female",
    "model": "AvatarSample_F",
@@ -362,7 +454,11 @@
    "name": "ピンクのロリータドレス",
    "slot": "onepiece",
    "file": "avg_dress.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "ゴージ ビー ゴージビー",
+    "Té chichi"
+   ],
    "price": 3290,
    "body": "female",
    "model": "AvatarSample_G",
@@ -375,7 +471,11 @@
    "name": "茶色のローファー",
    "slot": "shoes",
    "file": "basef_shoes.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "SUIT SELECT",
+    "シュープラザ"
+   ],
    "price": 1290,
    "body": "female",
    "model": "Base_Female",
@@ -388,7 +488,10 @@
    "name": "黒の編み上げブーツ",
    "slot": "shoes",
    "file": "avdd_shoes.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "シュープラザ"
+   ],
    "price": 1790,
    "body": "female",
    "model": "AvatarSample_D_Darkness",
@@ -401,7 +504,10 @@
    "name": "茶色の編み上げブーツ",
    "slot": "shoes",
    "file": "ave_shoes.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "シュープラザ"
+   ],
    "price": 1790,
    "body": "female",
    "model": "AvatarSample_E",
@@ -414,7 +520,10 @@
    "name": "紺のブーツ",
    "slot": "shoes",
    "file": "avf_shoes.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "シュープラザ"
+   ],
    "price": 1590,
    "body": "female",
    "model": "AvatarSample_F",
@@ -427,7 +536,10 @@
    "name": "黒とピンクのブーツ",
    "slot": "shoes",
    "file": "avg_shoes.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "シュープラザ"
+   ],
    "price": 1690,
    "body": "female",
    "model": "AvatarSample_G",
@@ -440,7 +552,11 @@
    "name": "白いスニーカー",
    "slot": "shoes",
    "file": "hsf_shoes.glb",
-   "shop": "ABC-MART",
+   "shop": [
+    "ABC-MART",
+    "ユニクロ",
+    "シュープラザ"
+   ],
    "price": 1190,
    "body": "female",
    "model": "HairSample_Female",
@@ -453,7 +569,10 @@
    "name": "黒のロングプリーツスカート",
    "slot": "bottoms",
    "file": "r_longskirt.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "CLAP HANDS"
+   ],
    "price": 2490,
    "body": "female",
    "model": "Base_Female",
@@ -467,7 +586,11 @@
    "name": "紺のミモレ丈プリーツスカート",
    "slot": "bottoms",
    "file": "r_midiskirt.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "coen",
+    "ONWARD CROSSET SELECT"
+   ],
    "price": 1990,
    "body": "female",
    "model": "AvatarSample_D",
@@ -481,7 +604,11 @@
    "name": "紺のロングフレアスカート",
    "slot": "bottoms",
    "file": "r_flarelong.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "Green Parks topic",
+    "アンドア"
+   ],
    "price": 2290,
    "body": "female",
    "model": "Sendagaya Shino",
@@ -495,7 +622,11 @@
    "name": "紺のミニスカート",
    "slot": "bottoms",
    "file": "r_miniskirt.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "チュチュアンナ",
+    "AMERICAN HOLIC"
+   ],
    "price": 1290,
    "body": "female",
    "model": "Sendagaya Shino",
@@ -509,7 +640,11 @@
    "name": "金のラインのクロップドパンツ",
    "slot": "bottoms",
    "file": "r_capri.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "ユニクロ",
+    "DIFFERENCE"
+   ],
    "price": 1990,
    "body": "male",
    "model": "Sakurada Fumiriya",
@@ -523,7 +658,11 @@
    "name": "紺のワイドパンツ",
    "slot": "bottoms",
    "file": "r_widepants.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "coen",
+    "DIFFERENCE"
+   ],
    "price": 2490,
    "body": "male",
    "model": "Base_Male",
@@ -537,7 +676,12 @@
    "name": "金のラインのワイドパンツ",
    "slot": "bottoms",
    "file": "r_widepants2.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "coen",
+    "Green Parks topic",
+    "SUIT SELECT"
+   ],
    "price": 2290,
    "body": "male",
    "model": "Sakurada Fumiriya",
@@ -551,7 +695,11 @@
    "name": "緑のロングエプロンドレス",
    "slot": "onepiece",
    "file": "r_dress_long.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "Té chichi",
+    "アンドア"
+   ],
    "price": 3490,
    "body": "female",
    "model": "AvatarSample_E",
@@ -565,7 +713,10 @@
    "name": "黒と水色のマキシドレス",
    "slot": "onepiece",
    "file": "r_dress_maxi.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "ゴージ ビー ゴージビー"
+   ],
    "price": 3990,
    "body": "female",
    "model": "AvatarSample_F",
@@ -579,7 +730,10 @@
    "name": "ピンクのミニドレス",
    "slot": "onepiece",
    "file": "r_dress_mini2.glb",
-   "shop": "GU",
+   "shop": [
+    "GU",
+    "AMERICAN HOLIC"
+   ],
    "price": 2490,
    "body": "female",
    "model": "AvatarSample_G",
@@ -593,7 +747,10 @@
    "name": "黒のロングゴシックコート",
    "slot": "tops",
    "file": "r_coat_long.glb",
-   "shop": "Honeys",
+   "shop": [
+    "Honeys",
+    "ゴージ ビー ゴージビー"
+   ],
    "price": 4290,
    "body": "female",
    "model": "AvatarSample_D_Darkness",
@@ -607,7 +764,11 @@
    "name": "白いロングチュニック",
    "slot": "tops",
    "file": "r_tunic_long.glb",
-   "shop": "しまむら",
+   "shop": [
+    "しまむら",
+    "coen",
+    "アンドア"
+   ],
    "price": 2290,
    "body": "female",
    "model": "HairSample_Female",

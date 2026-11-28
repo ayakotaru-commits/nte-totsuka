@@ -219,7 +219,7 @@ export class Menu {
   }
 
   // 店で売っている服 (outfits.json の shop が、店の key と同じもの)
-  stock(shop) { return this.wardrobe.items.filter((o) => o.shop === shop.key && this.wardrobe.fits(o)); }
+  stock(shop) { return this.wardrobe.items.filter((o) => [].concat(o.shop).includes(shop.key) && this.wardrobe.fits(o)); }
 
   title() {
     if (this.screen === 'wardrobe') return '着替え';
