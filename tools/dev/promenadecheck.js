@@ -41,6 +41,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   // 経路 (x, z) を W キーで歩く。カメラの向きを次の点へ合わせてから押す。点の 1.5 m 以内に着いたら次へ。着けなければ止まった所と高さを出す。
   const TRACE = process.argv.includes('--trace');
   const ONLY = (process.argv.find((a) => a.startsWith('--only=')) || '').slice(7);
+  await page.evaluate(() => { __g.cam.autoFollow = false; }); // カメラが自動でプレイヤーの後ろへ回ると、向きが狂って経路から外れる
   const walk = async (name, start, pts, yEnd) => {
     if (ONLY && !name.startsWith(ONLY)) return;
     await goto(start[0], start[1], start[2]); await frames(6);
@@ -48,7 +49,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
     const ys = [];
     for (const [tx, tz] of pts) {
       let n = 0;
-      for (; n < 80; n++) {
+      for (; n < 160; n++) {
         const s = await page.evaluate(([tx, tz]) => {
           const p = __g.player.pos; const dx = tx - p.x, dz = tz - p.z;
           __g.cam.yaw = Math.atan2(-dx, -dz);
@@ -57,10 +58,10 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
         if (TRACE) console.log(`  ${name} ${n} (${s.x.toFixed(1)}, ${s.z.toFixed(1)}) y=${s.y.toFixed(2)} -> (${tx}, ${tz}) d=${s.d.toFixed(1)}`);
         if (s.d < 2.5) break;
         if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); }
-        await page.keyboard.down('ShiftLeft'); await page.keyboard.down('KeyW'); await frames(3); await page.keyboard.up('KeyW'); await page.keyboard.up('ShiftLeft');
+        await page.keyboard.down('KeyW'); await frames(2); await page.keyboard.up('KeyW');
         if (n % 10 === 9) ys.push(s.y.toFixed(1));
       }
-      if (n >= 80) { const s = await st(); const p = await page.evaluate(() => ({ x: __g.player.pos.x.toFixed(1), z: __g.player.pos.z.toFixed(1) })); ok(false, `${name}: (${tx}, ${tz}) に着けない。止まった所 (${p.x}, ${p.z}) 高さ ${s.y}`); return; }
+      if (n >= 160) { const s = await st(); const p = await page.evaluate(() => ({ x: __g.player.pos.x.toFixed(1), z: __g.player.pos.z.toFixed(1) })); ok(false, `${name}: (${tx}, ${tz}) に着けない。止まった所 (${p.x}, ${p.z}) 高さ ${s.y}`); return; }
     }
     const s = await st();
     ok(Math.abs(s.y - yEnd) < 1.5, `${name}: 着いた (高さ ${s.y}、期待 ${yEnd})。途中の高さ ${ys.join(' ')}`);
