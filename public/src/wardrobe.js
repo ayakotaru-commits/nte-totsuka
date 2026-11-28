@@ -62,6 +62,18 @@ export class Wardrobe {
     return u;
   }
 
+  // 試着: その服を着たときの、枠ごとの URL (持っていなくてよい。worn・保存は変えない)。排他は equip() と同じ
+  urlsWith(id) {
+    const o = this.byId.get(id);
+    if (!o || !this.fits(o)) return this.urls();
+    const w = { ...this.worn };
+    if (o.slot === 'onepiece') { w.onepiece = id; w.tops = null; w.bottoms = null; }
+    else { w[o.slot] = id; if (o.slot !== 'shoes') w.onepiece = null; }
+    const u = {};
+    for (const k of SLOTS) u[k] = w[k] && this.fits(this.byId.get(w[k])) ? this.urlOf(w[k]) : null;
+    return u;
+  }
+
   // 服が今の体に合うか。女性の体は男性の服も着られる (持ち主の判断)。男性の体は男性の服だけ
   fits(o) { return !!o && (this.body === 'female' || (o.body || 'female') === this.body); }
 
