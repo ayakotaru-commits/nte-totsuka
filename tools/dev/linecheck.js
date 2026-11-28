@@ -232,6 +232,23 @@ function terrain() {
     const after = await page.evaluate(() => { const pl = window.__ride.onPlatform(); return pl && pl.name + '|' + pl.sub + ' ' + pl.routes.map((x) => x.r.line).join(','); });
     check(`のりかえで${S0}の東海道線のホームへ`, after && /tokaido/.test(after), after);
   } else console.log('のりかえ: なし');
+  // 9. 地上の出口 (設定の exits。地図の印を選ぶと地上に立つ。九段下の 2 番出口・日本武道館の前)
+  let exN = 0;
+  for (const cs of CFGL.stations) for (const ex of cs.exits || []) {
+    exN++;
+    const w = await page.evaluate((label) => {
+      const g = window.__g, e = g.bigmap.events.find((q) => q.name === label);
+      if (!e) return { missing: label, names: g.bigmap.events.map((q) => q.name).filter((n) => /駅|武道館/.test(n)).slice(-12) };
+      g.bigmap.show(0, 0); g.bigmap.onWarp(e.x, e.z);
+      return { name: e.name, x: e.x, z: e.z };
+    }, ex.label);
+    await frames(2); await page.waitForFunction(() => window.__railext && window.__railext.stats.idle, null, { timeout: 600000 }).catch(() => {}); await frames(4);
+    s = await st();
+    const e2 = await page.evaluate(() => { const g = window.__g, p = g.player.pos; return { x: +p.x.toFixed(1), y: +p.y.toFixed(2), z: +p.z.toFixed(1), surf: +window.__H(p.x, p.z).toFixed(2), ug: !!g.world.underAt(p.x, p.z, p.y) }; });
+    check(`出口「${ex.label}」: 地図の印で地上に立つ (地面の上・地下でない・ホームでない)`, !w.missing && !s.riding && !s.onPlat && !e2.ug && Math.abs(e2.y - e2.surf) < 1.5, { w, e2 });
+    await page.waitForTimeout(2500);
+    await page.screenshot({ path: path.join(out, `l9_exit${exN}.png`), timeout: 240000 });
+  }
   const nan = await page.evaluate(() => { const p = window.__g.player.pos; return [p.x, p.y, p.z].some((v) => !isFinite(v)); });
   check('NaN なし', !nan);
   console.log(`${ok.filter((o) => o[1]).length}/${ok.length} OK`);
