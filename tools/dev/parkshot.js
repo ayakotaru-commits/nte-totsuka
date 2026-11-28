@@ -43,6 +43,8 @@ const VIEWS = [
   { name: 'p1_walls_probe', at: [31262, -25905], look: [0.35, 1], pitch: 0.12, dist: 60, probe: true },   // 壁の柄の確かめ: 延長の建物の材質に、街の本体と同じ柄 (matId 0〜5) を付けた箱を並べる (--probe のときだけ)
   { name: 'p2_walls_close', at: [31246, -25892], look: [0.15, 1], pitch: 0.04, dist: 15, probe: true },   // 近くから (吹き付け・サイディング・タイル・打ち放しが見える距離)
   { name: 'b1_lake', at: [31510, -25548], look: [0, 1], pitch: 0.16, dist: 36 },             // 湖の北の散歩道から (水面・岸の縁石)
+  { name: 'b3_lake_close', at: [31575, -25543], look: [-0.75, 0.66], pitch: 0.3, dist: 9 },       // 湖の岸の近く (水面の波・浅い所の色・岸の泡・島の岸)
+  { name: 'b4_lake_island', at: [31510, -25541], look: [0, 1], pitch: 0.42, dist: 14 },        // 島の岸に向かって (島の岸の泡)
   { name: 'b2_lake_aerial', at: [31510, -25464], look: [0, 1], pitch: 1.1, dist: 480 },    // 湖と広場・塔・道を上から
   { name: 'b3_tower', at: [31560, -25662], look: [0.7, 0.7], pitch: 0.1, dist: 30 },        // サーチライト・タワー
   { name: 'b4_avenue', at: [31352, -25896], look: [0.66, 0.76], pitch: 0.1, dist: 14 },    // ネオン・アベニュー (街灯・ベンチ)
