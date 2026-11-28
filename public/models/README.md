@@ -28,6 +28,10 @@ OpenGameArt の「VRoid Studio CC0 models」(髪・男性の体と同じ出ど�
 どれも VRM の利用条件が「誰でも・改変・再配布 OK・クレジット不要・商用 OK」。制服のベスト・スラックス・スカート・ロリータ系のドレス・ブーツなど。男性の体の服 (body = male) は女性の体でも着られる (`wardrobe.js` の `fits`)。
 同じ形のくつ (ローファー) は重複するので 1 つだけ残した。元の VRM は `data/raw/ogavatars/` (git に入れない)。
 
+## 丈・幅を変えた服 (`outfits/r_*.glb`、2026-11、33 → 45 着)
+`python tools/outfit_reshape.py <元の id> <新しい id> --hem 0.98 3.0 --flare 0.25` のように、すでにある服の頂点の高さ・幅だけを動かして作った (ロングスカート・ミモレ丈・ワイドパンツ・クロップドパンツ・マキシドレス・ロングコートなど 12 着)。元の服の利用条件と同じ (`outfits.json` の `derived` に元と数字)。
+模様 (UV) は動かさないので、伸ばした分だけ模様が縦に伸びる。短くする方向 (ハーフパンツ・ミニドレス・短いコート) は、生地が折りたたまれて崩れたので入れていない (ミニスカートとピンクのミニドレスは崩れが小さいので残した)。ブーツの筒を長くするのも崩れたので入れていない。
+
 ## 髪型 (`hairs/*.glb`、2026-11、キャラメイク用。まだゲームには組み込んでいない)
 OpenGameArt の「VRoid Studio CC0 models」(https://opengameart.org/content/vroid-studio-cc0-models。VRoid が明示的に CC0 で出した、VRoid Studio のアルファ版のモデル。VRM 0.x) から、髪の材質 (名前に HAIR を含むもの。頭の後ろを覆う HairBack も含む) だけを `python tools/hairs.py <元の.vrm> <id>` で取り出したもの (元の 14〜21MB → 1 つ 0.6〜2MB)。髪の揺れの設定 (secondaryAnimation) も残してある。
 - `hairsample_female`・`hairsample_male` (HairSample_Female / Male)、`avatar_d`・`avatar_d_darkness`・`avatar_e`・`avatar_f`・`avatar_g` (AvatarSample_D〜G。今の VRoid Studio の同名のものとは別物)、`sakurada` (Sakurada Fumiriya)、`shino` (Sendagaya Shino)。
