@@ -9,7 +9,7 @@
 import * as A from '../rhythm/audio.js';
 import { Game, FLICK_PX, WIN } from './game.js';
 import { Stage } from './draw.js';
-import { EXP } from '../status.js';
+import { EXP, MONEY } from '../status.js';
 
 // 場所: 店の入口 (路地側の東の面。南の端から約 1.5〜11 m、壁から外へ 2.4 m)。扉は壁の南から 3.85 m と 9.85 m の所
 export const SITE = {
@@ -318,7 +318,7 @@ export class Arcade {
     const prev = this.cfg.best[this.bestKey(this.diff)] || 0, isNew = s.score > prev;
     if (isNew && !this.autoPlay) { this.cfg.best[this.bestKey(this.diff)] = s.score; save(this.cfg); }
     this.last = s;
-    if (this.status && !this.autoPlay && s.rank !== 'C') { this.status.addExp(EXP.arcadeClear, `ランク ${s.rank}　`); this.status.clearEvent('arcade'); }
+    if (this.status && !this.autoPlay && s.rank !== 'C') { this.status.addExp(EXP.arcadeClear, `ランク ${s.rank}　`, MONEY.arcadeClear); this.status.clearEvent('arcade'); }
     const r = this.ui.res;
     r.querySelector('#ar-rank').textContent = s.rank; r.querySelector('#ar-rank').dataset.r = s.rank;
     r.querySelector('#ar-score').textContent = String(s.score).padStart(6, '0');

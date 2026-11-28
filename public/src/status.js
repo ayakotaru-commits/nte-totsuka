@@ -54,6 +54,8 @@ export const MAX_LV = 50;
 export const expNeed = (lv) => 100 + 50 * (lv - 1);          // lv → lv+1 に要る経験値
 export const BONUS_STEP = 0.1, BONUS_RATE = 0.1;
 export const EXP = { kill: 5, swarmClear: 100, rhythmClear: 60, arcadeClear: 60 };
+// お金 (円): 経験値と同じ場面で入る。1 体たおすごと・イベントのクリア (洋服屋の買い物に使う。wardrobe.js)
+export const MONEY = { kill: 10, swarmClear: 500, rhythmClear: 300, arcadeClear: 300 };
 // イベントを初めてクリアしたときに上がる項目 (イベントを足すときは 1 行足す)
 export const BONUS_EVENTS = {
   swarm:  { name: 'うな○ー大量発生クエスト', stat: 'atk', how: '100 体たおす' },
@@ -89,6 +91,7 @@ export class Status {
     this.bonus = {};           // 項目ごとのボーナス値 { atk: 0.1, ... }
     this.sources = new Map();  // 加護など { id → { stat: { flat, pct } } }
     this.listeners = [];
+    this.onMoney = null;       // (円) お金が入った。main.js が wardrobe.addMoney につなぐ
     this.onNotice = null;      // (文字列) 経験値・レベルアップ・ボーナスのお知らせ。main.js が画面に出す
     // 今の量 (保存しない)
     this.winded = false; this.delay = 0;
@@ -160,14 +163,15 @@ export class Status {
 
   // ---- 経験値・イベント ----
   // 経験値を足す。レベルが上がったら新しいレベルを返す (上がらなければ 0)
-  addExp(n, label = '') {
-    n = Math.max(0, Math.floor(n));
-    if (!n) return 0;
+  addExp(n, label = '', money = 0) {
+    n = Math.max(0, Math.floor(n)); money = Math.max(0, Math.floor(money));
+    if (!n && !money) return 0;
     const before = this.level;
     this.exp += n;
     this.changed();
+    if (money && this.onMoney) this.onMoney(money);
     const after = this.level;
-    this.notice(`${label}経験値 +${n}` + (after > before ? `　レベルアップ！ Lv ${after}` : ''));
+    this.notice(`${label}経験値 +${n}` + (money ? `　お金 +${money} 円` : '') + (after > before ? `　レベルアップ！ Lv ${after}` : ''));
     if (after > before) {
       for (let L = before + 1; L <= after; L++) { const g = levelGrant(L); if (g) this.grantBlessing(g); }
       this.stamina = this.cur.stamina; this.hp = this.cur.hp;

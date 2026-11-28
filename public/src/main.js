@@ -160,6 +160,7 @@ async function main() {
   }
   window.__status = stats; // 確認用 (tools/dev)
   const wardrobe = await loadWardrobe();                       // お金・買った服・着ている服 (端末に保存)
+  stats.onMoney = (n) => wardrobe.addMoney(n);                  // イベントの報酬・たおした数のお金
   wardrobe.setBody(savedBody(), false);                          // 選んでいた体に合う服だけ着る
   player.model.setOutfits(wardrobe.urls());                     // 着ていた服を着る (キャラの読み込み後)
   const hairStyle = await loadHairStyle();                      // キャラメイクの髪型 (端末に保存)

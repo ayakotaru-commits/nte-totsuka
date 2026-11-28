@@ -18,7 +18,7 @@ import { H } from '../terrain.js';
 import { trailOn } from '../attack.js';
 import * as THREE from 'three';
 import { Herd, Fx, BODY } from './model.js';
-import { EXP, ELEMENTS, SKILL, ULT, elementColor } from '../status.js';
+import { EXP, MONEY, ELEMENTS, SKILL, ULT, elementColor } from '../status.js';
 
 export const TOTAL = 100, ALIVE = 50;
 const G = 24;                                  // 重力 (player.js と同じ)
@@ -462,7 +462,7 @@ export class Swarm {
     if (this.settled || !this.status) return;
     this.settled = true;
     const st = this.status;
-    st.addExp(this.killed * EXP.kill + (cleared ? EXP.swarmClear : 0), `${this.killed} 体たおした　`);
+    st.addExp(this.killed * EXP.kill + (cleared ? EXP.swarmClear : 0), `${this.killed} 体たおした　`, this.killed * MONEY.kill + (cleared ? MONEY.swarmClear : 0));
     if (cleared) st.clearEvent('swarm');
   }
 
