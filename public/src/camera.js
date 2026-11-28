@@ -6,6 +6,8 @@ const FOLLOW_YAW = 1.0;        // 後ろへ回り込む速さ (真横へ進む�
 const FOLLOW_PITCH = 0.3;      // 落ち着く見下ろし角 (rad、約 17°)
 const FOLLOW_PITCH_RATE = 1.5; // 見下ろし角が戻る速さ
 
+const MIN_DIST = 0.8;          // ホイール・ピンチで寄れる最短距離 (m。以前は 1.8)
+
 export class ThirdPersonCamera {
   constructor(camera, world, dom) {
     this.camera = camera;
@@ -40,7 +42,7 @@ export class ThirdPersonCamera {
   }
 
   // カメラの距離を k 倍にする
-  zoom(k) { this.dist = Math.max(1.8, Math.min(this.maxDist, this.dist * k)); }
+  zoom(k) { this.dist = Math.max(MIN_DIST, Math.min(this.maxDist, this.dist * k)); }
 
   // player を渡すと自動追従する (修正モード中は無効)
   update(dt, playerPos, snap = false, player = null) {
