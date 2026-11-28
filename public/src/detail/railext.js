@@ -11,10 +11,13 @@ import { setTerrainExt } from '../terrain.js';
 import { buildStation } from './station.js';
 import { buildStationSite, siteCut, siteBlocked } from './stationsite.js';
 import { canvasTexture } from './util.js';
+import { budokanRoof } from './budokanroof.js';
 import { releaseGeometryAfterUpload } from '../lowmem.js';
 
 const RAIL_TOP = 0.55;   // レールの上面 (地面から)。tools/rail_ext.py と同じ
 const DECK_T = 1.2;     // 高架の橋桁の厚さ (砕石の下面から)。tools/rail_ext.py と同じ
+// 屋根を足す建物 (輪郭の中心の位置 [m])。日本武道館 (PLATEAU の箱は平ら): detail/budokanroof.js
+const LANDMARKS = [{ kind: 'budokan', x: 19577, z: -32345 }];
 const UCELL = 10, UPAD = 2;   // 市街地の升目 (tools/rail_ext_split.py と同じ)
 
 const unbits = (s, n) => { const b = atob(s), out = new Uint8Array(n); for (let k = 0; k < n; k++) out[k] = (b.charCodeAt(k >> 3) >> (k & 7)) & 1; return out; };
@@ -99,6 +102,8 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     fine: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }),
     far: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
     walls: new THREE.MeshStandardMaterial({ map: win, vertexColors: true, roughness: 0.85 }),
+    lmRoof: new THREE.MeshStandardMaterial({ color: '#aab1b9', roughness: 0.6, metalness: 0.3, side: THREE.DoubleSide }),
+    lmGold: new THREE.MeshStandardMaterial({ color: '#d9b13b', roughness: 0.35, metalness: 0.6 }),
     roofs: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }),
     ballast: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }),
     rails: new THREE.MeshStandardMaterial({ color: '#a9a9a6', roughness: 0.4, metalness: 0.8, side: THREE.DoubleSide }),
@@ -267,7 +272,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
     // 建物: 輪郭を高さまで立ち上げた箱。壁に窓の模様 (3 m 四方に 1 つ)、平らな屋根
     if (D.buildings.length) {
       const wp = [], wn = [], wu = [], wc = [], rp = [], rc = [];
-      const cl = new THREE.Color();
+      const cl = new THREE.Color(), lmList = [];
       for (const [ring0, bse, h, lift, seed0] of D.buildings) {
         let seed = seed0;
         const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -278,6 +283,10 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
         const y0 = bse + (lift || 0), y1 = bse + h;
         cl.set(WALLS[Math.floor(rnd() * WALLS.length)]).multiplyScalar(0.92 + rnd() * 0.12);
         const house = h < 10;
+        if (h > 20 && ring.length >= 8) {   // 屋根を足す建物か (輪郭の中心が LANDMARKS の位置の 6 m 以内)
+          let mx = 0, mz = 0; for (const [x, z] of ring) { mx += x; mz += z; } mx /= ring.length; mz /= ring.length;
+          if (LANDMARKS.some((q) => Math.hypot(q.x - mx, q.z - mz) < 6)) lmList.push([ring, y1]);
+        }
         let u = 0;
         for (let i = 0; i < ring.length; i++) {
           const [ax, az] = ring[i], [bx, bz] = ring[(i + 1) % ring.length], L = Math.hypot(bx - ax, bz - az);
@@ -302,6 +311,7 @@ export function buildRailExt(ext, world, mainBounds, opts = {}) {
       geo.setAttribute('uv', new THREE.Float32BufferAttribute(wu, 2));
       geo.setAttribute('color', new THREE.Float32BufferAttribute(wc, 3));
       mesh(geo, MAT.walls, 'ext_buildings', true);
+      for (const [ring, y1] of lmList) { const r = budokanRoof(ring, y1); mesh(r.roof, MAT.lmRoof, 'ext_landmark_roof', true); mesh(r.gold, MAT.lmGold, 'ext_landmark_gold', true); }
       const g2 = new THREE.BufferGeometry();
       g2.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
       g2.setAttribute('color', new THREE.Float32BufferAttribute(rc, 3));

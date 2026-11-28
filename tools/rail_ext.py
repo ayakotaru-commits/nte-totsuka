@@ -462,6 +462,21 @@ def station_platforms(st):
     return [{"line": st["lines"][0], "type": st.get("platform", "island")}]
 
 
+def station_exits(st):
+    """設定の駅の exits (地下の駅から地上へ出る所。地図の印のワープ先): [{label (印の名前), lat, lon, look (向く先の緯度経度。無ければ南)}]
+    → [{label, x, z, y (地面の高さ + 0.12), face (キャラの向き。stationSpots と同じ atan2(dx, dz))}]"""
+    out = []
+    for e in st["exits"]:
+        x, z = to_local(e["lat"], e["lon"])
+        if "look" in e:
+            lx, lz = to_local(*e["look"])
+            face = math.atan2(lx - x, lz - z)
+        else:
+            face = 0.0
+        out.append({"label": e["label"], "x": round(x, 2), "z": round(z, 2), "y": round(dem(x, z) + 0.12, 2), "face": round(face, 3)})
+    return out
+
+
 def build_station(st, ext_routes, tracks, grid):
     """駅 st (設定) のホーム (複数)。platforms の 1 つずつ:
     island = 線 line の上下線の間の島式 1 面 (東戸塚・保土ケ谷・横浜の横須賀線)
@@ -497,7 +512,8 @@ def build_station(st, ext_routes, tracks, grid):
     return {"name": st["name"], "kana": st.get("kana", ""), "roman": st.get("roman", ""), "ward": st.get("ward", ""), "city": st.get("city", "横浜市"),
             "center": [round(sum(q["center"][0] for q in plats) / len(plats), 2), round(sum(q["center"][1] for q in plats) / len(plats), 2)],
             "platforms": [q["platform"] for q in plats], "canopies": [q["canopy"] for q in plats],
-            **({"site": dict(st["site"])} if st.get("site") else {})}
+            **({"site": dict(st["site"])} if st.get("site") else {}),
+            **({"exits": station_exits(st)} if st.get("exits") else {})}
 
 
 def make_platform(st, spec, A, ka, pairs, stop_routes):
