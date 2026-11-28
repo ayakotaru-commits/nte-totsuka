@@ -47,6 +47,7 @@ import { Swarm, SITE as SWARM_SITE } from './swarm/event.js';
 import { Rhythm, SITE as RHYTHM_SITE } from './rhythm/event.js';
 import { Arcade, SITE as ARCADE_SITE } from './arcade/event.js';
 import { buildShrines } from './shrine.js';
+import { loadLastPos, startLastPosSaver } from './lastpos.js';
 
 // 攻撃の 1 撃目を動きのデータ (Quaternius の Sword_Attack) で。URL に ?handmade で手作りに戻す (歩き・走りも。character.js)
 if (!new URLSearchParams(location.search).has('handmade')) { useMocap(); loadMotion('ual_sword_attack'); loadMotion('ual_sword_attack_rm'); }
@@ -238,6 +239,15 @@ async function main() {
     player.teleport(restore.x, restore.z);
     Object.assign(cam, { yaw: restore.yaw, pitch: restore.pitch, dist: restore.dist });
   }
+  // 起動し直したとき: 最後にいた場所から再開 (lastpos.js。修正ツールの復元が先)
+  const last = restore ? null : loadLastPos(Q);
+  if (last) {
+    const p = findFree(world, last.x, last.z); // 建物の中などになっていたら、いちばん近い屋外
+    player.teleport(p.x, p.z); player.facing = last.facing; cam.yaw = last.yaw; cam.update(0, player.pos, true);
+  }
+  const lastSaver = startLastPosSaver(Q, () =>
+    (menu?.open || arcade.active || rhythm.playing || swarm.state !== 'idle' || ride?.riding || parkRide?.riding || photo.active) ? null
+      : { x: player.pos.x, z: player.pos.z, facing: player.facing, yaw: cam.yaw });
 
   // イベント「うな○ー大量発生クエスト」(グランシティの中庭に入ると、受けるか聞く。swarm/event.js)。?noswarm で無効、?swarm で開いてすぐ始める (確認用)
   const swarm = new Swarm({ scene, world, player, camera, status: stats, onRespawn: (x, z, face) => {
@@ -495,6 +505,7 @@ async function main() {
     }
 
     if (!arcade.active) { look.render(); labelRenderer.render(scene, camera); } // ゲーム画面の間は街を描かない (画面が全部おおわれるので、軽くなる)
+    lastSaver.tick(dt);
     input.endFrame();
   });
 }
