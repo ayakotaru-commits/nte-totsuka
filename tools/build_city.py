@@ -9,6 +9,7 @@ import math
 import pathlib
 import zlib
 
+import extra_pois
 from config import BOUNDS, ORIGIN_LAT, ORIGIN_LON, START, WAYPOINTS
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -945,6 +946,8 @@ def main():
         buildings = apply_corrections(buildings, json.loads(CORRECTIONS.read_text(encoding="utf-8")))
 
     road_areas = process_roads(roads)
+    # OSM に無い店 (data/extra_pois.json。東急プラザ戸塚の衣料店など)
+    extra_pois.add_to_pois(pois)
     classify(buildings, els, pois)
     sites = apply_appearance(buildings, areas)
 

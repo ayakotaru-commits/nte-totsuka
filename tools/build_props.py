@@ -1456,6 +1456,8 @@ def build_shapes(city, world, cx, cz, R):
     for p in city.get("pois") or []:
         if not SHOP.match(p["cat"]) or not inR(p["x"], p["z"]) or len(signs) >= 200:
             continue
+        if p.get("floor", 1) >= 2:
+            continue   # 2 階以上の店 (tools/extra_pois.py が足したもの) は、地上の壁に看板を付けない
         best = None
         for b in world.query(p["x"] - 20, p["z"] - 20, p["x"] + 20, p["z"] + 20):
             if b["minH"] > 0:

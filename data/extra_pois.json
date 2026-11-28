@@ -1,0 +1,125 @@
+{
+ "_note": "街のデータ (OSM) に無い店を足す。東急プラザ戸塚 (トツカーナの一部) のファッション系のテナント。出どころ: 東急プラザ戸塚の公式ショップガイド https://tokyu-plaza.com/totsuka/shop/floor (2026-11-28 に階別ページ B1〜4F の 42 件を読んで、衣料・靴・バッグを選んだ。サイトは『全44件』と表示していて 2 件は未特定)。floor はその店のある階。x, z は階ごとに建物の中へ並べた仮の位置で、実際の店の位置ではない。取り込みは tools/extra_pois.py (build_city.py も呼ぶ)。",
+ "building": "g3d50736d55",
+ "pois": [
+  {
+   "name": "CLAP HANDS",
+   "cat": "shop:clothes",
+   "floor": 2,
+   "x": -94,
+   "z": -20
+  },
+  {
+   "name": "SUIT SELECT",
+   "cat": "shop:clothes",
+   "floor": 2,
+   "x": -88,
+   "z": -20
+  },
+  {
+   "name": "DIFFERENCE",
+   "cat": "shop:clothes",
+   "floor": 2,
+   "x": -76,
+   "z": -20
+  },
+  {
+   "name": "シュープラザ",
+   "cat": "shop:shoes",
+   "floor": 2,
+   "x": -70,
+   "z": -20
+  },
+  {
+   "name": "グランサックス",
+   "cat": "shop:bag",
+   "floor": 2,
+   "x": -64,
+   "z": -20
+  },
+  {
+   "name": "きものやまと",
+   "cat": "shop:clothes",
+   "floor": 3,
+   "x": -94,
+   "z": -14
+  },
+  {
+   "name": "GUNZE グンゼ",
+   "cat": "shop:clothes",
+   "floor": 3,
+   "x": -88,
+   "z": -14
+  },
+  {
+   "name": "ONWARD CROSSET SELECT",
+   "cat": "shop:clothes",
+   "floor": 3,
+   "x": -82,
+   "z": -14
+  },
+  {
+   "name": "アンドア",
+   "cat": "shop:clothes",
+   "floor": 3,
+   "x": -76,
+   "z": -14
+  },
+  {
+   "name": "AMERICAN HOLIC",
+   "cat": "shop:clothes",
+   "floor": 3,
+   "x": -70,
+   "z": -14
+  },
+  {
+   "name": "Té chichi",
+   "cat": "shop:clothes",
+   "floor": 3,
+   "x": -64,
+   "z": -14
+  },
+  {
+   "name": "プレイヤーズ自由が丘",
+   "cat": "shop:bag",
+   "floor": 3,
+   "x": -94,
+   "z": -8
+  },
+  {
+   "name": "ユニクロ",
+   "cat": "shop:clothes",
+   "floor": 4,
+   "x": -88,
+   "z": -8
+  },
+  {
+   "name": "coen",
+   "cat": "shop:clothes",
+   "floor": 4,
+   "x": -82,
+   "z": -8
+  },
+  {
+   "name": "ゴージ ビー ゴージビー",
+   "cat": "shop:clothes",
+   "floor": 4,
+   "x": -70,
+   "z": -8
+  },
+  {
+   "name": "Green Parks topic",
+   "cat": "shop:clothes",
+   "floor": 4,
+   "x": -64,
+   "z": -8
+  },
+  {
+   "name": "チュチュアンナ",
+   "cat": "shop:clothes",
+   "floor": 4,
+   "x": -94,
+   "z": -2
+  }
+ ]
+}
