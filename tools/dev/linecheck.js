@@ -163,7 +163,6 @@ function terrain() {
   await page.screenshot({ path: path.join(out, 'l4_tunnel_in.png'), timeout: 240000 });
   await press('KeyQ'); await frames(1);
   // 4. 次の駅 (八丁堀) に止まる・降りる
-  if (TERM0) {
   await page.evaluate((name) => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === name); T.hold += r.tArrs[si] + 8 - (T.hold - rd.dep); }, S1);
   await frames(3);
   s = await st();
@@ -186,6 +185,7 @@ function terrain() {
   await press('KeyF'); await frames(2);
   s = await st();
   check(`${S1}で上りに乗る`, !b2.fail && s.riding && s.info.includes(INW), { b2, info: s.info });
+  if (TERM0) {
   await page.evaluate((name) => { const R = window.__ride, T = window.__trains, rd = R.riding, r = rd.r, si = r.stops.findIndex((x) => x.name === name); T.hold += r.tArrs[si] + 8 - (T.hold - rd.dep); }, S0);
   await frames(3);
   s = await st();
