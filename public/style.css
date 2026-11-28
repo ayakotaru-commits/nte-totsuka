@@ -350,10 +350,10 @@ body.photo #photo-ui { display: block; }
 .mn-tab { font-size: 12px; }
 
 /* スタミナの帯・お知らせ (src/status.js・main.js) */
-#sta { position: fixed; left: 50%; bottom: 17%; transform: translateX(-50%); width: 200px; height: 8px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.6); border-radius: 4px; overflow: hidden; pointer-events: none; }
+#sta { position: fixed; left: 50%; bottom: calc(6px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: 200px; height: 8px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.6); border-radius: 4px; overflow: hidden; pointer-events: none; }
 #sta i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #4cc46a, #c8f06a); }
 #sta.winded i { background: linear-gradient(90deg, #d23c34, #ff8a5c); }
-body.touch #sta { bottom: 30%; width: 150px; }
+body.touch #sta { width: 150px; }
 #toast { position: fixed; right: 20px; bottom: 24px; z-index: 9; max-width: min(320px, 70vw); padding: 8px 12px; border-radius: 8px; background: rgba(10,20,35,.82); border: 1px solid #ffe08a; color: #fff; font-size: 14px; line-height: 1.5; text-shadow: 0 1px 3px #000; pointer-events: none; }
 #toast[hidden] { display: none; }
 body.touch #toast { right: calc(12px + env(safe-area-inset-right)); bottom: auto; top: 96px; font-size: 12px; }
@@ -376,29 +376,35 @@ body.touch #toast { right: calc(12px + env(safe-area-inset-right)); bottom: auto
 .mn-bonus small { color: rgba(255,255,255,.65); display: block; font-size: 11px; }
 
 /* 特殊攻撃: 技ゲージの帯・スマホのボタン・属性の選択 (src/status.js・menu.js) */
-#skl { position: fixed; left: 50%; bottom: calc(17% - 13px); transform: translateX(-50%); width: 200px; height: 6px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 3px; overflow: hidden; pointer-events: none; }
-#skl[hidden] { display: none; }
-#skl i { display: block; height: 100%; width: 0; background: #5a7fb5; }
-#skl.ready i { background: linear-gradient(90deg, #5fd3ff, #b8ecff); }
-body.touch #skl { bottom: calc(30% - 13px); width: 150px; }
 #tb-skill { width: 62px; height: 62px; right: calc(112px + env(safe-area-inset-right)); bottom: calc(190px + env(safe-area-inset-bottom)); z-index: 5; }
 .mn-el { font: inherit; color: #fff; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.3); border-radius: 8px; padding: 6px 2px; cursor: pointer; }
 .mn-el.on { border-color: #5fd3ff; background: rgba(95,211,255,.35); }
 .mn-el:hover { background: rgba(95,211,255,.22); }
 
 /* 必殺技: 必殺ゲージの帯・スマホのボタン (src/status.js) */
-#ult { position: fixed; left: 50%; bottom: calc(17% - 24px); transform: translateX(-50%); width: 200px; height: 6px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 3px; overflow: hidden; pointer-events: none; }
-#ult[hidden] { display: none; }
-#ult i { display: block; height: 100%; width: 0; background: #b58a3a; }
-#ult.ready i { background: linear-gradient(90deg, #ffd34d, #fff3b0); animation: ultglow .7s ease-in-out infinite alternate; }
-@keyframes ultglow { from { opacity: .65; } to { opacity: 1; } }
-body.touch #ult { bottom: calc(30% - 24px); width: 150px; }
 #tb-ult { width: 62px; height: 62px; right: calc(22px + env(safe-area-inset-right)); bottom: calc(220px + env(safe-area-inset-bottom)); z-index: 5; }
 
-/* HP の帯 (いつも出す。src/status.js・main.js)。中央の下に、HP → スタミナ → 技ゲージ → 必殺ゲージの順に重ねる */
-#hp { position: fixed; left: 50%; bottom: calc(17% + 14px); transform: translateX(-50%); width: 200px; height: 14px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.6); border-radius: 4px; overflow: hidden; pointer-events: none; }
+/* HP の帯 (いつも出す。src/status.js・main.js)。画面の最下部の中央に、HP → スタミナの順に重ねる */
+#hp { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: 200px; height: 14px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.6); border-radius: 4px; overflow: hidden; pointer-events: none; }
 #hp i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #3fae5a, #9be36a); transition: width .12s; }
 #hp.low i { background: linear-gradient(90deg, #d23c34, #ff8a5c); }
 #hp b { position: absolute; left: 0; right: 0; top: 0; text-align: center; font-size: 10px; line-height: 14px; font-weight: 600; color: #fff; text-shadow: 0 1px 2px #000; }
-body.touch #hp { bottom: calc(30% + 14px); width: 150px; }
+body.touch #hp { width: 150px; }
 #swarm-hp { display: none; } /* うな○ー戦の中の HP の帯は、いつも出す #hp に統合した */
+
+/* 特殊攻撃・必殺技のボタンの待ち時間表示 (main.js): 使えない間は --p の分だけ明るく塗り、残りは暗い影。中央に残り秒 (特殊) / 溜まった % (必殺)。使えるときは光る */
+.cdbtn, #tb-skill, #tb-ult { --p: 360deg; position: fixed; overflow: hidden; }
+.cdbtn { bottom: calc(6px + env(safe-area-inset-bottom)); width: 52px; height: 52px; border-radius: 50%; z-index: 5; pointer-events: none; color: #fff; border: 2px solid rgba(255,255,255,.6); text-shadow: 0 1px 3px #000; text-align: center; font-size: 12px; }
+#skl { left: calc(50% - 100px - 62px); }
+#ult { left: calc(50% + 100px + 10px); }
+body.touch .cdbtn { display: none; }
+.cdbtn, #tb-skill, #tb-ult { background: conic-gradient(var(--c, #5fd3ff) var(--p), rgba(10,20,35,.78) 0); }
+#skl, #tb-skill { --c: rgba(95,211,255,.55); }
+#ult, #tb-ult { --c: rgba(255,211,77,.6); }
+.cdbtn .lbl, .tbtn .lbl { position: relative; display: block; line-height: 1.1; }
+.cdbtn .lbl { padding-top: 12px; } .cdbtn .lbl b { display: block; font-size: 9px; font-weight: 600; opacity: .8; }
+.cdbtn .cdt, .tbtn .cdt { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); font-size: 20px; font-weight: 700; }
+.cdbtn.ready, #tb-skill.ready, #tb-ult.ready { background: radial-gradient(circle, var(--c) 0%, rgba(10,20,35,.6) 100%); border-color: #fff; box-shadow: 0 0 10px 2px var(--c); }
+#ult.ready, #tb-ult.ready { animation: ultglow .7s ease-in-out infinite alternate; }
+.cdbtn:not(.ready) .lbl, #tb-skill:not(.ready) .lbl, #tb-ult:not(.ready) .lbl { opacity: .35; }
+@keyframes ultglow { from { opacity: .7; } to { opacity: 1; } }

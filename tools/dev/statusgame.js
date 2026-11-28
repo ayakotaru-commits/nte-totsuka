@@ -128,16 +128,16 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
         st.cur.crit = 0; // 会心が出ると体力が変わるので 0 に
         for (const e of S.list.splice(0)) S.herd.hide(e.slot);
         S.hp = S.hpMax; S.inv = 99; S.killed = 0;
-        st.refill(); st.skill = gauge; st.delay = 0;
+        st.refill(); st.skillCd = gauge >= 50 ? 0 : 8; st.delay = 0;
         pl.revive?.(); pl.atk = null; pl.act = null; pl.comboGrace = 0;
         pl.teleport(-246, 1449); pl.facing = Math.PI / 2; g.cam.yaw = pl.facing + Math.PI;
         for (let k = 0; k < 8; k++) tick(mk());
         const e = { slot: S.freeSlot(), st: 'chase', t: 0, x: pl.pos.x + Math.sin(pl.facing) * 1.6, z: pl.pos.z + Math.cos(pl.facing) * 1.6, y: pl.pos.y, yaw: pl.facing + Math.PI, s: 1,
           el, hp: 2, speed: 0, seed: 0, ph: 0, cd: 99, tint: 0, hit: -1, dx: 0, dz: 0, vx: 0, vz: 0, vy: 0, ring: { x: 0, y: 0, z: 0, r: 0 } };
         S.list.push(e);
-        const g0 = st.skill;
+        const g0 = st.skillCd;
         tick(mk([], ['KeyK']));
-        const r = { started: !!pl.atk, sp: !!(pl.atk && pl.atk.sp), step0: pl.atk ? pl.atk.step : 0, gaugeUsed: +(g0 - st.skill).toFixed(1), steps: new Set(), hpAfterFirst: null, died: false, state: null, trailTint: pl._trailEl };
+        const r = { started: !!pl.atk, sp: !!(pl.atk && pl.atk.sp), step0: pl.atk ? pl.atk.step : 0, gaugeUsed: +(st.skillCd - g0).toFixed(1), steps: new Set(), hpAfterFirst: null, died: false, state: null, trailTint: pl._trailEl };
         for (let k = 0; k < 120 && pl.atk; k++) {
           tick(mk());
           if (pl.atk) r.steps.add(pl.atk.step);
@@ -148,7 +148,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
       };
       SP.adv = trial('wood'); SP.dis = trial('water'); SP.neu = trial('light');
       SP.empty = trial('wood', 30);
-      SP.afterGauge = +st.skill.toFixed(1);
+      SP.afterGauge = +st.skillCd.toFixed(1);
       // 通常攻撃 (J) は、属性・特殊攻撃力に関係なく、手順どおり (1 撃目のダメージ 1 × 攻撃力 1.36)
       S.list.splice(0).forEach((e) => S.herd.hide(e.slot));
       SP.tintFn = typeof pl.model.setTrailTint === 'function';
@@ -164,7 +164,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
       const trial = (gauge) => {
         for (const e of S.list.splice(0)) S.herd.hide(e.slot);
         S.hp = S.hpMax; S.inv = 0; S.killed = 0;
-        st.refill(); st.ult = gauge; st.skill = 100; st.delay = 0;
+        st.refill(); st.ult = gauge; st.skillCd = 0; st.delay = 0;
         pl.revive?.(); pl.atk = null; pl.act = null; pl.comboGrace = 0;
         pl.teleport(-246, 1449); pl.facing = Math.PI / 2; g.cam.yaw = pl.facing + Math.PI;
         for (let k = 0; k < 8; k++) tick(mk());

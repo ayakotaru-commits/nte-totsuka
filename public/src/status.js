@@ -41,8 +41,6 @@ export const STATS = {
   staRegen: { group: 'スタミナ', name: '回復速度', base: 20, perLv: 0, unit: 20, fmt: 'r' },
   staSave:  { group: 'スタミナ', name: '消費軽減', base: 0, perLv: 0, unit: 1, fmt: 'p' },
   spAtk:    { group: '特殊攻撃', name: '特殊攻撃力', base: 100, perLv: 2, unit: 100, fmt: 'n' },
-  spGauge:  { group: '特殊攻撃', name: '技ゲージ最大', base: 100, perLv: 0, unit: 100, fmt: 'n' },
-  spRegen:  { group: '特殊攻撃', name: '技ゲージ回復', base: 5, perLv: 0, unit: 5, fmt: 'r' },
   ultAtk:   { group: '必殺技', name: '必殺技力', base: 100, perLv: 3, unit: 100, fmt: 'n' },
   ultGauge: { group: '必殺技', name: '必殺ゲージ最大', base: 100, perLv: 0, unit: 100, fmt: 'n' },
   ultGain:  { group: '必殺技', name: 'ゲージの溜まりやすさ', base: 1, perLv: 0, unit: 1, fmt: 'x' },
@@ -63,8 +61,8 @@ export const BONUS_EVENTS = {
   arcade: { name: 'プロジェクトセマイ ワンルームステージ！', stat: 'stamina', how: 'ランク B 以上' },
 };
 
-// ---- 特殊攻撃 (K): 技ゲージを cost 使い、跳び斬り上げ (4) → 急降下の十字斬り (5) を出す。mult = 手順ごとのダメージの倍率 (特殊攻撃力・属性が掛かる) ----
-export const SKILL = { cost: 50, mult: { 4: 1.5, 5: 2 } };
+// ---- 特殊攻撃 (K): 使うと cd 秒のリキャスト (再使用待ち) に入り、跳び斬り上げ (4) → 急降下の十字斬り (5) を出す。mult = 手順ごとのダメージの倍率 (特殊攻撃力・属性が掛かる) ----
+export const SKILL = { cd: 8, mult: { 4: 1.5, 5: 2 } };
 
 // ---- 必殺技 (U): 必殺ゲージが満タンのとき、全方位の回転斬りを spins 回続けて出す。mult = ダメージの倍率 (必殺技力・属性が掛かる)、
 //      reach = 届く距離 (m)、inv = 出している間に当たらない時間 (秒) ----
@@ -95,7 +93,7 @@ export class Status {
     // 今の量 (保存しない)
     this.winded = false; this.delay = 0;
     this.hpDelay = 0; this.combat = false;   // HP: 傷ついてからの待ち、戦闘中か (うな○ー戦の間 true。回復しない)
-    this.skill = 0; this.ult = 0;
+    this.skillCd = 0; this.ult = 0;
     this.blessings = new Set();   // 授かった加護の id (blessing.js)
     this.equip = {};              // 宿している加護 { 部位: id }
     this.spElement = 'fire';   // 特殊攻撃の属性 (ステータス画面で選ぶ。保存する)
@@ -110,7 +108,7 @@ export class Status {
     if (q.get('bless') === 'all') for (const id of allBlessings()) this.blessings.add(id); // 試す用: 加護を全部持つ
     this.recalc();
     this.stamina = this.cur.stamina;
-    this.skill = this.cur.spGauge;   // 技ゲージは満タンから始まる
+    this.skillCd = 0;   // 特殊攻撃のリキャスト残り (秒)。0 = 使える
     this.hp = this.cur.hp;           // 今の HP (保存しない。いつも満タンから)
   }
 
@@ -154,7 +152,6 @@ export class Status {
     this.cur.crit = Math.min(1, this.cur.crit);
     if (this.stamina > this.cur.stamina) this.stamina = this.cur.stamina;
     if (this.hp > this.cur.hp) this.hp = this.cur.hp;
-    if (this.skill > this.cur.spGauge) this.skill = this.cur.spGauge;
   }
   value(k) { return this.cur[k]; }
 
@@ -246,8 +243,9 @@ export class Status {
   useUlt() { this.ult = 0; }
 
   // ---- 特殊攻撃 ----
-  canSkill() { return !this.winded && this.skill >= SKILL.cost; }
-  useSkill() { this.skill = Math.max(0, this.skill - SKILL.cost); }
+  canSkill() { return !this.winded && this.skillCd <= 0; }
+  get skillFrac() { return Math.max(0, Math.min(1, 1 - this.skillCd / SKILL.cd)); } // 0〜1 (1 = 使える)
+  useSkill() { this.skillCd = SKILL.cd; }
   setSpElement(k) { if (!ELEMENTS.some((e) => e.key === k) || k === this.spElement) return false; this.spElement = k; this.changed(); return true; }
 
   // ---- スタミナ ----
@@ -264,14 +262,14 @@ export class Status {
   }
   refill() { this.stamina = this.cur.stamina; this.winded = false; this.delay = 0; this.hp = this.cur.hp; this.hpDelay = 0; } // スタミナと HP を全部戻す (復活・レベルアップ)
 
-  // 毎フレーム: 回復・技ゲージの時間回復
+  // 毎フレーム: 回復・特殊攻撃のリキャスト
   tick(dt) {
     if (this.hpDelay > 0) this.hpDelay -= dt;
     else if (!this.combat && this.hp > 0 && this.hp < this.cur.hp) this.hp = Math.min(this.cur.hp, this.hp + this.cur.hp * HP_REGEN.rate * dt);
     if (this.delay > 0) this.delay -= dt;
     else this.stamina = Math.min(this.cur.stamina, this.stamina + this.cur.staRegen * dt);
     if (this.winded && this.stamina >= Math.min(WIND_OK, this.cur.stamina)) this.winded = false;
-    this.skill = Math.min(this.cur.spGauge, this.skill + this.cur.spRegen * dt);
+    if (this.skillCd > 0) this.skillCd = Math.max(0, this.skillCd - dt);
   }
 
   // 必殺ゲージを溜める (当てる・倒す・被弾)。使い道 (必殺技) はまだ無い

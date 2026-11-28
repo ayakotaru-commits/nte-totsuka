@@ -84,13 +84,14 @@ ok(Object.values(STATS).every((x) => x.name && x.group && 'base' in x && 'unit' 
 const n = new Status(); const log = []; n.onNotice = (m) => log.push(m);
 ok(n.addExp(99) === 0 && n.addExp(1) === 2, '100 でレベルアップ (Lv 2 を返す)');
 ok(log.length === 2 && log[1].includes('レベルアップ'), '通知に「レベルアップ」');
-// 9. 特殊攻撃: 技ゲージ・属性
+// 9. 特殊攻撃: リキャスト・属性
 const k = new Status();
-ok(k.skill === 100 && k.canSkill(), '技ゲージは満タンから始まり、撃てる');
-k.useSkill(); ok(k.skill === 50 && k.canSkill(), '1 回で 50 減る (まだ 1 回撃てる)');
-k.useSkill(); ok(k.skill === 0 && !k.canSkill(), '2 回で空・撃てない');
-for (let i = 0; i < 600; i++) k.tick(1 / 60);
-ok(near(k.skill, 50, 0.01) && k.canSkill(), `10 秒で 50 回復 (毎秒 5) → また撃てる (${k.skill.toFixed(2)})`);
+ok(k.skillCd === 0 && k.canSkill(), '特殊攻撃は最初から撃てる');
+k.useSkill(); ok(k.skillCd === SKILL.cd && !k.canSkill() && k.skillFrac === 0, `撃つと ${SKILL.cd} 秒のリキャストに入り、撃てない`);
+for (let i = 0; i < SKILL.cd * 30; i++) k.tick(1 / 60);
+ok(near(k.skillFrac, 0.5, 0.01) && !k.canSkill(), '半分たてば skillFrac 0.5・まだ撃てない');
+for (let i = 0; i < SKILL.cd * 30 + 2; i++) k.tick(1 / 60);
+ok(k.canSkill() && k.skillFrac === 1, 'リキャストが明けるとまた撃てる');
 k.winded = true; ok(!k.canSkill(), '息切れの間は撃てない');
 const e1 = k.rollAttack(3, { power: 'spAtk', element: 'fire', target: 'wood', rng: () => 0.99 });
 ok(near(e1.dmg, 6) && e1.mul === 2, '特殊攻撃力 100・火 → 木 (有利) は ×2');
@@ -101,7 +102,7 @@ ok(near(e3.dmg, 3) && e3.mul === 1, '火 → 光 は相性なし');
 k.exp = expForLevel(11); k.recalc();
 ok(near(k.rollAttack(3, { power: 'spAtk', rng: () => 0.99 }).dmg, 3 * 1.2), 'Lv11 の特殊攻撃力 120 が掛かる (通常の攻撃力 140 ではない)');
 ok(k.spElement === 'fire' && k.setSpElement('water') && k.spElement === 'water' && !k.setSpElement('water') && !k.setSpElement('xxx') && k.spElement === 'water', '特殊攻撃の属性を選べる (同じ・知らない属性は変えない)');
-ok(SKILL.cost === 50 && SKILL.mult[4] === 1.5 && SKILL.mult[5] === 2, '消費 50・倍率 4 → ×1.5、5 → ×2');
+ok(SKILL.cd === 8 && SKILL.mult[4] === 1.5 && SKILL.mult[5] === 2, 'リキャスト 8 秒・倍率 4 → ×1.5、5 → ×2');
 ok(elementRGB('fire').length === 3 && elementRGB('fire')[0] > 0.9 && elementRGB('nothing').every((v) => v === 1), '属性の RGB');
 
 // 10. 必殺技: 必殺ゲージ
