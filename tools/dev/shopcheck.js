@@ -47,6 +47,35 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   for (let i = 0; i < 4 && (await st()).open; i++) { await page.keyboard.press('Escape'); await frames(2); } // 高さを測るループで開いた画面を閉じる
   await goto(0, 40); await frames(3);
 
+  // 東急プラザ戸塚 (3 階のデッキの入口と 1 階の入口): 店の一覧 15 軒 → 服の一覧 → 買う。--plaza だけで、ここだけ確認する (所持金は 800 円から)
+  const plazaCheck = async () => {
+    for (const k of ['tokyu_plaza0', 'tokyu_plaza1']) {
+      await goto(0, 40); await frames(3);
+      await goto(ent[k].x, ent[k].z, ent[k].y);
+      ok(await waitAsk(), ent[k].label + ' でも出る (足元 y = ' + (await st()).y + ')');
+      await page.keyboard.press('KeyY'); await frames(2);
+      ok((await st()).screen === 'place' && await page.evaluate(() => document.querySelectorAll('.mn-item[data-shop]').length) === 15, '東急プラザ戸塚の店が 15 軒');
+      if (k === 'tokyu_plaza0') {
+        await page.screenshot({ path: path.join(out, 'g_plaza_place.png') });
+        await page.click('[data-shop=チュチュアンナ]'); await frames(2);
+        ok((await st()).screen === 'shop' && await page.evaluate(() => document.querySelectorAll('.mn-item[data-item]').length) === 3, 'チュチュアンナの服 3 点');
+        await page.click('[data-item=lyla_shorts]'); await frames(2);
+        const t = await st();
+        ok(t.owned.includes('lyla_shorts') && t.money === 0, `東急プラザの店で買えた (所持金 800 → ${t.money})`);
+        await page.screenshot({ path: path.join(out, 'h_plaza_bought.png') });
+      }
+      await page.keyboard.press('Escape'); await frames(2); await page.keyboard.press('Escape'); await frames(2);
+      await page.keyboard.press('Escape'); await frames(2);
+    }
+  };
+  if (process.argv.includes('--plaza')) {
+    await page.evaluate(() => { __g.wardrobe.money = 800; });
+    await plazaCheck();
+    await browser.close(); server.close();
+    console.log(bad ? `NG ${bad} 件` : '全部 OK');
+    process.exit(bad ? 1 : 0);
+  }
+
   if (process.argv.includes('--deck')) { // 2 階の入口だけ確認する
     if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); } // 高さを測るループで開いた画面を閉じる
     await goto(0, 40); await frames(3);
@@ -81,7 +110,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await page.screenshot({ path: path.join(out, 'b_place.png') });
   await page.click('[data-shop=GU]'); await frames(2);
   ok((await st()).screen === 'shop', 'ジーユーの服の一覧');
-  const guN = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'data', 'outfits.json'), 'utf8')).outfits.filter((o) => o.shop === 'GU').length;
+  const guN = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'data', 'outfits.json'), 'utf8')).outfits.filter((o) => [].concat(o.shop).includes('GU')).length;
   ok(await page.evaluate(() => document.querySelectorAll('.mn-item[data-item]').length) === guN, `GU の服は outfits.json と同じ ${guN} 点`);
   await page.screenshot({ path: path.join(out, 'c_shop.png') });
   await page.click('[data-item=lyla_hoodie]'); await frames(2);
@@ -118,6 +147,7 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
     await page.keyboard.press('Escape'); await frames(2); await page.keyboard.press('Escape'); await frames(2);
     await page.keyboard.press('Escape'); await frames(2);
   }
+  await plazaCheck();
   // 走り抜けでは出ない
   await goto(0, 40); await frames(3); await goto(ent.modi1.x, ent.modi1.z + 6); await frames(2);
   await page.evaluate((e) => { __g.player.pos.set(e.x, __g.player.pos.y, e.z); __g.player.vel.set(0, 5.5); }, ent.modi1);
