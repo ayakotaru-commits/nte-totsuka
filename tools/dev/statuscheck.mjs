@@ -116,6 +116,25 @@ ok(ULT.spins === 3 && ULT.mult === 2.5 && ULT.reach > 5, '必殺技: 3 回転・
 const w = new Status(); w.exp = expForLevel(11); w.recalc();
 ok(near(w.rollAttack(2, { power: 'ultAtk', rng: () => 0.99 }).dmg, 2 * 1.3), 'Lv11 の必殺技力 130 が掛かる');
 
+// 12. HP: 戦闘の外だけ、傷ついて 3 秒たつと毎秒 2% ずつ回復する
+{
+  const h = new Status();
+  ok(h.hp === 100 && h.hpFrac === 1, 'HP は満タンから始まる');
+  h.setHp(60); ok(h.hp === 60 && near(h.hpDelay, 3), '傷つくと、回復の待ち 3 秒');
+  h.tick(2.9); ok(h.hp === 60, '待っている間 (2.9 秒) は回復しない');
+  h.tick(0.2); h.tick(10); ok(near(h.hp, 60 + 100 * 0.02 * 10, 0.5), `待ちのあと 10 秒で +20 (毎秒 2%) → ${h.hp.toFixed(1)}`);
+  h.setHp(30); h.combat = true; h.tick(20); ok(h.hp === 30, '戦闘中 (combat) は回復しない');
+  h.combat = false; h.tick(3.1); for (let i = 0; i < 60 * 60; i++) h.tick(1 / 60);
+  ok(h.hp === 100, '戦闘の外では、約 50 秒で全快して、最大で止まる');
+  h.setHp(150); ok(h.hp === 100, '最大を超えない'); h.setHp(-5); ok(h.hp === 0, '0 を下回らない');
+  h.tick(10); ok(h.hp === 0, 'HP 0 (やられた) では回復しない');
+  h.refill(); ok(h.hp === 100 && h.hpDelay === 0, '復活 (refill) で全回復');
+  const l = new Status(); l.setHp(10); l.addExp(100);
+  ok(l.hp === l.value('hp') && l.hp > 100, 'レベルアップで全回復 (最大 HP も増える)');
+  const m = new Status(); m.grantBlessing('chest:light:3'); ok(m.value('hp') > 100 && m.hp === 100, '最大 HP が増えても、今の HP は変わらない (そのあと回復する)');
+  m.setHp(5); m.grantBlessing('chest:fire:1'); m.setEquip('chest', null); ok(m.hp <= m.value('hp'), '最大 HP が減ったら、今の HP は最大に合わせる');
+}
+
 // 11. 加護
 import('../../public/src/blessing.js').then(async (B) => {
   const b = new Status(); const log = []; b.onNotice = (m) => log.push(m);

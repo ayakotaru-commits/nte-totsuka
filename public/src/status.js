@@ -72,6 +72,7 @@ export const ULT = { mult: 2.5, spins: 3, reach: 5.5, inv: 0.45 };
 
 // ---- スタミナの消費 (1 回 / 1 秒あたり) と回復の待ち ----
 export const COST = { dash: 100 / 12, parkour: 10, atk: 6 };  // ダッシュは満タンから約 12 秒
+export const HP_REGEN = { rate: 0.02, delay: 3 };  // HP の自然回復: 戦闘の外で、最後に傷ついてから delay 秒後に、毎秒 最大HP の rate (約 50 秒で全快)
 const REGEN_DELAY = 0.7;       // 使ったあと、この秒数は回復しない
 const WIND_OK = 20;            // 息切れ (0 になった) から、ここまで戻るとまた動ける
 const SAVE_MAX = 0.6;          // 消費軽減の上限
@@ -93,6 +94,7 @@ export class Status {
     this.onNotice = null;      // (文字列) 経験値・レベルアップ・ボーナスのお知らせ。main.js が画面に出す
     // 今の量 (保存しない)
     this.winded = false; this.delay = 0;
+    this.hpDelay = 0; this.combat = false;   // HP: 傷ついてからの待ち、戦闘中か (うな○ー戦の間 true。回復しない)
     this.skill = 0; this.ult = 0;
     this.blessings = new Set();   // 授かった加護の id (blessing.js)
     this.equip = {};              // 宿している加護 { 部位: id }
@@ -109,6 +111,7 @@ export class Status {
     this.recalc();
     this.stamina = this.cur.stamina;
     this.skill = this.cur.spGauge;   // 技ゲージは満タンから始まる
+    this.hp = this.cur.hp;           // 今の HP (保存しない。いつも満タンから)
   }
 
   load() {
@@ -150,6 +153,7 @@ export class Status {
     this.cur.staSave = Math.min(SAVE_MAX, this.cur.staSave);
     this.cur.crit = Math.min(1, this.cur.crit);
     if (this.stamina > this.cur.stamina) this.stamina = this.cur.stamina;
+    if (this.hp > this.cur.hp) this.hp = this.cur.hp;
     if (this.skill > this.cur.spGauge) this.skill = this.cur.spGauge;
   }
   value(k) { return this.cur[k]; }
@@ -169,7 +173,7 @@ export class Status {
     this.notice(`${label}経験値 +${n}` + (after > before ? `　レベルアップ！ Lv ${after}` : ''));
     if (after > before) {
       for (let L = before + 1; L <= after; L++) { const g = levelGrant(L); if (g) this.grantBlessing(g); }
-      this.stamina = this.cur.stamina;
+      this.stamina = this.cur.stamina; this.hp = this.cur.hp;
     }
     return after > before ? after : 0;
   }
@@ -228,6 +232,15 @@ export class Status {
     return base * 100 / (100 + this.cur.def) * (1 - Math.min(0.8, element ? this.elemRes(element) : 0));
   }
 
+  // ---- HP ----
+  get hpFrac() { return this.hp / this.cur.hp; }
+  // HP を決める (0〜最大)。減ったら、回復までの待ちを入れる
+  setHp(v) {
+    v = Math.max(0, Math.min(this.cur.hp, v));
+    if (v < this.hp) this.hpDelay = HP_REGEN.delay;
+    this.hp = v;
+  }
+
   // ---- 必殺技 ----
   canUlt() { return !this.winded && this.ult >= this.cur.ultGauge - 1e-9; }
   useUlt() { this.ult = 0; }
@@ -249,10 +262,12 @@ export class Status {
     this.delay = REGEN_DELAY;
     if (this.stamina <= 0) this.winded = true;
   }
-  refill() { this.stamina = this.cur.stamina; this.winded = false; this.delay = 0; }
+  refill() { this.stamina = this.cur.stamina; this.winded = false; this.delay = 0; this.hp = this.cur.hp; this.hpDelay = 0; } // スタミナと HP を全部戻す (復活・レベルアップ)
 
   // 毎フレーム: 回復・技ゲージの時間回復
   tick(dt) {
+    if (this.hpDelay > 0) this.hpDelay -= dt;
+    else if (!this.combat && this.hp > 0 && this.hp < this.cur.hp) this.hp = Math.min(this.cur.hp, this.hp + this.cur.hp * HP_REGEN.rate * dt);
     if (this.delay > 0) this.delay -= dt;
     else this.stamina = Math.min(this.cur.stamina, this.stamina + this.cur.staRegen * dt);
     if (this.winded && this.stamina >= Math.min(WIND_OK, this.cur.stamina)) this.winded = false;

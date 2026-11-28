@@ -183,6 +183,9 @@ export class Swarm {
   }
 
   get running() { return this.state === 'run' || this.state === 'down'; }
+  // HP はステータス (status.js) が持つ (街でも常に画面に出すため)。ステータスが無ければ自前
+  get hp() { return this.status ? this.status.hp : this._hp; }
+  set hp(v) { if (this.status) this.status.setHp(v); else this._hp = v; }
 
   start() {
     this.state = 'run'; this.armed = false; this.taken = 0; this.overShown = false;
@@ -266,6 +269,7 @@ export class Swarm {
   // input: キーの押した瞬間 (Y / Enter = はい、N = いいえ)。無ければ画面のボタンだけ
   update(dt, input) {
     this.clock += dt;
+    if (this.status) this.status.combat = this.running; // 戦闘中は HP が自然回復しない
     const pl = this.player, p = pl.pos;
     if (this.state === 'idle') {
       const inside = inPoly(SITE.yard, p.x, p.z);
@@ -561,7 +565,7 @@ export class Swarm {
     e.struck = true;
     if (this.state !== 'run' || this.inv > 0 || pl.dead) return;
     this.inv = this.status ? this.status.value('inv') : INVULN;
-    this.hp -= this.status ? this.status.hurtAmount(DMG_P, e.el) : DMG_P; // e.el = 敵の属性 (加護の耐性が効く) this.taken++;
+    this.hp -= this.status ? this.status.hurtAmount(DMG_P, e.el) : DMG_P; this.taken++; // e.el = 敵の属性 (加護の耐性が効く)
     this.status?.gainUlt(3);
     pl.hurt(dx / (d || 1), dz / (d || 1), 1);
     const h = this.ui.hurt; h.classList.remove('on'); void h.offsetWidth; h.classList.add('on');

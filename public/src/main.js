@@ -207,7 +207,7 @@ async function main() {
   const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z), touch: TOUCH });
   window.__bigmap = bigmap; window.__warpTo = warpTo; // 確認用
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
-  let hudTimeText = '', staHold = 0, sklHold = 0, ultHold = 0;
+  let hudTimeText = '', sklHold = 0, ultHold = 0;
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
   // 街を歩く人 (crowd.js。動きは crowdsim.js、通り道は props.json の crowd)。?nocrowd で無し、?crowd=人数 で上限を変える (確認用)
   const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined, park, viewSlots: parkInfo ? makeViewSlots(park, parkInfo.route) : null });   // 園内の人は park (千葉ドリームランド) があるとき
@@ -420,11 +420,11 @@ async function main() {
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
     tod.update(dt);
-    { // スタミナの帯: 減っている間と、全部戻って少したつまで出す。息切れの間は赤
-      const f = stats.staminaFrac, el = $('sta');
-      if (f < 0.999 || stats.winded) staHold = 1.2; else staHold = Math.max(0, staHold - dt);
-      el.hidden = staHold <= 0;
-      if (!el.hidden) { el.firstChild.style.width = (f * 100) + '%'; el.classList.toggle('winded', stats.winded); }
+    { // HP とスタミナの帯: いつも出す (撮影モードでは body 直下の部品として消える)。息切れの間はスタミナが赤、HP が 3 割を切ると赤
+      const h = stats.hpFrac, hel = $('hp'), f = stats.staminaFrac, el = $('sta');
+      hel.firstChild.style.width = (h * 100) + '%'; hel.classList.toggle('low', h < 0.3);
+      const t = `HP ${Math.ceil(stats.hp)} / ${Math.round(stats.value('hp'))}`; if (hel.lastChild.textContent !== t) hel.lastChild.textContent = t;
+      el.firstChild.style.width = (f * 100) + '%'; el.classList.toggle('winded', stats.winded);
     }
     { // 技ゲージの帯 (特殊攻撃): 満タンでないあいだと、満タンになって少したつまで出す。足りて撃てるときは明るい
       const f = stats.skill / stats.value('spGauge'), el = $('skl');

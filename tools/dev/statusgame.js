@@ -63,11 +63,15 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
     const o = {};
     // 1. ?lv=10 で始まる
     for (let k = 0; k < 3; k++) tick(mk());
+    const cs = (id) => getComputedStyle(document.getElementById(id)).display;
+    o.hud = { hp: cs('hp'), sta: cs('sta'), swarmHp: cs('swarm-hp'), hpText: document.getElementById('hp').lastChild.textContent, hpW: document.getElementById('hp').firstChild.style.width, staW: document.getElementById('sta').firstChild.style.width };
+    o.combat = st.combat;
     o.level = st.level; o.state = S.state; o.hpMax = S.hpMax; o.hp = S.hp; o.bar = document.getElementById('swarm-hp').firstChild.style.width;
     // 2. 体当たり 1 回 (防御 = 2 × 9 = 18 → 20 × 100/118 ≈ 16.9)
     const e = { x: pl.pos.x + 0.6, z: pl.pos.z, y: pl.pos.y, yaw: Math.atan2(-1, 0), s: 1 };
     S.inv = 0; S.strike(e);
     o.afterStrike = +S.hp.toFixed(2); o.expectStrike = +(S.hpMax - 20 * 100 / (100 + st.value('def'))).toFixed(2); o.inv = S.inv; o.invWant = st.value('inv');
+    o.taken = S.taken; o.hpDelay = st.hpDelay;
     // 3. 敵を消して、ダッシュで息切れまで
     S.stop(true); S.disabled = true; pl.revive?.();
     pl.teleport(-246, 1449); for (let k = 0; k < 5; k++) pl.update(dt, mk(), g.cam);
@@ -93,6 +97,12 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
     o.atkWhenOk = !!pl.atk; o.staAfterAtk = +st.stamina.toFixed(1);
     // 攻撃のダメージ: 攻撃力 140 (Lv10)・会心なしで 1 → 1.4
     o.dmgL10 = +st.rollAttack(1, { rng: () => 0.99 }).dmg.toFixed(2);
+    // 4b. HP の自然回復: 戦闘の外で、傷ついて 3 秒たつと毎秒 2%
+    st.combat = false; st.setHp(50); const dly = st.hpDelay; st.hpDelay = 0;
+    for (let k = 0; k < 30; k++) pl.update(dt, mk(), g.cam);
+    o.regen = { delayAfterHit: dly, gain: +(st.hp - 50).toFixed(2), expect: +(st.value('hp') * 0.02).toFixed(2) };
+    st.setHp(50); st.combat = true; for (let k = 0; k < 30; k++) { S.update(dt, mk()); pl.update(dt, mk(), g.cam); } // うな○ー戦の最中は回復しない (S.start 済みのときだけ combat になるので、下で別に確かめる)
+    o.regenInCombat = st.hp;
     // 5. クリア: 経験値・初回のボーナス → もう一度クリアしてもボーナスは増えない
     for (let k = 0; k < 40; k++) pl.update(dt, mk(), g.cam);
     S.disabled = false; S.start(); S.killed = TOTAL;
@@ -178,6 +188,11 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   });
   console.log(JSON.stringify(ra, null, 1));
   ok(ra.level === 10, 'A: ?lv=10 でレベル 10');
+  ok(ra.hud.hp !== 'none' && ra.hud.sta !== 'none' && /^HP \d+ \/ \d+$/.test(ra.hud.hpText) && ra.hud.swarmHp === 'none', `A: HP とスタミナの帯がいつも出ている (「${ra.hud.hpText}」。うな○ー戦の中の古い帯は消えた)`);
+  ok(ra.combat === true, 'A: うな○ー戦の間は combat (HP が自然回復しない)');
+  ok(ra.taken === 1 && ra.hpDelay > 2.9, `A: 被弾の回数が数えられる (${ra.taken}) と、回復までの待ちが入る (${ra.hpDelay.toFixed(1)} 秒)`);
+  ok(Math.abs(ra.regen.delayAfterHit - 3) < 1e-9 && Math.abs(ra.regen.gain - ra.regen.expect) < 0.4, `A: 戦闘の外では HP が毎秒 2% 回復する (1 秒で +${ra.regen.gain}、期待 +${ra.regen.expect})`);
+  ok(ra.regenInCombat === 50, 'A: 戦闘中は回復しない (50 のまま)');
   ok(ra.state === 'run' && Math.abs(ra.hpMax - 161.7) < 1e-6 && Math.abs(ra.hp - 161.7) < 1e-6 && ra.bar === '100%', 'A: うな○ー戦の HP が 161.7 (レベル 10 = 100 + 6 × 9 = 154 に、胸の加護・小 +5%)');
   ok(Math.abs(ra.afterStrike - ra.expectStrike) < 0.02 && ra.afterStrike > 130 && ra.afterStrike < 162, `A: 体当たりで防御ぶん軽くなる (${ra.afterStrike}、期待 ${ra.expectStrike})`);
   ok(Math.abs(ra.inv - ra.invWant) < 1e-9, 'A: 無敵時間はステータスの値');
@@ -234,6 +249,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   ok(rb.rhythmState === 'play' && rb.rhythm.done && rb.rhythm.expGain === 60 && Math.abs(rb.rhythm.bonusHp - 0.1) < 1e-9 && rb.rhythm.hpAfter > rb.rhythm.hpBefore, `B: リズム地獄で「吉」以上 → 経験値 +${rb.rhythm.expGain}・最大 HP ボーナス +0.1 (${rb.rhythm.hpBefore} → ${rb.rhythm.hpAfter})`);
   // メニューのステータス画面
   await B.evaluate(() => { window.__rhythm.stop?.(); });
+  await B.screenshot({ path: path.join(out, 'hud.png') }); // 街の画面 (メニューを開く前)。HP とスタミナの帯が出ている
   await B.keyboard.press('Tab');
   await B.waitForFunction(() => !document.getElementById('menu').hidden);
   ok(await B.evaluate(() => !!document.querySelector('#menu [data-do=status]')), 'B: メニューに「ステータス」がある');
@@ -246,6 +262,11 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await B.screenshot({ path: path.join(out, 'status_menu_bottom.png') });
   await B.keyboard.press('Escape');
   ok(await B.evaluate(() => /メニュー/.test(document.querySelector('#menu .mn-head b').textContent)), 'B: Esc でメニューに戻る');
+  // HP とスタミナの帯: いつも出ていて、撮影モードでは出ない
+  const hudN = await B.evaluate(() => { const c = (id) => getComputedStyle(document.getElementById(id)).display; return { hp: c('hp'), sta: c('sta') }; });
+  ok(hudN.hp !== 'none' && hudN.sta !== 'none', 'B: 街でも HP とスタミナの帯が出ている (満タンでも)');
+  const hudP = await B.evaluate(() => { document.body.classList.add('photo'); const c = (id) => getComputedStyle(document.getElementById(id)).display; const r = { hp: c('hp'), sta: c('sta'), skl: c('skl') }; document.body.classList.remove('photo'); return r; });
+  ok(hudP.hp === 'none' && hudP.sta === 'none', '撮影モードでは HP とスタミナの帯が消える'.replace('撮影', 'B: 撮影'));
   // 加護の画面: 部位のタブ・授かった加護の一覧・宿し替え・外す (Lv10 までの加護 2 つ + うな○ー・リズム地獄のクリアで 2 つ)
   await B.click('[data-do=bless]');
   await B.waitForFunction(() => /加護/.test(document.querySelector('#menu .mn-head b').textContent));
