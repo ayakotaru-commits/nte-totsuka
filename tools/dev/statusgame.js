@@ -113,8 +113,9 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
     {
       const SP = {};
       S.disabled = false; S.start(); S.spawned = TOTAL; for (const e of S.list.splice(0)) S.herd.hide(e.slot);
-      st.setSpElement('fire');
+      st.equip = {}; st.recalc(); st.setSpElement('fire'); // 加護 (うな○ーのクリアで授かった火の加護など) を外して、相性だけを見る
       const trial = (el, gauge = 100) => {
+        st.cur.crit = 0; // 会心が出ると体力が変わるので 0 に
         for (const e of S.list.splice(0)) S.herd.hide(e.slot);
         S.hp = S.hpMax; S.inv = 99; S.killed = 0;
         st.refill(); st.skill = gauge; st.delay = 0;
@@ -148,7 +149,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
     {
       const UL = {};
       S.disabled = false; S.start(); S.spawned = TOTAL; for (const e of S.list.splice(0)) S.herd.hide(e.slot);
-      st.setSpElement('fire');
+      st.equip = {}; st.recalc(); st.setSpElement('fire');
       const mkE = (dx, dz, el) => ({ slot: S.freeSlot(), st: 'chase', t: 0, x: pl.pos.x + dx, z: pl.pos.z + dz, y: pl.pos.y, yaw: 0, s: 1, el, hp: 2, speed: 0, seed: 0, ph: 0, cd: 99, tint: 0, hit: -1, dx: 0, dz: 0, vx: 0, vz: 0, vy: 0, ring: { x: 0, y: 0, z: 0, r: 0 } });
       const trial = (gauge) => {
         for (const e of S.list.splice(0)) S.herd.hide(e.slot);
@@ -177,8 +178,8 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   });
   console.log(JSON.stringify(ra, null, 1));
   ok(ra.level === 10, 'A: ?lv=10 でレベル 10');
-  ok(ra.state === 'run' && Math.abs(ra.hpMax - 154) < 1e-6 && Math.abs(ra.hp - 154) < 1e-6 && ra.bar === '100%', 'A: うな○ー戦の HP が 154 (レベル 10 = 100 + 6 × 9)');
-  ok(Math.abs(ra.afterStrike - ra.expectStrike) < 0.02 && ra.afterStrike > 130 && ra.afterStrike < 154, `A: 体当たりで防御ぶん軽くなる (${ra.afterStrike}、期待 ${ra.expectStrike})`);
+  ok(ra.state === 'run' && Math.abs(ra.hpMax - 161.7) < 1e-6 && Math.abs(ra.hp - 161.7) < 1e-6 && ra.bar === '100%', 'A: うな○ー戦の HP が 161.7 (レベル 10 = 100 + 6 × 9 = 154 に、胸の加護・小 +5%)');
+  ok(Math.abs(ra.afterStrike - ra.expectStrike) < 0.02 && ra.afterStrike > 130 && ra.afterStrike < 162, `A: 体当たりで防御ぶん軽くなる (${ra.afterStrike}、期待 ${ra.expectStrike})`);
   ok(Math.abs(ra.inv - ra.invWant) < 1e-9, 'A: 無敵時間はステータスの値');
   ok(ra.speedRun > 4 && ra.speedRun < 5.6 && ra.speedDash > ra.speedRun * 1.6 && ra.speedDash < 10.5, `A: 走り ${ra.speedRun} m/s・ダッシュ ${ra.speedDash} m/s (0.5 秒の加速の途中を測るので 5.5・10 より小さい)`);
   ok(ra.dashSecs > 13.5 && ra.dashSecs < 15, `A: ダッシュは ${ra.dashSecs} 秒で息切れ (レベル 10 の最大スタミナ 118 ÷ 毎秒 8.33 = 約 14.2 秒)`);
