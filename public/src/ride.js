@@ -54,6 +54,8 @@ export class Ride {
       { name: st.name, label: `${st.name}駅（北口）`, ...siteSpot(st) },
       ...(st.site.south ? [{ name: st.name, label: `${st.name}駅（南口）`, ...siteSpotSouth(st) }] : []),
     ]);
+    // 地下の駅から地上へ出る所 (設定の exits。九段下の 2 番出口・日本武道館の前など) のワープ先
+    this.exitSpots = ((ext && ext.stations) || []).flatMap((st) => (st.exits || []).map((e) => ({ name: st.name, label: e.label, x: e.x, y: e.y, z: e.z, face: e.face })));
     const P = new THREE.Vector3();
     for (const r of trains.R) {
       r.stops.forEach((st, si) => {
@@ -210,7 +212,7 @@ export class Ride {
       out.push({ name: pl.name, sub: pl.sub, x: (pf.left[k][0] + pf.right[k][0]) / 2, y: pf.y[k], z: (pf.left[k][1] + pf.right[k][1]) / 2,
         face: Math.atan2(pf.left[k + 1][0] - pf.left[k][0], pf.left[k + 1][1] - pf.left[k][1]) });
     }
-    return out.concat(this.siteSpots || []);
+    return out.concat(this.siteSpots || [], this.exitSpots || []);
   }
 
   // (x, z) があるホーム (無ければ null)
