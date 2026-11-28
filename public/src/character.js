@@ -305,6 +305,11 @@ export function makeCharacter(opt = {}) {
     for (const sw of swords) { sw.dots.visible = on; sw.bl.scale.x = on ? 1.7 : 1; sw.tip.scale.x = on ? 1.7 : 1; sw.line.visible = !on; } // 金の刃は少し幅広に。水色の芯は消す (緑がかって見えるため)
     for (const sw of swords) sw.g.userData.legend = on;
   };
+  // 剣の軌跡の色を一時的に変える (特殊攻撃の属性の色。rgb = [0〜1, 0〜1, 0〜1]、null で元の色 (伝説の剣なら金色))
+  const setTrailTint = (rgb) => {
+    const legend = !!(swords[0] && swords[0].g.userData.legend);
+    trailCols.forEach((c, i) => c.splice(0, 3, ...(rgb || (legend ? [1.0, 0.8, 0.25] : TRAIL0[i]))));
+  };
   // うちわ (お札まきのイベントで右手に持つ。act.type === 'fan' の間だけ見える)
   const fan = (() => {
     const cv = document.createElement('canvas'); cv.width = cv.height = 64;
@@ -1078,5 +1083,5 @@ export function makeCharacter(opt = {}) {
     for (const m of [...Object.values(M), outlineMat, ...bladeMats]) m.dispose();
     gm.dispose();
   };
-  return { root, update, ready, bones: BONE, dispose, setLegend, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor, setFace, setHeight, setBody };
+  return { root, update, ready, bones: BONE, dispose, setLegend, setTrailTint, setOutfits, setHair, setHairColor, setEyeColor, setSkinColor, setFace, setHeight, setBody };
 }

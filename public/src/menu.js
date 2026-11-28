@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import { yen, SLOTS } from './wardrobe.js';
 import { PALETTE, EYE_PALETTE, SKIN_PALETTE, HEIGHTS, BODIES, FACE_ITEMS } from './hairstyle.js';
-import { STATS, GROUPS, ELEMENTS, BONUS_EVENTS, BONUS_STEP, MAX_LV, fmtStat } from './status.js';
+import { STATS, GROUPS, ELEMENTS, BONUS_EVENTS, BONUS_STEP, MAX_LV, SKILL, fmtStat } from './status.js';
 
 export class Menu {
   constructor({ wardrobe, hairStyle, player, cam, status, dom, lock, unlock, actions }) {
@@ -347,8 +347,9 @@ export class Menu {
       }
       h += '</div>';
     }
-    h += '<div class="mn-grp">属性</div><div class="mn-elems">' + ELEMENTS.map((e) => `<div><span class="ec" style="background:${e.color}">${e.name}</span></div>`).join('') + '</div>';
-    h += '<div class="mn-note">火 → 木 → 水 → 火 に強い（2 倍）／逆は弱い（0.5 倍）。光と闇はたがいに強い。属性の攻撃・耐性は、加護で伸ばせるようになります（まだ宿していません）。通常攻撃は無属性です。</div>';
+    const spName = (ELEMENTS.find((e) => e.key === s.spElement) || {}).name;
+    h += `<div class="mn-grp">特殊攻撃の属性（選ぶと変わります）</div><div class="mn-elems">` + ELEMENTS.map((e) => `<button class="mn-el${e.key === s.spElement ? ' on' : ''}" data-spel="${e.key}"><span class="ec" style="background:${e.color}">${e.name}</span></button>`).join('') + '</div>';
+    h += `<div class="mn-note">特殊攻撃（K・スマホは「特殊」）: 技ゲージ ${SKILL.cost} を使って、跳び斬り → 急降下の十字斬り。いまの属性は「${spName}」。技ゲージ ${Math.floor(s.skill)} / ${Math.floor(s.value('spGauge'))}。<br>火 → 木 → 水 → 火 に強い（2 倍）／逆は弱い（0.5 倍）。光と闇はたがいに強い。通常攻撃は無属性です。属性の攻撃・耐性は、加護で伸ばせるようになります（まだ宿していません）。</div>`;
     h += `<div class="mn-grp">イベントのボーナス（初めてクリアすると +${BONUS_STEP}）</div>`;
     for (const [id, ev] of Object.entries(BONUS_EVENTS)) {
       const got = !!s.done[id];
@@ -388,6 +389,7 @@ export class Menu {
   click(e) {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.spel) { this.status?.setSpElement(b.dataset.spel); return; }
     if (b.dataset.slot) return this.setSlot(b.dataset.slot);
     if (b.dataset.cmtab) return this.setCmTab(b.dataset.cmtab);
     if (b.dataset.color) { this.sel = this.colorList().findIndex((o) => (o.hex || 'none') === b.dataset.color); this.pickColor(b.dataset.color); return this.render(); }

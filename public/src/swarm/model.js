@@ -134,7 +134,7 @@ const mat = (c, side = THREE.FrontSide, gold = false) => { const t = tex(c); ret
 
 const _m = new THREE.Matrix4(), _r = new THREE.Matrix4(), _p = new THREE.Matrix4(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3(), _s = new THREE.Vector3(), _c = new THREE.Color();
 const HIDE = new THREE.Matrix4().makeScale(0, 0, 0);
-const WHITE = new THREE.Color(1, 1, 1), RED = new THREE.Color(1, 0.35, 0.4);
+const WHITE = new THREE.Color(1, 1, 1), RED = new THREE.Color(1, 0.35, 0.4), _k = new THREE.Color();
 
 export class Herd {
   // opt.gold: 白い所が金色に光る
@@ -184,7 +184,9 @@ export class Herd {
     limb(2, 1, LEG, leg + (p.legL || 0), -swL);
     limb(3, -1, LEG, leg + (p.legR || 0), swL);
     const t = p.tint || 0;
-    _c.copy(WHITE).lerp(RED, t);
+    _c.copy(WHITE);
+    if (p.col) _c.lerp(_k.set(p.col), 0.5); // 属性の色 (swarm/event.js)
+    _c.lerp(RED, t);
     this.front.setColorAt(i, _c); this.back.setColorAt(i, _c);
     for (let k = 0; k < 4; k++) this.limbs.setColorAt(i * 4 + k, _c);
     this.dirty = true;

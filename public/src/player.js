@@ -5,7 +5,7 @@ import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
 import { getMotion, hipsAt } from './motion.js';
-import { COST } from './status.js';
+import { COST, elementRGB } from './status.js';
 import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, COMBO_MAX, MOCAP, spinAt } from './attack.js';
 
 export const R = 0.35; // 体の半径 (m)
@@ -87,6 +87,8 @@ export class Player {
     }
     // 攻撃 (J / クリック / 画面の「攻撃」)。地上で押すと始まり、続けて押すと 5 連撃になる
     const atkPress = input.pressed('KeyJ') || input.pressed('Mouse0');
+    // 特殊攻撃 (K・画面の「特殊」): 技ゲージを使って、跳び斬り上げ (4) → 急降下の十字斬り (5) を続けて出す (status.js の SKILL)
+    if (st && !this.atk && this.onGround && input.pressed('KeyK') && st.canSkill()) { st.useSkill(); this.startStep(4, len > 0 ? [dx, dz] : null, true); }
     this.armedT += dt;
     this.comboGrace = Math.max(0, this.comboGrace - dt);
     if ((atkPress || this.atk) && this.updateAtk(dt, atkPress, len > 0 ? [dx, dz] : null)) return;
@@ -217,9 +219,10 @@ export class Player {
   get armed() { return !!this.atk || this.armedT < SWORD_IDLE; }
 
   // 攻撃の 1 手順を始める。動かしている向きがあればそちらへ向き直る
-  startStep(step, dir) {
+  // sp = 特殊攻撃の一部 (4 → 5 を自動でつなげる。ダメージは特殊攻撃力・属性で決まる)
+  startStep(step, dir, sp = false) {
     if (dir) this.facing = Math.atan2(dir[0], dir[1]);
-    this.atk = { step, ph: 0, t: 0, queued: false, v0: 0 };
+    this.atk = { step, ph: 0, t: 0, queued: sp && step === 4, v0: 0, sp };
     this.atkN++;
     if (this.status) this.status.spend(COST.atk); // スタミナを使う
     this.armedT = 0;
@@ -285,7 +288,7 @@ export class Player {
       }
       // 5 へ: 空中の斬り上げのあと、または着地の直後に押していたとき
       if (a.queued && ((a.ph === 1 && a.t >= AIR5_FROM) || (a.ph === 2 && a.t <= LAND5_UNTIL))) {
-        this.startStep(5, null); a = this.atk; v = a.v0;
+        this.startStep(5, null, a.sp); a = this.atk; v = a.v0;
         return this.finishAtk(dt, a, v);
       }
     } else { // 5
@@ -315,7 +318,7 @@ export class Player {
     else this.vel.multiplyScalar(Math.exp(-14 * dt));
     if (!(a && a.hold > 0)) this.moveBody(dt); // ヒットストップの間は空中でも止める
     this.stair = 0;
-    this.show(dt, 0, a ? { type: 'atk', step: a.step, ph: a.ph, t: a.t } : null);
+    this.show(dt, 0, a ? { type: 'atk', step: a.step, ph: a.ph, t: a.t, sp: !!a.sp } : null);
     return true;
   }
 
@@ -400,6 +403,9 @@ export class Player {
   }
 
   show(dt, sp, act = null) {
+    // 特殊攻撃の間は、剣の軌跡を属性の色にする (終わると元の色)
+    const el = act && act.type === 'atk' && act.sp && this.status ? this.status.spElement : null;
+    if (el !== this._trailEl) { this._trailEl = el; this.model.setTrailTint?.(el ? elementRGB(el) : null); }
     this.lastAct = act; this.lastSp = this.poseSpeed ?? sp;
     this.model.root.position.copy(this.pos);
     this.model.root.rotation.y = this.facing + this.spin;

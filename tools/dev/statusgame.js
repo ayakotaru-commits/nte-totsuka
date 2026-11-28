@@ -2,6 +2,7 @@
 // 使い方: node tools/dev/statusgame.js <出力フォルダ>   (準備は shot.js と同じ。ページの読み込みが 1〜2 分 × 3、全体で 6〜10 分)
 //   ページ A (?lv=10 でうな○ー戦): レベル 10 の HP (160) で始まる・敵に体当たりされると 20 減る・ダッシュで約 12 秒で息切れ・息切れの間は走りに落ちる・
 //                                    息切れの間は攻撃を始められない・クリアで経験値と初回のボーナス (攻撃力 +0.1)・2 回目のクリアではボーナスが増えない
+//                                    特殊攻撃 (K): 技ゲージ 50 を使って 4 → 5 と続く・属性の相性 (有利は倒れる、不利は体力が残る)・ゲージ不足では出ない
 //   ページ B (同じブラウザで開き直す): 保存されている (レベル・ボーナス) → リズム地獄の「吉」以上でクリア → 体力 +0.1 → メニューのステータス画面を撮る
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -107,6 +108,41 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
     const e2 = st.exp; S.strike({ x: pl.pos.x + 0.6, z: pl.pos.z, y: pl.pos.y, yaw: Math.atan2(-1, 0), s: 1 });
     o.defeat = { state: S.state, expGain: st.exp - e2 };
     S.stop(true); S.state = 'idle'; S.disabled = true;
+    // 6. 特殊攻撃 (K): 敵 1 体を目の前に置いて出す。属性の相性 (火 → 木は有利、火 → 水は不利、火 → 光は相性なし) と、技ゲージ・4 → 5 の続き
+    {
+      const SP = {};
+      S.disabled = false; S.start(); S.spawned = TOTAL; for (const e of S.list.splice(0)) S.herd.hide(e.slot);
+      st.setSpElement('fire');
+      const trial = (el, gauge = 100) => {
+        for (const e of S.list.splice(0)) S.herd.hide(e.slot);
+        S.hp = S.hpMax; S.inv = 99; S.killed = 0;
+        st.refill(); st.skill = gauge; st.delay = 0;
+        pl.revive?.(); pl.atk = null; pl.act = null; pl.comboGrace = 0;
+        pl.teleport(-246, 1449); pl.facing = Math.PI / 2; g.cam.yaw = pl.facing + Math.PI;
+        for (let k = 0; k < 8; k++) tick(mk());
+        const e = { slot: S.freeSlot(), st: 'chase', t: 0, x: pl.pos.x + Math.sin(pl.facing) * 1.6, z: pl.pos.z + Math.cos(pl.facing) * 1.6, y: pl.pos.y, yaw: pl.facing + Math.PI, s: 1,
+          el, hp: 2, speed: 0, seed: 0, ph: 0, cd: 99, tint: 0, hit: -1, dx: 0, dz: 0, vx: 0, vz: 0, vy: 0, ring: { x: 0, y: 0, z: 0, r: 0 } };
+        S.list.push(e);
+        const g0 = st.skill;
+        tick(mk([], ['KeyK']));
+        const r = { started: !!pl.atk, sp: !!(pl.atk && pl.atk.sp), step0: pl.atk ? pl.atk.step : 0, gaugeUsed: +(g0 - st.skill).toFixed(1), steps: new Set(), hpAfterFirst: null, died: false, state: null, trailTint: pl._trailEl };
+        for (let k = 0; k < 120 && pl.atk; k++) {
+          tick(mk());
+          if (pl.atk) r.steps.add(pl.atk.step);
+          if (r.hpAfterFirst === null && e.hit !== -1) r.hpAfterFirst = +e.hp.toFixed(2);
+        }
+        r.steps = [...r.steps].sort(); r.died = e.st === 'die' || !S.list.includes(e); r.state = e.st; r.hpEnd = +e.hp.toFixed(2); r.el = el;
+        return r;
+      };
+      SP.adv = trial('wood'); SP.dis = trial('water'); SP.neu = trial('light');
+      SP.empty = trial('wood', 30);
+      SP.afterGauge = +st.skill.toFixed(1);
+      // 通常攻撃 (J) は、属性・特殊攻撃力に関係なく、手順どおり (1 撃目のダメージ 1 × 攻撃力 1.36)
+      S.list.splice(0).forEach((e) => S.herd.hide(e.slot));
+      SP.tintFn = typeof pl.model.setTrailTint === 'function';
+      S.stop(true); S.state = 'idle'; S.disabled = true;
+      o.special = SP;
+    }
     o.save = localStorage.getItem('totsuka.status.v1');
     return o;
   });
@@ -127,6 +163,16 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   ok(ra.clear2.expGain === 600 && Math.abs(ra.clear2.bonus - 0.1) < 1e-9, 'A: 2 回目のクリアは経験値だけ、ボーナスは増えない');
   ok(ra.defeat.state === 'down' && ra.defeat.expGain === 35, `A: やられても倒した 7 体ぶん経験値 +${ra.defeat.expGain}`);
   ok(!!ra.save && JSON.parse(ra.save).done.swarm === true, 'A: 保存された');
+  const sp = ra.special;
+  console.log(JSON.stringify(sp));
+  ok(sp.adv.started && sp.adv.sp && sp.adv.step0 === 4 && sp.adv.steps.includes(5), 'A: K で特殊攻撃が始まり、4 (跳び斬り上げ) から 5 (急降下の十字斬り) へ続く');
+  ok(Math.abs(sp.adv.gaugeUsed - 50) < 1, `A: 技ゲージを 50 使う (${sp.adv.gaugeUsed})`);
+  ok(sp.adv.died && sp.adv.hpAfterFirst !== null && sp.adv.hpAfterFirst <= 0, `A: 有利 (火 → 木) は 1 撃目で倒れる (残り体力 ${sp.adv.hpAfterFirst})`);
+  ok(sp.dis.hpAfterFirst !== null && sp.dis.hpAfterFirst > 0 && sp.dis.hpAfterFirst < 0.5, `A: 不利 (火 → 水) は 1 撃目では倒れず、体力が少し残る (${sp.dis.hpAfterFirst}。2 − 2×1.5×1.18×0.5)`);
+  ok(sp.neu.hpAfterFirst !== null && sp.neu.hpAfterFirst <= 0 && sp.neu.died, `A: 相性なし (火 → 光) は 1 撃目で倒れる (${sp.neu.hpAfterFirst})`);
+  ok(!sp.empty.started, 'A: 技ゲージが足りない (30) と、K を押しても始まらない');
+  ok(sp.tintFn && sp.adv.trailTint === 'fire', 'A: 特殊攻撃の間、剣の軌跡の属性の色を切り替える');
+
   await A.close();
 
   // ===== ページ B (開き直し) =====

@@ -18,7 +18,7 @@ import { H } from '../terrain.js';
 import { trailOn } from '../attack.js';
 import * as THREE from 'three';
 import { Herd, Fx, BODY } from './model.js';
-import { EXP } from '../status.js';
+import { EXP, ELEMENTS, SKILL, elementColor } from '../status.js';
 
 export const TOTAL = 100, ALIVE = 50;
 const G = 24;                                  // 重力 (player.js と同じ)
@@ -75,7 +75,7 @@ const inPoly = (poly, x, z) => {
 // 敵 1 体の、状態と経過時間から姿勢を作る (model.js の setPose に渡す)。tools/dev/swarmview.html も使う
 const DUR = { perch: 0.55, splat: 0.7, rise: 0.45, wind: 0.42, lunge: 0.22, recover: 0.5, hurt: 0.36 };
 export function poseOf(e, t = e.t) {
-  const p = { x: e.x, y: e.y, z: e.z, yaw: e.yaw, s: e.s, tint: e.tint || 0 };
+  const p = { x: e.x, y: e.y, z: e.z, yaw: e.yaw, s: e.s, tint: e.tint || 0, col: e.el ? elementColor(e.el) : null };
   const w = Math.sin(t * 23 + e.seed * 5); // じたばた
   switch (e.st) {
     case 'perch': { // 屋上の縁で、両手をあげて身がまえ、少し沈んでから跳ぶ
@@ -240,6 +240,7 @@ export class Swarm {
     const vh = 4.5 + Math.random() * 2.5, vy = 4;
     const e = {
       slot, st: 'perch', t: 0, x: best.x, y: best.y, z: best.z, yaw: Math.atan2(dx, dz), dx, dz, vh, vy0: vy, vy: 0, vx: 0, vz: 0,
+      el: ELEMENTS[Math.floor(Math.random() * ELEMENTS.length)].key, // 属性 (色で分かる。特殊攻撃の相性が効く)
       hp: HP_E, speed: 2.6 + Math.random() * 1.1, s: 0.92 + Math.random() * 0.22, seed: Math.random() * 10, ph: Math.random() * 6, cd: 0.5, tint: 0, hit: -1,
     };
     // 着地点の予想 (赤い輪): 地面の高さを 2 回見直す
@@ -319,9 +320,14 @@ export class Swarm {
         if (d > REACH[a.step] * Math.max(1, e.s) || Math.abs(e.y - p.y) > 2) continue;
         if (d > 0.7 && Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d))) > ARC[a.step]) continue;
         e.hit = pl.atkN;
-        const hit = this.status ? this.status.rollAttack(DMG_E[a.step]) : { dmg: DMG_E[a.step], crit: false }; // 攻撃力・会心 (status.js)
+        // 通常攻撃 = 攻撃力・会心 (無属性)。特殊攻撃 (a.sp の 4・5) = 特殊攻撃力・倍率・属性の相性 (status.js)
+        const st = this.status, special = !!(st && a.sp && SKILL.mult[a.step]);
+        const hit = !st ? { dmg: DMG_E[a.step], crit: false, mul: 1 }
+          : special ? st.rollAttack(DMG_E[a.step] * SKILL.mult[a.step], { power: 'spAtk', element: st.spElement, target: e.el })
+            : st.rollAttack(DMG_E[a.step]);
         e.hp -= hit.dmg;
         if (hit.crit) this.fx.burst(e.x, e.y + 1.1, e.z, 6, ['#fff7a8', '#ffd34d'], 5, 0.16, 0.4, 8);
+        if (special) this.fx.burst(e.x, e.y + 1.0, e.z, hit.mul > 1 ? 14 : hit.mul < 1 ? 3 : 8, [elementColor(st.spElement), '#ffffff'], 5, 0.18, 0.45, 8); // 弱点は派手に、不利は控えめに
         this.status?.gainUlt(2);
         const nx = d > 0.05 ? dx / d : fx, nz = d > 0.05 ? dz / d : fz;
         e.yaw = Math.atan2(-nx, -nz);

@@ -16,6 +16,10 @@ export const ELEMENTS = [
 const BEATS = { fire: 'wood', wood: 'water', water: 'fire', light: 'dark', dark: 'light' }; // 左が右に強い (火→木→水→火、光⇄闇)
 export const ELEM_ADV = 2, ELEM_DIS = 0.5;   // 有利・不利の倍率 (パズドラと同じ)
 
+// 属性の色 (#rrggbb) と、0〜1 の RGB (剣の軌跡・敵の色に使う)
+export const elementColor = (k) => (ELEMENTS.find((e) => e.key === k) || {}).color || '#ffffff';
+export const elementRGB = (k) => { const h = elementColor(k); return [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); };
+
 // 攻撃の属性 atk が、相手の属性 def に当たるときの倍率。どちらかが無属性 (null) なら 1。光と闇は互いに有利だけで、不利は無い
 export function elementMul(atk, def) {
   if (!atk || !def) return 1;
@@ -58,6 +62,9 @@ export const BONUS_EVENTS = {
   arcade: { name: 'プロジェクトセマイ ワンルームステージ！', stat: 'stamina', how: 'ランク B 以上' },
 };
 
+// ---- 特殊攻撃 (K): 技ゲージを cost 使い、跳び斬り上げ (4) → 急降下の十字斬り (5) を出す。mult = 手順ごとのダメージの倍率 (特殊攻撃力・属性が掛かる) ----
+export const SKILL = { cost: 50, mult: { 4: 1.5, 5: 2 } };
+
 // ---- スタミナの消費 (1 回 / 1 秒あたり) と回復の待ち ----
 export const COST = { dash: 100 / 12, parkour: 10, atk: 6 };  // ダッシュは満タンから約 12 秒
 const REGEN_DELAY = 0.7;       // 使ったあと、この秒数は回復しない
@@ -82,12 +89,14 @@ export class Status {
     // 今の量 (保存しない)
     this.winded = false; this.delay = 0;
     this.skill = 0; this.ult = 0;
+    this.spElement = 'fire';   // 特殊攻撃の属性 (ステータス画面で選ぶ。保存する)
     const q = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
     if (q.has('resetsave')) { try { localStorage.removeItem(KEY); } catch (e) { /* 保存できない環境 */ } }
     this.load();
     if (q.has('lv')) this.exp = expForLevel(Math.max(1, Math.min(MAX_LV, Math.floor(+q.get('lv') || 1))));
     this.recalc();
     this.stamina = this.cur.stamina;
+    this.skill = this.cur.spGauge;   // 技ゲージは満タンから始まる
   }
 
   load() {
@@ -95,13 +104,14 @@ export class Status {
       const s = JSON.parse(localStorage.getItem(KEY) || 'null');
       if (!s) return;
       if (Number.isFinite(s.exp)) this.exp = Math.max(0, Math.floor(s.exp));
+      if (ELEMENTS.some((e) => e.key === s.spElement)) this.spElement = s.spElement;
       for (const k of Object.keys(BONUS_EVENTS)) if (s.done && s.done[k]) this.done[k] = true;
       for (const k of Object.keys(STATS)) if (s.bonus && Number.isFinite(s.bonus[k])) this.bonus[k] = Math.max(0, Math.round(s.bonus[k] * 10) / 10);
     } catch (e) { /* 読めなければ最初から */ }
   }
 
   save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, exp: this.exp, done: this.done, bonus: this.bonus })); } catch (e) { /* 保存できない環境 */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, exp: this.exp, done: this.done, bonus: this.bonus, spElement: this.spElement })); } catch (e) { /* 保存できない環境 */ }
   }
 
   onChange(fn) { this.listeners.push(fn); }
@@ -125,6 +135,7 @@ export class Status {
     this.cur.staSave = Math.min(SAVE_MAX, this.cur.staSave);
     this.cur.crit = Math.min(1, this.cur.crit);
     if (this.stamina > this.cur.stamina) this.stamina = this.cur.stamina;
+    if (this.skill > this.cur.spGauge) this.skill = this.cur.spGauge;
   }
   value(k) { return this.cur[k]; }
 
@@ -165,13 +176,18 @@ export class Status {
     const crit = rng() < this.cur.crit;
     let d = base * this.cur[power] / 100 * elementMul(element, target);
     if (crit) d *= this.cur.critDmg;
-    return { dmg: d, crit };
+    return { dmg: d, crit, mul: elementMul(element, target) };
   }
 
   // 受けるダメージ。base = 基本の量、element = 攻撃の属性 (無属性は null)。耐性は加護から (まだ 0)
   hurtAmount(base, element = null) {
     return base * 100 / (100 + this.cur.def);
   }
+
+  // ---- 特殊攻撃 ----
+  canSkill() { return !this.winded && this.skill >= SKILL.cost; }
+  useSkill() { this.skill = Math.max(0, this.skill - SKILL.cost); }
+  setSpElement(k) { if (!ELEMENTS.some((e) => e.key === k) || k === this.spElement) return false; this.spElement = k; this.changed(); return true; }
 
   // ---- スタミナ ----
   get staminaFrac() { return this.stamina / this.cur.stamina; }

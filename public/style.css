@@ -375,3 +375,14 @@ body.touch #toast { right: calc(12px + env(safe-area-inset-right)); bottom: auto
 .mn-bonus { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,.12); }
 .mn-bonus.got { color: #ffe08a; }
 .mn-bonus small { color: rgba(255,255,255,.65); display: block; font-size: 11px; }
+
+/* 特殊攻撃: 技ゲージの帯・スマホのボタン・属性の選択 (src/status.js・menu.js) */
+#skl { position: fixed; left: 50%; bottom: calc(17% - 13px); transform: translateX(-50%); width: 200px; height: 6px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.5); border-radius: 3px; overflow: hidden; pointer-events: none; }
+#skl[hidden] { display: none; }
+#skl i { display: block; height: 100%; width: 0; background: #5a7fb5; }
+#skl.ready i { background: linear-gradient(90deg, #5fd3ff, #b8ecff); }
+body.touch #skl { bottom: calc(30% - 13px); width: 150px; }
+#tb-skill { width: 62px; height: 62px; right: calc(112px + env(safe-area-inset-right)); bottom: calc(190px + env(safe-area-inset-bottom)); z-index: 5; }
+.mn-el { font: inherit; color: #fff; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.3); border-radius: 8px; padding: 6px 2px; cursor: pointer; }
+.mn-el.on { border-color: #5fd3ff; background: rgba(95,211,255,.35); }
+.mn-el:hover { background: rgba(95,211,255,.22); }
