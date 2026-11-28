@@ -3,7 +3,7 @@
 //   ページ A (?lv=10 でうな○ー戦): レベル 10 の HP (160) で始まる・敵に体当たりされると 20 減る・ダッシュで約 12 秒で息切れ・息切れの間は走りに落ちる・
 //                                    息切れの間は攻撃を始められない・クリアで経験値と初回のボーナス (攻撃力 +0.1)・2 回目のクリアではボーナスが増えない
 //                                    特殊攻撃 (K): 技ゲージ 50 を使って 4 → 5 と続く・属性の相性 (有利は倒れる、不利は体力が残る)・ゲージ不足では出ない
-//                                    必殺技 (U): ゲージ満タンで 3 回転・全方位 (前後横は倒れる、9 m 先は届かない)・出している間は無敵・ゲージ不足では出ない
+//                                    必殺技 (U): ゲージ満タンで 3 回転・全方位 (前後横は倒れる、真横 9 m は届かない)・出している間は無敵・ゲージ不足では出ない
 //   ページ B (同じブラウザで開き直す): 保存されている (レベル・ボーナス) → リズム地獄の「吉」以上でクリア → 体力 +0.1 → メニューのステータス画面を撮る
 const { chromium } = require('playwright');
 const fs = require('fs');
@@ -158,7 +158,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
         pl.teleport(-246, 1449); pl.facing = Math.PI / 2; g.cam.yaw = pl.facing + Math.PI;
         for (let k = 0; k < 8; k++) tick(mk());
         const fx = Math.sin(pl.facing), fz = Math.cos(pl.facing);
-        const E = { front: mkE(fx * 1.8, fz * 1.8, 'light'), back: mkE(-fx * 2.6, -fz * 2.6, 'light'), side: mkE(fz * 3.4, -fx * 3.4, 'light'), far: mkE(fx * 9, fz * 9, 'light') };
+        const E = { front: mkE(fx * 1.8, fz * 1.8, 'light'), back: mkE(-fx * 2.6, -fz * 2.6, 'light'), side: mkE(fz * 3.4, -fx * 3.4, 'light'), far: mkE(fz * 9, -fx * 9, 'light') }; // 遠い敵は真横 9 m (回転斬りは前へ滑るので、正面に置くと近づかれて届く)
         for (const e of Object.values(E)) S.list.push(e);
         const n0 = pl.atkN;
         tick(mk([], ['KeyU']));
@@ -192,6 +192,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   ok(ra.clear2.expGain === 600 && Math.abs(ra.clear2.bonus - 0.1) < 1e-9, 'A: 2 回目のクリアは経験値だけ、ボーナスは増えない');
   ok(ra.defeat.state === 'down' && ra.defeat.expGain === 35, `A: やられても倒した 7 体ぶん経験値 +${ra.defeat.expGain}`);
   ok(!!ra.save && JSON.parse(ra.save).done.swarm === true, 'A: 保存された');
+  ok(JSON.parse(ra.save).blessings.includes('armR:fire:2') && JSON.parse(ra.save).blessings.includes('head:water:1') && JSON.parse(ra.save).blessings.includes('chest:light:1'), 'A: 加護が保存された (Lv5・Lv10 の加護と、うな○ーの初クリアの加護)');
   const sp = ra.special;
   console.log(JSON.stringify(sp));
   ok(sp.adv.started && sp.adv.sp && sp.adv.step0 === 4 && sp.adv.steps.includes(5), 'A: K で特殊攻撃が始まり、4 (跳び斬り上げ) から 5 (急降下の十字斬り) へ続く');
@@ -205,7 +206,7 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   console.log(JSON.stringify(ul));
   ok(ul.full.started && ul.full.ult0 === 1 && ul.full.gaugeAfter === 0, 'A: U で必殺技が始まり、必殺ゲージが 0 になる');
   ok(ul.full.swings === 3 && ul.full.spins.includes(2) && ul.full.spins.includes(3), `A: 回転斬りが 3 回続く (${ul.full.swings} 回振る)`);
-  ok(ul.full.died.front && ul.full.died.back && ul.full.died.side && !ul.full.died.far, `A: 前・後ろ・横の敵は倒れ、遠い敵 (9 m) には届かない (${JSON.stringify(ul.full.died)})`);
+  ok(ul.full.died.front && ul.full.died.back && ul.full.died.side && !ul.full.died.far, `A: 前・後ろ・横の敵は倒れ、遠い敵 (真横 9 m) には届かない (${JSON.stringify(ul.full.died)})`);
   ok(ul.full.invMax >= 0.3, `A: 必殺技の間は当たらない (無敵 ${ul.full.invMax.toFixed(2)} 秒)`);
   ok(!ul.low.started, 'A: 必殺ゲージが 60 では出ない');
   ok(ul.full.tint === 'fire', 'A: 必殺技の剣の軌跡も属性の色');
@@ -244,6 +245,21 @@ const ok = (c, msg) => { console.log((c ? 'OK  ' : 'NG  ') + msg); if (!c) fails
   await B.screenshot({ path: path.join(out, 'status_menu_bottom.png') });
   await B.keyboard.press('Escape');
   ok(await B.evaluate(() => /メニュー/.test(document.querySelector('#menu .mn-head b').textContent)), 'B: Esc でメニューに戻る');
+  // 加護の画面: 部位のタブ・授かった加護の一覧・宿し替え・外す (Lv10 までの加護 2 つ + うな○ー・リズム地獄のクリアで 2 つ)
+  await B.click('[data-do=bless]');
+  await B.waitForFunction(() => /加護/.test(document.querySelector('#menu .mn-head b').textContent));
+  ok(await B.evaluate(() => document.querySelectorAll('#menu .mn-tab').length === 6), 'B: 加護の画面に部位のタブが 6 つ (頭・胸・右腕・左腕・脚・足)');
+  await B.click('[data-bslot=chest]');
+  const ch = await B.evaluate(() => ({ n: document.querySelectorAll('#menu [data-bless]').length, text: document.getElementById('menu').innerText, eq: window.__status.equip.chest }));
+  ok(ch.n === 2 && /光の加護（胸・中）/.test(ch.text) && /光の加護（胸・小）/.test(ch.text) && ch.eq === 'chest:light:1', `B: 胸に 2 つ授かっていて (中・小)、小を宿している (${ch.eq})`);
+  await B.screenshot({ path: path.join(out, 'bless_menu.png') });
+  await B.click('[data-bless="chest:light:2"]');
+  const eq2 = await B.evaluate(() => ({ eq: window.__status.equip.chest, hp: window.__status.value('hp'), saved: JSON.parse(localStorage.getItem('totsuka.status.v1')).equip.chest }));
+  ok(eq2.eq === 'chest:light:2' && eq2.saved === 'chest:light:2', `B: 中を選ぶと宿し替わり、保存される (最大 HP ${eq2.hp})`);
+  await B.click('[data-bless="chest:light:2"]');
+  ok(await B.evaluate(() => !window.__status.equip.chest), 'B: 宿している加護をもう一度選ぶと外れる');
+  await B.keyboard.press('Escape');
+  ok(await B.evaluate(() => /メニュー/.test(document.querySelector('#menu .mn-head b').textContent)), 'B: Esc でメニューに戻る (加護)');
   await browser.close(); server.close();
   console.log(fails ? `\n${fails} 件 NG` : '\nすべて OK');
   process.exit(fails ? 1 : 0);

@@ -561,7 +561,7 @@ export class Swarm {
     e.struck = true;
     if (this.state !== 'run' || this.inv > 0 || pl.dead) return;
     this.inv = this.status ? this.status.value('inv') : INVULN;
-    this.hp -= this.status ? this.status.hurtAmount(DMG_P) : DMG_P; this.taken++;
+    this.hp -= this.status ? this.status.hurtAmount(DMG_P, e.el) : DMG_P; // e.el = 敵の属性 (加護の耐性が効く) this.taken++;
     this.status?.gainUlt(3);
     pl.hurt(dx / (d || 1), dz / (d || 1), 1);
     const h = this.ui.hurt; h.classList.remove('on'); void h.offsetWidth; h.classList.add('on');

@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { yen, SLOTS } from './wardrobe.js';
 import { PALETTE, EYE_PALETTE, SKIN_PALETTE, HEIGHTS, BODIES, FACE_ITEMS } from './hairstyle.js';
+import { SLOTS as BSLOTS, parse as parseBless, describe as describeBless } from './blessing.js';
 import { STATS, GROUPS, ELEMENTS, BONUS_EVENTS, BONUS_STEP, MAX_LV, SKILL, ULT, fmtStat } from './status.js';
 
 export class Menu {
@@ -15,6 +16,7 @@ export class Menu {
     this.open = false;
     this.screen = 'main';
     this.slot = 'tops';    // 着替えで見ている枠
+    this.bslot = 'head';   // 加護で見ている部位
     this.cmTab = 'style';  // キャラメイクで見ているタブ (style = 髪型、color = 髪色、eye = 目の色)
     this.quiet = false;    // true の間は、髪色の入力 (色の選択枠) を作り直さないよう、画面を描き直さない
     this.sel = 0;
@@ -31,7 +33,7 @@ export class Menu {
     // 着替え・キャラメイクの画面で、マウスのドラッグで キャラのまわりを回る (タッチは touch.js が視点を回す)
     dom.addEventListener('pointermove', (e) => { if (this.open && (this.screen === 'wardrobe' || this.screen === 'charmake') && e.pointerType === 'mouse' && e.buttons) this.cam.rotate(e.movementX * 0.008, e.movementY * 0.006); });
     wardrobe.onChange(() => { if (this.open) this.render(); });
-    status?.onChange(() => { if (this.open && this.screen === 'status') this.render(); });
+    status?.onChange(() => { if (this.open && (this.screen === 'status' || this.screen === 'bless' || this.screen === 'main')) this.render(); });
     hairStyle?.onChange(() => { if (this.open && !this.quiet) this.render(); });
     // 好きな色 (色の選択枠): 動かしている間は、枠を作り直さずに髪色だけ変える。決めたら描き直す
     this.el.addEventListener('input', (e) => { if (e.target.id === 'mn-color') { this.quiet = true; this.pickColor(e.target.value); this.quiet = false; } });
@@ -223,6 +225,7 @@ export class Menu {
     if (this.screen === 'wardrobe') return '着替え';
     if (this.screen === 'charmake') return 'キャラメイク';
     if (this.screen === 'status') return 'ステータス';
+    if (this.screen === 'bless') return '加護';
     if (this.screen === 'ask' || this.screen === 'place') return this.place.name;
     if (this.screen === 'shop') return this.shop.name;
     return 'メニュー';
@@ -235,12 +238,15 @@ export class Menu {
       h += `<div class="mn-list">
         <button class="mn-item" data-do="wardrobe">着替え<small>持っている服に着替える</small></button>
         <button class="mn-item" data-do="charmake">キャラメイク<small>体・髪型・髪色・目の色・肌の色・身長</small></button>
-        ${this.status ? `<button class="mn-item" data-do="status">ステータス<small>Lv ${this.status.level}</small></button>` : ''}
+        ${this.status ? `<button class="mn-item" data-do="bless">加護<small>体に宿して能力を上げる（${Object.keys(this.status.equip).length} / ${BSLOTS.length}）</small></button>
+        <button class="mn-item" data-do="status">ステータス<small>Lv ${this.status.level}</small></button>` : ''}
         <button class="mn-item" data-do="map">地図<small>M</small></button>
         <button class="mn-item" data-do="time">時間帯を変える<small>T</small></button>
         <button class="mn-item" data-do="photo">撮影モード<small>I　画面の表示を消す</small></button>
         <button class="mn-item" data-do="help">操作の説明を出す・隠す<small>H</small></button>
         <button class="mn-item mn-close" data-do="close">閉じる<small>Tab</small></button></div>`;
+    } else if (this.screen === 'bless') {
+      h += this.blessHtml() + '<button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>';
     } else if (this.screen === 'status') {
       h += this.statusHtml() + '<button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>';
     } else if (this.screen === 'ask') {
@@ -330,6 +336,20 @@ export class Menu {
     if (this.screen === 'charmake' && this.cmTab === 'face') this.focusFace();
   }
 
+  // 加護の画面: 部位のタブ + その部位に宿せる (授かった) 加護の一覧。選ぶと宿す。宿している加護をもう一度選ぶと外す
+  blessHtml() {
+    const s = this.status;
+    if (!s) return '<div class="mn-msg">加護は使えません</div>';
+    let h = '<div class="mn-tabs">' + BSLOTS.map((b) => `<button class="mn-tab${b.key === this.bslot ? ' on' : ''}" data-bslot="${b.key}">${b.name}${s.equip[b.key] ? ' ●' : ''}</button>`).join('') + '</div><div class="mn-list">';
+    const own = [...s.blessings].map(parseBless).filter((b) => b && b.slot === this.bslot).sort((a, b) => b.tier - a.tier || a.el.localeCompare(b.el));
+    for (const b of own) {
+      const on = s.equip[this.bslot] === b.id;
+      h += `<button class="mn-item${on ? ' on' : ''}" data-bless="${b.id}"><span>${b.name}<br><small style="text-align:left;display:block">${describeBless(b.id)}</small></span><small>${on ? '宿している' : '宿す'}</small></button>`;
+    }
+    h += `</div><div class="mn-msg">${own.length ? '選ぶと宿ります。宿している加護をもう一度選ぶと外れます（部位ごとに 1 つ）。' : 'この部位の加護はまだ授かっていません。イベントを初めてクリアしたときと、5 レベルごとに授かります。'}</div>`;
+    return h;
+  }
+
   // ステータスの画面: レベル・経験値、項目の一覧 (ボーナスで足された分は緑)、属性の相性、イベントのボーナス
   statusHtml() {
     const s = this.status;
@@ -390,6 +410,8 @@ export class Menu {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.spel) { this.status?.setSpElement(b.dataset.spel); return; }
+    if (b.dataset.bslot) { this.bslot = b.dataset.bslot; return this.render(); }
+    if (b.dataset.bless) { const id = b.dataset.bless, sl = parseBless(id).slot; this.status?.setEquip(sl, this.status.equip[sl] === id ? null : id); return this.render(); }
     if (b.dataset.slot) return this.setSlot(b.dataset.slot);
     if (b.dataset.cmtab) return this.setCmTab(b.dataset.cmtab);
     if (b.dataset.color) { this.sel = this.colorList().findIndex((o) => (o.hex || 'none') === b.dataset.color); this.pickColor(b.dataset.color); return this.render(); }
@@ -403,6 +425,7 @@ export class Menu {
     if (d === 'wardrobe') this.go('wardrobe');
     else if (d === 'charmake') this.go('charmake');
     else if (d === 'status') this.go('status');
+    else if (d === 'bless') this.go('bless');
     else if (d === 'facereset') this.resetFace();
     else if (d === 'back') this.go('main');
     else if (d === 'enter') this.enter();
@@ -421,7 +444,7 @@ export class Menu {
     const faceSlider = e.target && e.target.dataset && e.target.dataset.face && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(e.code); // 顔のスライダーは ← → をそのまま通し、↑↓・PageUp/Down はメニューが使う
     if (e.target && e.target.tagName === 'INPUT' && e.code !== 'Escape' && !faceSlider) return; // 色の選択枠の操作は、そのまま通す
     if (e.code === 'Escape') {
-      if (this.screen === 'wardrobe' || this.screen === 'charmake' || this.screen === 'status') this.go('main');
+      if (this.screen === 'wardrobe' || this.screen === 'charmake' || this.screen === 'status' || this.screen === 'bless') this.go('main');
       else if (this.screen === 'ask') this.decline();
       else if (this.screen === 'shop') this.go('place');
       else this.close();

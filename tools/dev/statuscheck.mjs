@@ -36,10 +36,12 @@ ok(near(s.hurtAmount(20), 20 * 100 / (100 + 20)), 'Lv11: 防御 20 で被ダメ�
 const t = new Status();
 const a = t.clearEvent('swarm'), b = t.clearEvent('swarm');
 ok(a.first && a.stat === 'atk' && !b.first, '初回だけ・攻撃力に入る');
+t.equip = {}; t.recalc(); // (初クリアで授かった加護は外して、ボーナスだけを見る)
 ok(near(t.bonus.atk, 0.1) && near(t.value('atk'), 101), 'ボーナス +0.1 → 攻撃力 100 + 100×10%×0.1 = 101');
 ok(!t.clearEvent('nothing').first, '知らないイベントは何もしない');
 for (const id of Object.keys(BONUS_EVENTS)) t.clearEvent(id);
 ok(Object.keys(BONUS_EVENTS).every((k) => t.done[k]) && near(t.bonus.hp, 0.1) && near(t.bonus.stamina, 0.1), '3 イベントとも対応する項目へ');
+t.equip = {}; t.recalc();
 ok(near(t.value('hp'), 101) && near(t.value('stamina'), 101), 'HP・スタミナ 101');
 for (let i = 0; i < 12; i++) { t.bonus.crit = Math.round(((t.bonus.crit || 0) + 0.1) * 10) / 10; } t.recalc();
 ok(near(t.bonus.crit, 1.2), '0.1 の足し算が浮動小数の誤差を持たない');
@@ -114,5 +116,35 @@ ok(ULT.spins === 3 && ULT.mult === 2.5 && ULT.reach > 5, '必殺技: 3 回転・
 const w = new Status(); w.exp = expForLevel(11); w.recalc();
 ok(near(w.rollAttack(2, { power: 'ultAtk', rng: () => 0.99 }).dmg, 2 * 1.3), 'Lv11 の必殺技力 130 が掛かる');
 
-console.log(bad ? `\n${bad} 件 NG` : '\nすべて OK');
-process.exit(bad ? 1 : 0);
+// 11. 加護
+import('../../public/src/blessing.js').then(async (B) => {
+  const b = new Status(); const log = []; b.onNotice = (m) => log.push(m);
+  ok(b.blessings.size === 0 && Object.keys(b.equip).length === 0, '最初は何も授かっていない');
+  ok(b.grantBlessing('armR:fire:2') && !b.grantBlessing('armR:fire:2') && !b.grantBlessing('x:y:1'), '授かる (同じ・知らない加護は増えない)');
+  ok(b.equip.armR === 'armR:fire:2' && log.some((m) => m.includes('授かった')), '空いている部位には自動で宿す + お知らせ');
+  ok(near(b.value('atk'), 110), '右腕・火・中: 攻撃力 +10% → 110');
+  ok(near(b.elemAtk('fire'), 0.12) && near(b.elemRes('fire'), 0.12) && b.elemAtk('water') === 0, '火の加護: 火の攻撃 +12%・火の耐性 12%、水は 0');
+  ok(near(b.rollAttack(2, { power: 'spAtk', element: 'fire', rng: () => 0.99 }).dmg, 2 * 1.12), '特殊攻撃に属性の攻撃力 (+12%) が掛かる');
+  ok(b.rollAttack(2, { power: 'atk', rng: () => 0.99 }).dmg === 2.2 || near(b.rollAttack(2, { power: 'atk', rng: () => 0.99 }).dmg, 2.2), '通常攻撃は無属性なので、属性の攻撃力は掛からない (攻撃力 +10% だけ)');
+  ok(near(b.hurtAmount(20, 'fire'), 20 * (1 - 0.12)) && b.hurtAmount(20, 'water') === 20 && b.hurtAmount(20) === 20, '火の敵から受けるダメージだけ 12% 減る');
+  b.grantBlessing('armR:wood:1');
+  ok(b.equip.armR === 'armR:fire:2' && b.setEquip('armR', 'armR:wood:1') && b.equip.armR === 'armR:wood:1' && near(b.value('atk'), 105), '宿し替え (1 部位に 1 つ。段階 1 は +5%)');
+  ok(!b.setEquip('head', 'armR:wood:1') && !b.setEquip('armR', 'armR:water:1') && !b.setEquip('xxx', null), '部位が違う・持っていない加護は宿せない');
+  ok(b.setEquip('armR', null) && b.value('atk') === 100 && !b.setEquip('armR', null), '外すと元に戻る');
+  const c = new Status(); for (const id of ['head:fire:3', 'chest:fire:3', 'legs:fire:3', 'feet:fire:3', 'armL:fire:3']) c.grantBlessing(id);
+  ok(Object.keys(c.equip).length === 5 && c.value('hp') > 100 && c.value('crit') > 0.05 && c.value('stamina') > 100 && c.value('spAtk') > 100 && c.value('staSave') > 0, '5 部位の加護が、それぞれの能力に効く');
+  ok(near(c.elemRes('fire'), 0.06 * 3 * 5), '同じ属性は足し算 (段階 3 × 5 部位 = 90%) …');
+  ok(near(c.hurtAmount(20, 'fire'), 20 * 100 / (100 + c.value('def')) * 0.2), '… 受けるダメージの軽減は 80% まで');
+  // レベルアップ・イベントで授かる
+  const d = new Status(); d.addExp(expForLevel(5));
+  ok(d.blessings.has(B.levelGrant(5)) && d.blessings.size === 1, 'Lv5 で加護を 1 つ授かる');
+  d.addExp(expForLevel(21) - d.exp);
+  ok(d.blessings.size === 4 && [5, 10, 15, 20].every((L) => d.blessings.has(B.levelGrant(L))), 'Lv21 までに 4 つ (5・10・15・20 レベル)');
+  const e = new Status(); e.clearEvent('swarm'); e.clearEvent('rhythm'); e.clearEvent('arcade');
+  ok(Object.values(B.EVENT_GRANTS).every((id) => e.blessings.has(id)) && e.blessings.size === 3, '3 つのイベントの初クリアで、それぞれの加護');
+  e.clearEvent('swarm'); ok(e.blessings.size === 3, '2 回目のクリアでは増えない');
+  ok(B.allBlessings().length === 90 && B.allBlessings().every((id) => B.parse(id) && B.effectOf(id)), '加護は 90 種 (6 部位 × 5 属性 × 3 段階)、全部に効果がある');
+  ok(new Set([5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map(B.levelGrant)).size === 10, 'Lv5〜50 の 10 回の加護は全部ちがう');
+  console.log(bad ? `\n${bad} 件 NG` : '\nすべて OK (加護まで)');
+  process.exit(bad ? 1 : 0);
+});

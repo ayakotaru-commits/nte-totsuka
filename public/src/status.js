@@ -2,10 +2,11 @@
 //   最終の値 = (基本値 + レベルの伸び + ボーナス + 加護の足し算) × (1 + 加護の割合)
 //   ・レベル: 経験値の合計から決まる (敵を倒す・イベントをクリアすると入る)
 //   ・ボーナス: イベントを初めてクリアしたとき、決まった項目に +BONUS_STEP (0.1)。値 1.0 = その項目の unit の BONUS_RATE (10%)
-//   ・加護: 体の部位に宿して能力を上げる仕組み用の口 (setSource)。まだ何も宿していない
+//   ・加護 (blessing.js): 体の部位 (頭・胸・右腕・左腕・脚・足) に 1 つずつ宿して能力を上げる。イベントの初クリアと 5 レベルごとに授かる。ほかに口 setSource もある
 //   ・基準値 (レベル 1・ボーナス 0) は、以前の固定値と同じ: HP 100・体当たり 1 回 20・無敵 1.0 秒・敵への与ダメージは手順どおり
 // 保存は端末のブラウザ (localStorage) の別の鍵。経験値・クリア済みのイベント・ボーナスだけ。スタミナなどの今の量は保存しない。
 // URL: ?lv=10 (レベルをその値にする)、?resetsave (保存を消す。wardrobe.js と同じ)
+import { SLOTS as BSLOTS, effectOf, parse as parseBless, EVENT_GRANTS, levelGrant, allBlessings } from './blessing.js';
 const KEY = 'totsuka.status.v1';
 
 // ---- 属性 (パズドラと同じ) ----
@@ -93,11 +94,18 @@ export class Status {
     // 今の量 (保存しない)
     this.winded = false; this.delay = 0;
     this.skill = 0; this.ult = 0;
+    this.blessings = new Set();   // 授かった加護の id (blessing.js)
+    this.equip = {};              // 宿している加護 { 部位: id }
     this.spElement = 'fire';   // 特殊攻撃の属性 (ステータス画面で選ぶ。保存する)
     const q = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
     if (q.has('resetsave')) { try { localStorage.removeItem(KEY); } catch (e) { /* 保存できない環境 */ } }
     this.load();
-    if (q.has('lv')) this.exp = expForLevel(Math.max(1, Math.min(MAX_LV, Math.floor(+q.get('lv') || 1))));
+    if (q.has('lv')) { // 試す用: そのレベルにして、そのレベルまでに授かる加護も持つ
+      const lv = Math.max(1, Math.min(MAX_LV, Math.floor(+q.get('lv') || 1)));
+      this.exp = expForLevel(lv);
+      for (let L = 5; L <= lv; L += 5) { const g = levelGrant(L); if (g) { this.blessings.add(g); if (!this.equip[parseBless(g).slot]) this.equip[parseBless(g).slot] = g; } }
+    }
+    if (q.get('bless') === 'all') for (const id of allBlessings()) this.blessings.add(id); // 試す用: 加護を全部持つ
     this.recalc();
     this.stamina = this.cur.stamina;
     this.skill = this.cur.spGauge;   // 技ゲージは満タンから始まる
@@ -109,13 +117,15 @@ export class Status {
       if (!s) return;
       if (Number.isFinite(s.exp)) this.exp = Math.max(0, Math.floor(s.exp));
       if (ELEMENTS.some((e) => e.key === s.spElement)) this.spElement = s.spElement;
+      for (const id of s.blessings || []) if (parseBless(id)) this.blessings.add(id);
+      for (const [slot, id] of Object.entries(s.equip || {})) if (this.blessings.has(id) && parseBless(id).slot === slot) this.equip[slot] = id;
       for (const k of Object.keys(BONUS_EVENTS)) if (s.done && s.done[k]) this.done[k] = true;
       for (const k of Object.keys(STATS)) if (s.bonus && Number.isFinite(s.bonus[k])) this.bonus[k] = Math.max(0, Math.round(s.bonus[k] * 10) / 10);
     } catch (e) { /* 読めなければ最初から */ }
   }
 
   save() {
-    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, exp: this.exp, done: this.done, bonus: this.bonus, spElement: this.spElement })); } catch (e) { /* 保存できない環境 */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ v: 1, exp: this.exp, done: this.done, bonus: this.bonus, spElement: this.spElement, blessings: [...this.blessings], equip: this.equip })); } catch (e) { /* 保存できない環境 */ }
   }
 
   onChange(fn) { this.listeners.push(fn); }
@@ -130,6 +140,7 @@ export class Status {
     const base = S.base, grow = S.perLv * (lv - 1), bonus = (this.bonus[k] || 0) * BONUS_RATE * S.unit;
     let flat = 0, pct = 0;
     for (const src of this.sources.values()) { const m = src[k]; if (m) { flat += m.flat || 0; pct += m.pct || 0; } }
+    for (const id of Object.values(this.equip)) { const m = effectOf(id)?.mods[k]; if (m) { flat += m.flat || 0; pct += m.pct || 0; } } // 宿している加護
     return { base, lv: grow, bonus, flat, pct, total: (base + grow + bonus + flat) * (1 + pct) };
   }
 
@@ -156,7 +167,10 @@ export class Status {
     this.changed();
     const after = this.level;
     this.notice(`${label}経験値 +${n}` + (after > before ? `　レベルアップ！ Lv ${after}` : ''));
-    if (after > before) { this.stamina = this.cur.stamina; }
+    if (after > before) {
+      for (let L = before + 1; L <= after; L++) { const g = levelGrant(L); if (g) this.grantBlessing(g); }
+      this.stamina = this.cur.stamina;
+    }
     return after > before ? after : 0;
   }
 
@@ -168,10 +182,35 @@ export class Status {
     this.bonus[ev.stat] = Math.round(((this.bonus[ev.stat] || 0) + BONUS_STEP) * 10) / 10;
     this.changed();
     this.notice(`ボーナス！ ${STATS[ev.stat].name} +${BONUS_STEP}`);
+    if (EVENT_GRANTS[id]) this.grantBlessing(EVENT_GRANTS[id]);
     return { first: true, stat: ev.stat, name: ev.name };
   }
 
   notice(t) { if (this.onNotice) this.onNotice(t); }
+
+  // ---- 加護 ----
+  // 授かる。持っていなければ追加し、その部位が空いていれば宿す。新しく授かったら true
+  grantBlessing(id) {
+    const b = parseBless(id);
+    if (!b || this.blessings.has(id)) return false;
+    this.blessings.add(id);
+    if (!this.equip[b.slot]) this.equip[b.slot] = id;
+    this.changed();
+    this.notice(`加護「${b.name}」を授かった`);
+    return true;
+  }
+  // 部位に宿す (id = null で外す)。持っていない・部位が違う加護は宿せない
+  setEquip(slot, id) {
+    if (!BSLOTS.some((s) => s.key === slot)) return false;
+    if (id === null) { if (!this.equip[slot]) return false; delete this.equip[slot]; this.changed(); return true; }
+    const b = parseBless(id);
+    if (!b || b.slot !== slot || !this.blessings.has(id) || this.equip[slot] === id) return false;
+    this.equip[slot] = id; this.changed();
+    return true;
+  }
+  // 宿している加護の、その属性の攻撃力 (特殊攻撃・必殺技のダメージ +) と耐性 (その属性の敵から受けるダメージ -)
+  elemAtk(el) { let v = 0; for (const id of Object.values(this.equip)) { const e = effectOf(id); if (e && e.el === el) v += e.atk; } return v; }
+  elemRes(el) { let v = 0; for (const id of Object.values(this.equip)) { const e = effectOf(id); if (e && e.el === el) v += e.res; } return v; }
 
   // ---- 戦闘 ----
   // 自分の攻撃の与ダメージ。base = 手順ごとの基本ダメージ。power = どの攻撃力か (atk / spAtk / ultAtk)、element = 攻撃の属性 (無属性は null)、
@@ -179,13 +218,14 @@ export class Status {
   rollAttack(base, { power = 'atk', element = null, target = null, rng = Math.random } = {}) {
     const crit = rng() < this.cur.crit;
     let d = base * this.cur[power] / 100 * elementMul(element, target);
+    if (power !== 'atk' && element) d *= 1 + this.elemAtk(element); // 特殊攻撃・必殺技: 加護のその属性の攻撃力
     if (crit) d *= this.cur.critDmg;
     return { dmg: d, crit, mul: elementMul(element, target) };
   }
 
   // 受けるダメージ。base = 基本の量、element = 攻撃の属性 (無属性は null)。耐性は加護から (まだ 0)
   hurtAmount(base, element = null) {
-    return base * 100 / (100 + this.cur.def);
+    return base * 100 / (100 + this.cur.def) * (1 - Math.min(0.8, element ? this.elemRes(element) : 0));
   }
 
   // ---- 必殺技 ----
