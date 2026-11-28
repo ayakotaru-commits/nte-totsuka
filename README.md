@@ -29,6 +29,7 @@
 - 「撮影モード（public/src/photo.js・touch.js・style.css の `body.photo`）」→ `docs/readme/look.md`
 - 「パルクール（public/src/parkour.js・player.js・world.js・character.js）」→ `docs/readme/people.md`
 - 「攻撃（public/src/attack.js・player.js・character.js）」→ `docs/readme/people.md`
+- 「ステータス（public/src/status.js・menu.js・player.js・swarm/event.js）」→ `docs/readme/people.md`
 - 「イベント「うな○ー大量発生クエスト」（public/src/swarm/）」→ `docs/readme/events.md`
 - 「神社の社殿（八坂神社。tools/shrine.py・public/src/shrine.js）」→ `docs/readme/events.md`
 - 「イベント「リズム地獄(八坂神社)」（旧称: お札まき 合いの手。public/src/rhythm/）」→ `docs/readme/events.md`

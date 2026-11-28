@@ -14,6 +14,7 @@ import { makeCharacter } from '../character.js';
 import { H } from '../terrain.js';
 import * as A from './audio.js';
 import { UnaaCrowd, jumpY } from './unaa.js';
+import { EXP } from '../status.js';
 
 export const BPM = 107;
 const BEAT = 60 / BPM, SLOT = BEAT / 2, BAR = BEAT * 4;
@@ -150,7 +151,8 @@ class Ofuda {
 }
 
 export class Rhythm {
-  constructor({ scene, world, player, camera, cam }) {
+  constructor({ scene, world, player, camera, cam, status }) {
+    this.status = status || null; // ステータス (status.js)。「吉」以上でクリア: 経験値と、初回のボーナス
     this.scene = scene;
     this.world = world; this.player = player; this.camera = camera; this.cam = cam;
     this.state = 'idle';        // idle / ask / play / result
@@ -391,6 +393,7 @@ export class Rhythm {
     const score = (c.good + 0.6 * c.ok) / n;
     const rank = score >= 0.85 ? '大吉！' : score >= 0.55 ? '吉' : '凶…';
     this.last = { ...c, n, score, rank };
+    if (this.status && !this.autoPlay && score >= 0.55) { this.status.addExp(EXP.rhythmClear, `${rank}　`); this.status.clearEvent('rhythm'); }
     if (this.ui.rank) { this.ui.rank.textContent = rank; this.ui.rank.className = score >= 0.85 ? 'top' : score >= 0.55 ? 'mid' : 'low'; }
     if (this.ui.count) this.ui.count.textContent = `大吉 ${c.good}　吉 ${c.ok}　凶 ${c.miss}`;
     this.show(this.ui.hud, false); this.show(this.ui.hint, false); this.show(this.ui.tap, false);

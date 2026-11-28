@@ -7,10 +7,11 @@
 import * as THREE from 'three';
 import { yen, SLOTS } from './wardrobe.js';
 import { PALETTE, EYE_PALETTE, SKIN_PALETTE, HEIGHTS, BODIES, FACE_ITEMS } from './hairstyle.js';
+import { STATS, GROUPS, ELEMENTS, BONUS_EVENTS, BONUS_STEP, MAX_LV, fmtStat } from './status.js';
 
 export class Menu {
-  constructor({ wardrobe, hairStyle, player, cam, dom, lock, unlock, actions }) {
-    Object.assign(this, { wardrobe, hairStyle, player, cam, lock, unlock, actions });
+  constructor({ wardrobe, hairStyle, player, cam, status, dom, lock, unlock, actions }) {
+    Object.assign(this, { wardrobe, hairStyle, player, cam, status, lock, unlock, actions });
     this.open = false;
     this.screen = 'main';
     this.slot = 'tops';    // 着替えで見ている枠
@@ -30,6 +31,7 @@ export class Menu {
     // 着替え・キャラメイクの画面で、マウスのドラッグで キャラのまわりを回る (タッチは touch.js が視点を回す)
     dom.addEventListener('pointermove', (e) => { if (this.open && (this.screen === 'wardrobe' || this.screen === 'charmake') && e.pointerType === 'mouse' && e.buttons) this.cam.rotate(e.movementX * 0.008, e.movementY * 0.006); });
     wardrobe.onChange(() => { if (this.open) this.render(); });
+    status?.onChange(() => { if (this.open && this.screen === 'status') this.render(); });
     hairStyle?.onChange(() => { if (this.open && !this.quiet) this.render(); });
     // 好きな色 (色の選択枠): 動かしている間は、枠を作り直さずに髪色だけ変える。決めたら描き直す
     this.el.addEventListener('input', (e) => { if (e.target.id === 'mn-color') { this.quiet = true; this.pickColor(e.target.value); this.quiet = false; } });
@@ -220,6 +222,7 @@ export class Menu {
   title() {
     if (this.screen === 'wardrobe') return '着替え';
     if (this.screen === 'charmake') return 'キャラメイク';
+    if (this.screen === 'status') return 'ステータス';
     if (this.screen === 'ask' || this.screen === 'place') return this.place.name;
     if (this.screen === 'shop') return this.shop.name;
     return 'メニュー';
@@ -232,11 +235,14 @@ export class Menu {
       h += `<div class="mn-list">
         <button class="mn-item" data-do="wardrobe">着替え<small>持っている服に着替える</small></button>
         <button class="mn-item" data-do="charmake">キャラメイク<small>体・髪型・髪色・目の色・肌の色・身長</small></button>
+        ${this.status ? `<button class="mn-item" data-do="status">ステータス<small>Lv ${this.status.level}</small></button>` : ''}
         <button class="mn-item" data-do="map">地図<small>M</small></button>
         <button class="mn-item" data-do="time">時間帯を変える<small>T</small></button>
         <button class="mn-item" data-do="photo">撮影モード<small>I　画面の表示を消す</small></button>
         <button class="mn-item" data-do="help">操作の説明を出す・隠す<small>H</small></button>
         <button class="mn-item mn-close" data-do="close">閉じる<small>Tab</small></button></div>`;
+    } else if (this.screen === 'status') {
+      h += this.statusHtml() + '<button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>';
     } else if (this.screen === 'ask') {
       h += `<div class="mn-msg">${this.entrance.label}です。服の店に入りますか？</div>
         <div class="mn-list">
@@ -324,6 +330,33 @@ export class Menu {
     if (this.screen === 'charmake' && this.cmTab === 'face') this.focusFace();
   }
 
+  // ステータスの画面: レベル・経験値、項目の一覧 (ボーナスで足された分は緑)、属性の相性、イベントのボーナス
+  statusHtml() {
+    const s = this.status;
+    if (!s) return '<div class="mn-msg">ステータスは使えません</div>';
+    const li = s.levelInfo();
+    let h = `<div class="mn-lv"><span><b>Lv ${li.lv}</b>${li.lv >= MAX_LV ? '　（最大）' : ''}</span>`;
+    if (li.lv < MAX_LV) h += `<div class="mn-bar"><i style="width:${li.into / li.need * 100}%"></i></div><span class="mn-note">経験値 ${li.into} / ${li.need}（次のレベルまで）</span>`;
+    h += '</div>';
+    for (const g of GROUPS) {
+      h += `<div class="mn-grp">${g}</div><div class="mn-stats">`;
+      for (const [k, S] of Object.entries(STATS)) {
+        if (S.group !== g) continue;
+        const bn = s.bonus[k] || 0;
+        h += `<div class="mn-stat"><span>${S.name}</span><span><b>${fmtStat(k, s.value(k))}</b>${bn > 0 ? `<small>ボーナス +${bn.toFixed(1)}</small>` : ''}</span></div>`;
+      }
+      h += '</div>';
+    }
+    h += '<div class="mn-grp">属性</div><div class="mn-elems">' + ELEMENTS.map((e) => `<div><span class="ec" style="background:${e.color}">${e.name}</span></div>`).join('') + '</div>';
+    h += '<div class="mn-note">火 → 木 → 水 → 火 に強い（2 倍）／逆は弱い（0.5 倍）。光と闇はたがいに強い。属性の攻撃・耐性は、加護で伸ばせるようになります（まだ宿していません）。通常攻撃は無属性です。</div>';
+    h += `<div class="mn-grp">イベントのボーナス（初めてクリアすると +${BONUS_STEP}）</div>`;
+    for (const [id, ev] of Object.entries(BONUS_EVENTS)) {
+      const got = !!s.done[id];
+      h += `<div class="mn-bonus${got ? ' got' : ''}"><span>${ev.name}<small>${ev.how}でクリア</small></span><span>${STATS[ev.stat].name} +${BONUS_STEP}　${got ? '獲得済み' : '未獲得'}</span></div>`;
+    }
+    return h;
+  }
+
   applyOutfit() { this.player.model.setOutfits(this.wardrobe.urls()); }
 
   // 着る (id が 'none:<枠>' なら、その枠を「いつもの」に戻す)
@@ -367,6 +400,7 @@ export class Menu {
     const d = b.dataset.do;
     if (d === 'wardrobe') this.go('wardrobe');
     else if (d === 'charmake') this.go('charmake');
+    else if (d === 'status') this.go('status');
     else if (d === 'facereset') this.resetFace();
     else if (d === 'back') this.go('main');
     else if (d === 'enter') this.enter();
@@ -385,7 +419,7 @@ export class Menu {
     const faceSlider = e.target && e.target.dataset && e.target.dataset.face && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(e.code); // 顔のスライダーは ← → をそのまま通し、↑↓・PageUp/Down はメニューが使う
     if (e.target && e.target.tagName === 'INPUT' && e.code !== 'Escape' && !faceSlider) return; // 色の選択枠の操作は、そのまま通す
     if (e.code === 'Escape') {
-      if (this.screen === 'wardrobe' || this.screen === 'charmake') this.go('main');
+      if (this.screen === 'wardrobe' || this.screen === 'charmake' || this.screen === 'status') this.go('main');
       else if (this.screen === 'ask') this.decline();
       else if (this.screen === 'shop') this.go('place');
       else this.close();

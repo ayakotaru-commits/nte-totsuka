@@ -34,6 +34,7 @@ import { TOUCH, setupTouch } from './touch.js';
 import { loadWardrobe } from './wardrobe.js';
 import { loadHairStyle, savedBody } from './hairstyle.js';
 import { Menu } from './menu.js';
+import { Status } from './status.js';
 import { PhotoMode } from './photo.js';
 import { loadShops, ShopTrigger } from './shop.js';
 import { releaseGeometryAfterUpload } from './lowmem.js';
@@ -150,6 +151,13 @@ async function main() {
 
   const input = new Input();
   const player = new Player(world, scene);
+  // ステータス (レベル・ボーナス・スタミナ。status.js)。経験値・ボーナス・レベルアップのお知らせは画面の右下に数秒出す
+  const stats = new Status();
+  player.status = stats;
+  { const el = $('toast'), lines = []; let tm = 0;
+    stats.onNotice = (t) => { lines.push(t); if (lines.length > 4) lines.shift(); el.replaceChildren(...lines.flatMap((s, i) => (i ? [document.createElement('br'), s] : [s]))); el.hidden = false; clearTimeout(tm); tm = setTimeout(() => { el.hidden = true; lines.length = 0; }, 4500); };
+  }
+  window.__status = stats; // 確認用 (tools/dev)
   const wardrobe = await loadWardrobe();                       // お金・買った服・着ている服 (端末に保存)
   wardrobe.setBody(savedBody(), false);                          // 選んでいた体に合う服だけ着る
   player.model.setOutfits(wardrobe.urls());                     // 着ていた服を着る (キャラの読み込み後)
@@ -199,7 +207,7 @@ async function main() {
   const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z), touch: TOUCH });
   window.__bigmap = bigmap; window.__warpTo = warpTo; // 確認用
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
-  let hudTimeText = '';
+  let hudTimeText = '', staHold = 0;
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
   // 街を歩く人 (crowd.js。動きは crowdsim.js、通り道は props.json の crowd)。?nocrowd で無し、?crowd=人数 で上限を変える (確認用)
   const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined, park, viewSlots: parkInfo ? makeViewSlots(park, parkInfo.route) : null });   // 園内の人は park (千葉ドリームランド) があるとき
@@ -232,21 +240,21 @@ async function main() {
   }
 
   // イベント「うな○ー大量発生クエスト」(グランシティの中庭に入ると、受けるか聞く。swarm/event.js)。?noswarm で無効、?swarm で開いてすぐ始める (確認用)
-  const swarm = new Swarm({ scene, world, player, camera, onRespawn: (x, z, face) => {
+  const swarm = new Swarm({ scene, world, player, camera, status: stats, onRespawn: (x, z, face) => {
     const p = findFree(world, x, z); player.teleport(p.x, p.z); player.facing = face; cam.yaw = face + Math.PI; cam.update(0, player.pos, true);
   } });
   if (Q.has('noswarm') || (Q.has('shot') && !Q.has('swarm'))) swarm.disabled = true;
   if (Q.has('swarm')) { swarm.auto = true; const p = findFree(world, -246, 1449); player.teleport(p.x, p.z); player.facing = Math.PI / 2; cam.yaw = player.facing + Math.PI; cam.update(0, player.pos, true); }
 
   // イベント「リズム地獄(八坂神社)」(八坂神社の境内に入ると、参加するか聞く。rhythm/event.js)。?norhythm で無効、?rhythm で開いてすぐ始める、?rhythm=auto で自動で打つ (確認用)
-  const rhythm = new Rhythm({ scene, world, player, camera, cam });
+  const rhythm = new Rhythm({ scene, world, player, camera, cam, status: stats });
   if (Q.has('norhythm') || (Q.has('shot') && !Q.has('rhythm'))) rhythm.disabled = true;
   if (Q.has('rhythm')) { rhythm.auto = true; rhythm.autoPlay = Q.get('rhythm') === 'auto'; player.teleport(RHYTHM_SITE.me[0], RHYTHM_SITE.me[1]); }
   window.__rhythm = rhythm; window.__rhythmSite = RHYTHM_SITE; // 確認用 (tools/dev/rhythmcheck.js)
 
   // イベント「ゲームセンター リズムステージ」(戸塚駅西口の路地の、赤いゲームセンターの入口。arcade/event.js)。
   // ?noarcade で無効、?arcade で開いてすぐ曲えらびへ、?arcade=auto で自動で打つ (&diff=HARD &bot=0.15 = 15% は打たない)、?arcade=ask で入口に立つだけ (確認用)
-  const arcade = new Arcade({ player, onClose: () => { if (!TOUCH) lock(); } });
+  const arcade = new Arcade({ player, status: stats, onClose: () => { if (!TOUCH) lock(); } });
   if (Q.has('noarcade') || (Q.has('shot') && !Q.has('arcade'))) arcade.disabled = true;
   if (Q.has('arcade')) {
     arcade.autoOpen = Q.get('arcade') !== 'ask'; arcade.autoPlay = Q.get('arcade') === 'auto'; arcade.botSkip = +(Q.get('bot') || 0); // =ask: 入口に立つだけ (聞く表示の確認)
@@ -343,7 +351,7 @@ async function main() {
   document.addEventListener('pointerlockchange', () => { if (!TOUCH && photo.active && document.pointerLockElement !== renderer.domElement) photo.exit(); });
   if (TOUCH) setupTouch({ dom: renderer.domElement, input, cam, streetView, warp: () => bigmap.warp(), photo });
   menu = new Menu({
-    wardrobe, hairStyle, player, cam, dom: renderer.domElement, lock, unlock,
+    wardrobe, hairStyle, player, cam, status: stats, dom: renderer.domElement, lock, unlock,
     actions: { photo: () => photo.enter(), map: () => { rhythm.stop(); toggleMap(); }, time: () => { $('hud-time').textContent = tod.next(); }, help: () => { $('help').hidden = !$('help').hidden; } },
   });
   $('menu-btn').addEventListener('click', () => { if (!bigmap.open && !arcade.active) menu.toggle(); });
@@ -412,6 +420,12 @@ async function main() {
     }
     if (mp) mp.update(dt, arcade.active ? NOIN : input);
     tod.update(dt);
+    { // スタミナの帯: 減っている間と、全部戻って少したつまで出す。息切れの間は赤
+      const f = stats.staminaFrac, el = $('sta');
+      if (f < 0.999 || stats.winded) staHold = 1.2; else staHold = Math.max(0, staHold - dt);
+      el.hidden = staHold <= 0;
+      if (!el.hidden) { el.firstChild.style.width = (f * 100) + '%'; el.classList.toggle('winded', stats.winded); }
+    }
     { const lb = tod.label(); if (lb !== hudTimeText) { hudTimeText = lb; $('hud-time').textContent = lb; } }
     let parkWant;
     if (parkInfo) {   // ショーの案内 (画面の 1 行) と、観客の指定

@@ -348,3 +348,30 @@ body.photo #photo-ui { display: block; }
 .mn-slide input[type=range] { grid-column: 1 / -1; width: 100%; margin: 2px 0 0; min-height: 28px; accent-color: #5fd3ff; }
 .mn-slide.sel { outline: 2px solid #5fd3ff; outline-offset: -2px; }
 .mn-tab { font-size: 12px; }
+
+/* スタミナの帯・お知らせ (src/status.js・main.js) */
+#sta { position: fixed; left: 50%; bottom: 17%; transform: translateX(-50%); width: 200px; height: 8px; z-index: 5; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.6); border-radius: 4px; overflow: hidden; pointer-events: none; }
+#sta[hidden] { display: none; }
+#sta i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #4cc46a, #c8f06a); }
+#sta.winded i { background: linear-gradient(90deg, #d23c34, #ff8a5c); }
+body.touch #sta { bottom: 30%; width: 150px; }
+#toast { position: fixed; right: 20px; bottom: 24px; z-index: 9; max-width: min(320px, 70vw); padding: 8px 12px; border-radius: 8px; background: rgba(10,20,35,.82); border: 1px solid #ffe08a; color: #fff; font-size: 14px; line-height: 1.5; text-shadow: 0 1px 3px #000; pointer-events: none; }
+#toast[hidden] { display: none; }
+body.touch #toast { right: calc(12px + env(safe-area-inset-right)); bottom: auto; top: 96px; font-size: 12px; }
+
+/* メニューの「ステータス」画面 (src/menu.js) */
+.mn-lv { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.mn-lv b { font-size: 20px; color: #ffe08a; }
+.mn-bar { height: 8px; background: rgba(255,255,255,.18); border-radius: 4px; overflow: hidden; }
+.mn-bar i { display: block; height: 100%; background: linear-gradient(90deg, #5fd3ff, #b8ecff); }
+.mn-stats { display: flex; flex-direction: column; gap: 2px; }
+.mn-stat { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 14px; padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.mn-stat b { font-weight: 600; }
+.mn-stat small { font-size: 11px; color: #9fe6a8; margin-left: 6px; }
+.mn-elems { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center; font-size: 12px; }
+.mn-elems div { border: 1px solid rgba(255,255,255,.3); border-radius: 8px; padding: 6px 2px; background: rgba(255,255,255,.07); }
+.mn-elems .ec { display: inline-block; width: 22px; height: 22px; line-height: 22px; border-radius: 50%; color: #0a1423; font-weight: 700; margin-bottom: 2px; }
+.mn-note { font-size: 12px; color: rgba(255,255,255,.7); line-height: 1.5; }
+.mn-bonus { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.mn-bonus.got { color: #ffe08a; }
+.mn-bonus small { color: rgba(255,255,255,.65); display: block; font-size: 11px; }

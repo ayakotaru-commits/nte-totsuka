@@ -18,6 +18,7 @@ import { H } from '../terrain.js';
 import { trailOn } from '../attack.js';
 import * as THREE from 'three';
 import { Herd, Fx, BODY } from './model.js';
+import { EXP } from '../status.js';
 
 export const TOTAL = 100, ALIVE = 50;
 const G = 24;                                  // 重力 (player.js と同じ)
@@ -129,8 +130,10 @@ export function poseOf(e, t = e.t) {
 const $ = (id) => document.getElementById(id);
 
 export class Swarm {
-  constructor({ scene, world, player, camera, onRespawn }) {
+  constructor({ scene, world, player, camera, onRespawn, status }) {
     this.world = world; this.player = player; this.camera = camera; this.onRespawn = onRespawn;
+    this.status = status || null;   // ステータス (status.js)。HP・ダメージ・無敵時間・経験値・クリアのボーナス。無ければ以前の固定値
+    this.hpMax = HP_P;
     this.herd = new Herd(scene, ALIVE + 2);
     this.goldHerd = new Herd(scene, 1, { gold: true }); // 最後に降りてくる黄金のうな○ー
     this.sword = makeLegendSword(); scene.add(this.sword);
@@ -183,7 +186,8 @@ export class Swarm {
 
   start() {
     this.state = 'run'; this.armed = false; this.taken = 0; this.overShown = false;
-    this.killed = 0; this.spawned = 0; this.hp = HP_P; this.inv = 0; this.time = 0; this.queue = 0; this.nextAt = 1.2; this.away = 0;
+    this.hpMax = this.status ? this.status.value('hp') : HP_P;
+    this.killed = 0; this.spawned = 0; this.hp = this.hpMax; this.inv = 0; this.settled = false; this.time = 0; this.queue = 0; this.nextAt = 1.2; this.away = 0;
     this.lastSerial = -1;
     this.banner('うな○ーが屋上から降ってくる！', 2.5);
     this.ui.box.hidden = false;
@@ -208,7 +212,7 @@ export class Swarm {
 
   draw() {
     this.ui.left.textContent = TOTAL - this.killed;
-    this.ui.hp.firstChild.style.width = Math.max(0, this.hp / HP_P * 100) + '%';
+    this.ui.hp.firstChild.style.width = Math.max(0, this.hp / this.hpMax * 100) + '%';
   }
 
   freeSlot() {
@@ -315,7 +319,10 @@ export class Swarm {
         if (d > REACH[a.step] * Math.max(1, e.s) || Math.abs(e.y - p.y) > 2) continue;
         if (d > 0.7 && Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d))) > ARC[a.step]) continue;
         e.hit = pl.atkN;
-        e.hp -= DMG_E[a.step];
+        const hit = this.status ? this.status.rollAttack(DMG_E[a.step]) : { dmg: DMG_E[a.step], crit: false }; // 攻撃力・会心 (status.js)
+        e.hp -= hit.dmg;
+        if (hit.crit) this.fx.burst(e.x, e.y + 1.1, e.z, 6, ['#fff7a8', '#ffd34d'], 5, 0.16, 0.4, 8);
+        this.status?.gainUlt(2);
         const nx = d > 0.05 ? dx / d : fx, nz = d > 0.05 ? dz / d : fz;
         e.yaw = Math.atan2(-nx, -nz);
         e.hold = 0.07; // ほんの少し止まる (手ごたえ)
@@ -405,7 +412,7 @@ export class Swarm {
           if (e.t > 0.55 || (e.y < g && e.t > 0.15)) {
             e.y = Math.max(e.y, g);
             this.pop(e); this.herd.hide(e.slot); this.list.splice(i, 1);
-            if (this.state === 'run') { this.killed++; this.hp = Math.min(HP_P, this.hp + HEAL_KILL); this.draw(); }
+            if (this.state === 'run') { this.killed++; this.hp = Math.min(this.hpMax, this.hp + HEAL_KILL); this.status?.gainUlt(5); this.draw(); }
             continue;
           }
           break;
@@ -438,7 +445,17 @@ export class Swarm {
   }
 
   // ---- 最後の場面: 黄金のうな○ーが降りてきて、伝説のうな○ー刀をくれる ----
+  // 終わったとき (やられた・クリア) に 1 回だけ: 倒した数の経験値。クリアなら、クリアの経験値と、初回のボーナス
+  settle(cleared) {
+    if (this.settled || !this.status) return;
+    this.settled = true;
+    const st = this.status;
+    st.addExp(this.killed * EXP.kill + (cleared ? EXP.swarmClear : 0), `${this.killed} 体たおした　`);
+    if (cleared) st.clearEvent('swarm');
+  }
+
   startEnding() {
+    this.settle(true);
     this.stop(false);
     this.state = 'ending';
     this.banner(`クリア！　${TOTAL} 体撃破　タイム ${fmt(this.time || 0)}`, 3.5);
@@ -535,12 +552,13 @@ export class Swarm {
     if (d > 0.3 && (dx * Math.sin(e.yaw) + dz * Math.cos(e.yaw)) / d < 0.2) return;
     e.struck = true;
     if (this.state !== 'run' || this.inv > 0 || pl.dead) return;
-    this.inv = INVULN;
-    this.hp -= DMG_P; this.taken++;
+    this.inv = this.status ? this.status.value('inv') : INVULN;
+    this.hp -= this.status ? this.status.hurtAmount(DMG_P) : DMG_P; this.taken++;
+    this.status?.gainUlt(3);
     pl.hurt(dx / (d || 1), dz / (d || 1), 1);
     const h = this.ui.hurt; h.classList.remove('on'); void h.offsetWidth; h.classList.add('on');
     this.fx.burst(p.x, p.y + 1.1, p.z, 6, ['#ff6b6b', '#ffd166'], 3.5, 0.14, 0.4, 8);
-    if (this.hp <= 0) { this.hp = 0; this.state = 'down'; this.downT = 0; pl.down(); this.startPile(); }
+    if (this.hp <= 0) { this.hp = 0; this.state = 'down'; this.downT = 0; this.settle(false); pl.down(); this.startPile(); }
     this.draw();
   }
 

@@ -5,6 +5,7 @@ import { H } from './terrain.js';
 import { stairAt } from './stairs.js';
 import { plan, sample, REACH_H, VAULT_H, HOP_H } from './parkour.js';
 import { getMotion, hipsAt } from './motion.js';
+import { COST } from './status.js';
 import { STEPS, LAUNCH, DIVE, AIR5_FROM, LAND5_UNTIL, COMBO_GRACE, SWORD_IDLE, COMBO_MAX, MOCAP, spinAt } from './attack.js';
 
 export const R = 0.35; // 体の半径 (m)
@@ -43,6 +44,7 @@ export class Player {
     this.hurtT = 0;        // 攻撃を受けてからの秒数
     this.lastAct = null;   // 最後に見せた動き (マルチプレイで他の人へ送る)
     this.lastSp = 0;
+    this.status = null;    // ステータス・スタミナ (status.js。main.js が渡す)
     this.perf = null;      // イベントで踊っている間: 姿勢を返す関数 (rhythm/event.js)。その場から動かず、操作も受け付けない
     this.model = makeCharacter();
     scene.add(this.model.root);
@@ -54,6 +56,8 @@ export class Player {
   }
 
   update(dt, input, cam) {
+    const st = this.status; // スタミナ・ステータス (status.js。main.js が渡す。無ければ制限なし)
+    if (st) st.tick(dt);
     if (input.pressed('KeyC')) this.walkMode = !this.walkMode;
     if (this.perf) { this.vel.set(0, 0); this.vy = 0; this.stair = 0; return this.show(dt, 0, this.perf()); }
     if (this.dead || this.stun > 0) return this.updateHurt(dt);
@@ -77,7 +81,9 @@ export class Player {
     let target = 0;
     if (len > 0) {
       dx /= len; dz /= len;
-      target = input.held('ShiftLeft') || input.held('ShiftRight') ? SPEED.dash : walk ? SPEED.walk : SPEED.run;
+      const dash = (input.held('ShiftLeft') || input.held('ShiftRight')) && (!st || st.canDash()); // スタミナが無い (息切れ) ときは、ダッシュできず走りになる
+      if (dash && st) st.drainDash(dt);
+      target = (dash ? SPEED.dash : walk ? SPEED.walk : SPEED.run) * (st ? st.value('speed') : 1);
     }
     // 攻撃 (J / クリック / 画面の「攻撃」)。地上で押すと始まり、続けて押すと 5 連撃になる
     const atkPress = input.pressed('KeyJ') || input.pressed('Mouse0');
@@ -102,7 +108,7 @@ export class Player {
     }
 
     // パルクール: 走り・ダッシュで障害物へ向かっているとき、自動で飛び越える・よじ登る (歩きでは発動しない)
-    if (len > 0 && !walk && this.actCool <= 0 && this.tryParkour(dx, dz)) return this.updateAct(0);
+    if (len > 0 && !walk && this.actCool <= 0 && (!st || st.canSpend()) && this.tryParkour(dx, dz)) { if (st) st.spend(COST.parkour); return this.updateAct(0); }
 
     // ジャンプ (2段)
     if (input.pressed('Space')) {
@@ -163,7 +169,7 @@ export class Player {
     this.stun = 0.35; this.hurtT = 0;
   }
   down() { this.dead = true; this.hurtT = 0; }
-  revive() { this.dead = false; this.stun = 0; }
+  revive() { this.dead = false; this.stun = 0; if (this.status) this.status.refill(); }
   // のけぞっている・倒れている間: 操作を受け付けず、飛ばされた勢いだけで動く
   updateHurt(dt) {
     this.stun -= dt; this.hurtT += dt; this.armedT += dt;
@@ -215,6 +221,7 @@ export class Player {
     if (dir) this.facing = Math.atan2(dir[0], dir[1]);
     this.atk = { step, ph: 0, t: 0, queued: false, v0: 0 };
     this.atkN++;
+    if (this.status) this.status.spend(COST.atk); // スタミナを使う
     this.armedT = 0;
     this.comboGrace = 0;
     if (step === 5) {
@@ -232,7 +239,7 @@ export class Player {
   updateAtk(dt, press, dir) {
     let a = this.atk;
     if (!a) {
-      if (!this.onGround) return false;
+      if (!this.onGround || (this.status && !this.status.canSpend())) return false; // 息切れの間は攻撃を始められない
       this.startStep(this.comboGrace > 0 ? this.comboNext : 1, dir);
       a = this.atk;
     } else if (press && a.step !== 5) a.queued = true;
@@ -257,7 +264,7 @@ export class Player {
         v = dist * k; sv = side * k;
       }
       const next = a.step < COMBO_MAX ? a.step + 1 : 1; // 最後の手順 (COMBO_MAX) の次は 1 から
-      if (a.queued && a.t >= S.cancel && next > 1) { this.spin = 0; this.startStep(next, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
+      if (a.queued && a.t >= S.cancel && next > 1 && (!this.status || this.status.canSpend())) { this.spin = 0; this.startStep(next, dir); a = this.atk; return this.finishAtk(dt, a, 0); }
       if (a.t >= dur) { this.endStep(next); return this.finishAtk(dt, null, 0); }
       return this.finishAtk(dt, a, v, sv);
     } else if (a.step === 4) {
