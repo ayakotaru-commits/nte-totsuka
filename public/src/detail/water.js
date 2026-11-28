@@ -66,7 +66,9 @@ function shoreField(city) {
 
 const FRAG_HEAD = `
 varying vec3 vDW;
-uniform sampler2D uShore; uniform vec4 uBox; uniform float uWT; uniform vec2 uFlow; uniform vec3 uShallow;
+uniform sampler2D uShore; uniform vec4 uBox; uniform float uWT, uAmp; uniform vec2 uFlow, uOrg; uniform vec3 uShallow; uniform vec4 uEl, uIs;
+// 楕円の岸までの距離の近似 (内側が正)。円なら半径 - 中心からの距離に一致する
+float wEll(vec2 p, vec4 e) { vec2 q = (p - e.xy) / e.zw; float rho = length(q); return (1.0 - rho) * rho / max(length(q / e.zw), 1e-4); }
 float wHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float wNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y); }
@@ -80,13 +82,19 @@ vec2 wWave(vec2 p, float t) {
   return g;
 }`;
 
-export function makeWaterMaterial(city) {
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.0, transparent: true, depthWrite: true });
+// city = 川・池の地図データ。opts.ellipse = { cx, cz, rx, rz, island?: { cx, cz, rx, rz } } を渡すと、地図の代わりに楕円の湖 (島の岸にも泡) にする
+//   (千葉ドリームランドのムーンレイク。opts.opaque で不透明のまま = 城の映り込みとの描く順を変えない、opts.calm = 波の強さ、opts.flow = 流れ)
+export function makeWaterMaterial(city, opts = {}) {
+  const el = opts.ellipse || null;
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.08, metalness: 0.0, transparent: !opts.opaque, depthWrite: true });
   if (Q.has('nowater')) { mat.roughness = 0.15; mat.metalness = 0.2; mat.transparent = false; return { mat, onRender: null }; }
-  const sf = shoreField(city);
+  const sf = el ? null : shoreField(city);
+  const I = el && el.island;
   const uniforms = {
     uShore: { value: sf ? sf.tex : null }, uBox: { value: new THREE.Vector4(sf ? sf.minX : 0, sf ? sf.minZ : 0, sf ? 1 / sf.w : 0, sf ? 1 / sf.h : 0) },
-    uWT: { value: Q.has('watert') ? +Q.get('watert') : 0 }, uFlow: { value: new THREE.Vector2(FLOW[0], FLOW[1]) },
+    uWT: { value: Q.has('watert') ? +Q.get('watert') : 0 }, uFlow: { value: new THREE.Vector2(...(opts.flow || FLOW)) },
+    uAmp: { value: opts.calm ?? 1 }, uOrg: { value: new THREE.Vector2(el ? el.cx : 0, el ? el.cz : 0) },   // 座標が大きい (公園) ときは、中心を原点にしてノイズの精度を保つ
+    uEl: { value: new THREE.Vector4(el ? el.cx : 0, el ? el.cz : 0, el ? el.rx : 1, el ? el.rz : 1) }, uIs: { value: new THREE.Vector4(I ? I.cx : 0, I ? I.cz : 0, I ? I.rx : 1, I ? I.rz : 1) },
     uShallow: { value: new THREE.Color('#5f8f86') },
   };
   const fixedT = Q.has('watert');
@@ -98,13 +106,13 @@ export function makeWaterMaterial(city) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\n' + FRAG_HEAD)
       .replace('#include <color_fragment>', `#include <color_fragment>
-      vec2 wp = vDW.xz;
+      vec2 wp = vDW.xz - uOrg;
       float wT = uWT;
-      float wD = texture2D(uShore, (wp - uBox.xy) * uBox.zw).r * ${MAXD.toFixed(1)};   // 岸までの距離 (m)
+      float wD = ${el ? `clamp(min(wEll(vDW.xz, uEl)${I ? ', -wEll(vDW.xz, uIs)' : ''}), 0.0, ${MAXD.toFixed(1)})` : `texture2D(uShore, (vDW.xz - uBox.xy) * uBox.zw).r * ${MAXD.toFixed(1)}`};   // 岸までの距離 (m)
       float wK = smoothstep(0.0, 4.5, wD);                                              // 0 = 岸、1 = 深い
       vec3 wDeep = diffuseColor.rgb * vec3(0.42, 0.55, 0.62);
       diffuseColor.rgb = mix(uShallow, wDeep, pow(wK, 0.8));
-      diffuseColor.a = mix(0.5, 0.94, smoothstep(0.0, 2.2, wD));
+      diffuseColor.a = ${opts.opaque ? '1.0' : 'mix(0.5, 0.94, smoothstep(0.0, 2.2, wD))'};
       // 岸の泡: 縁に沿って揺れる筋 (流れとともにゆっくり動く)
       float wFn = wNoise(wp * 1.6 - uFlow * wT * 0.35) * 0.65 + wNoise(wp * 4.3 + uFlow * wT * 0.5) * 0.35;
       float wEdge = wD + (wFn - 0.5) * 0.9 + 0.12 * sin(wT * 1.4 + dot(wp, vec2(0.6, 0.5)));
@@ -123,11 +131,11 @@ export function makeWaterMaterial(city) {
         ${TOUCH ? '' : `float wE = 0.35;
         float wn0 = wNoise((wp - uFlow * wT * 0.8) * 5.0);
         wg += vec2(wNoise((wp - uFlow * wT * 0.8 + vec2(wE, 0.0)) * 5.0) - wn0, wNoise((wp - uFlow * wT * 0.8 + vec2(0.0, wE)) * 5.0) - wn0) * 0.25;`}
-        wg *= wFar * (0.4 + 0.6 * wK) * (1.0 - clamp(wFoam, 0.0, 0.8));
+        wg *= uAmp * wFar * (0.4 + 0.6 * wK) * (1.0 - clamp(wFoam, 0.0, 0.8));
         normal = normalize(normal + (viewMatrix * vec4(wg.x, 0.0, wg.y, 0.0)).xyz * 0.9);
       }`);
   };
-  mat.customProgramCacheKey = () => 'water-v3-' + (TOUCH ? 't' : 'd');
+  mat.customProgramCacheKey = () => 'water-v4-' + (TOUCH ? 't' : 'd') + (el ? (I ? 'ei' : 'e') : 'm') + (opts.opaque ? 'o' : '');
   const onRender = fixedT ? null : () => { uniforms.uWT.value = performance.now() / 1000; };
   return { mat, onRender };
 }

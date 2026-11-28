@@ -13,6 +13,7 @@ import { buildAvenuePaving, buildAreaPaving } from './parkpaving.js';
 import { buildShow, showClock as showClockNow } from './parkshow.js';
 import { buildCastle, castleLakeMask, castleFrame } from './parkcastle.js';
 import { buildEntrance } from './parkentrance.js';
+import { makeWaterMaterial } from './water.js';
 
 const bboxOf = (p) => {
   let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
@@ -318,7 +319,10 @@ export function buildPark(cfg, world, opts = {}) {
     // 柵は天端の上 (d -0.2)。当たり判定の線は土手の外側 (d +1.0)。城の堤道が岸を越える所は、土手も柵も切る (castle の causeways)
     {
       const lk = lakeE.lake, wy = G.level + lk.water, [lcx, lcz] = lakeE.center, rx = lakeE.rx, rz = lakeE.rz;
-      const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.12, metalness: 0.15 });
+      // 水面は街の川と同じシェーダー (岸の浅さ・波・泡。detail/water.js)。島 (城) の岸にも泡。不透明のまま (城の映り込みとの描く順を変えない)
+      const ic = cfg.castle && cfg.castle.island, wm = makeWaterMaterial(null, { ellipse: { cx: lcx, cz: lcz, rx, rz, island: ic ? { cx: cfg.castle.center[0], cz: cfg.castle.center[1], rx: ic.rx + 3, rz: ic.rz + 3 } : null }, opaque: true, calm: 0.7, flow: [0.04, 0.02] });
+      const mat = wm.mat;
+      mat.onBeforeRender = wm.onRender || undefined;
       group.add(ellipseMesh(lakeE.center, rx, rz, 0, mat, (r) => [0.22 - 0.08 * (1 - r), 0.55 - 0.15 * (1 - r), 0.86 - 0.18 * (1 - r)], () => wy));
       const cf = cfg.castle && castleFrame(cfg.castle);
       const onCauseway = (x, z) => { if (!cf) return false; const [lx, lz] = cf.toLocal(x, z); return cfg.castle.causeways.some((c) => Math.abs(lx) < c.width / 2 + 2.6 && lz * c.to > 0 && Math.abs(lz) > Math.min(Math.abs(c.from), Math.abs(c.to)) - 8); };
