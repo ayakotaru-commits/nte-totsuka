@@ -20,10 +20,14 @@ def load():
 
 def add_to_pois(pois):
     """pois (リスト) に足す。足した店の一覧を返す。"""
-    have = {(p["name"], p["cat"]) for p in pois}
+    have = {(p["name"], p["cat"]): p for p in pois}
     new = []
     for e in load()["pois"]:
-        if (e["name"], e["cat"]) in have:
+        old = have.get((e["name"], e["cat"]))
+        if old is not None:   # 既にある (前に足したもの) は、位置・階を直す。何度実行しても同じ結果
+            old["x"], old["z"] = e["x"], e["z"]
+            if e.get("floor", 1) >= 2:
+                old["floor"] = e["floor"]
             continue
         p = {"name": e["name"], "x": e["x"], "z": e["z"], "cat": e["cat"]}
         if e.get("floor", 1) >= 2:
@@ -40,10 +44,14 @@ def main():
     b = next((b for b in city["buildings"] if b["id"] == bid), None)
     if b is None:
         sys.exit(f"建物 {bid} が city.json に無い")
-    have = {(s["name"], s["cat"]) for s in b.get("shops", [])}
-    for p in new:
-        if (p["name"], p["cat"]) not in have:
-            b.setdefault("shops", []).append(dict(p))
+    shops = b.setdefault("shops", [])
+    cur = {(s["name"], s["cat"]): s for s in shops}
+    for e in load()["pois"]:
+        s = cur.get((e["name"], e["cat"]))
+        if s is not None:
+            s["x"], s["z"] = e["x"], e["z"]
+        elif any(q["name"] == e["name"] and q["cat"] == e["cat"] for q in new):
+            shops.append({"name": e["name"], "cat": e["cat"], "x": e["x"], "z": e["z"]})
     CITY.write_text(json.dumps(city, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"足した店: {len(new)} 軒 (建物 {bid} の店は {len(b.get('shops', []))} 軒)")
     subprocess.run([sys.executable, str(ROOT / "tools" / "build_props.py")], check=True)
