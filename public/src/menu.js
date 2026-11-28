@@ -100,8 +100,8 @@ export class Menu {
       const root = this.player.model.root, a = new THREE.Vector3(), b = new THREE.Vector3();
       c.targetY = head ? head.getWorldPosition(a).y - root.getWorldPosition(b).y + 0.04 : 1.5;
       const portrait = innerWidth <= 700 && innerHeight > innerWidth; // 縦長の画面では、メニューが下の 55% を覆う
-      c.pitch = 0.05; c.dist = portrait ? 1.0 : 0.75;
-      c.view = portrait ? { x: 0, y: 0.27 } : { x: Math.min(340, innerWidth) / 2 / innerWidth, y: 0 };
+      c.pitch = 0.05; c.dist = portrait ? 1.3 : 0.75;
+      c.view = portrait ? { x: 0, y: 0.25 } : { x: Math.min(340, innerWidth) / 2 / innerWidth, y: 0 };
     } else { c.pitch = 0.12; c.dist = 3.4; c.targetY = null; c.view = null; }
   }
 
