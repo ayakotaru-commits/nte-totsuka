@@ -87,7 +87,7 @@ export class Player {
     }
     // 攻撃 (J / クリック / 画面の「攻撃」)。地上で押すと始まり、続けて押すと 5 連撃になる
     const atkPress = input.pressed('KeyJ') || input.pressed('Mouse0');
-    // 特殊攻撃 (K・画面の「特殊」): 技ゲージを使って、跳び斬り上げ (4) → 急降下の十字斬り (5) を続けて出す (status.js の SKILL)
+    // 特殊攻撃 (K・画面の「特殊」): リキャストが明けていれば、跳び斬り上げ (4) → 急降下の十字斬り (5) を続けて出す (status.js の SKILL)
     if (st && !this.atk && this.onGround && input.pressed('KeyK') && st.canSkill()) { st.useSkill(); this.startStep(4, len > 0 ? [dx, dz] : null, true); }
     // 必殺技 (U・画面の「必殺」): 必殺ゲージが満タンのとき、全方位の回転斬りを続けて出す (status.js の ULT)
     if (st && !this.atk && this.onGround && input.pressed('KeyU') && st.canUlt()) { st.useUlt(); this.startStep(3, len > 0 ? [dx, dz] : null, false, 1); }

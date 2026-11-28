@@ -369,7 +369,7 @@ export class Menu {
     }
     const spName = (ELEMENTS.find((e) => e.key === s.spElement) || {}).name;
     h += `<div class="mn-grp">特殊攻撃・必殺技の属性（選ぶと変わります）</div><div class="mn-elems">` + ELEMENTS.map((e) => `<button class="mn-el${e.key === s.spElement ? ' on' : ''}" data-spel="${e.key}"><span class="ec" style="background:${e.color}">${e.name}</span></button>`).join('') + '</div>';
-    h += `<div class="mn-note">特殊攻撃（K・スマホは「特殊」）: 技ゲージ ${SKILL.cost} を使って、跳び斬り → 急降下の十字斬り。いまの属性は「${spName}」。技ゲージ ${Math.floor(s.skill)} / ${Math.floor(s.value('spGauge'))}。<br>必殺技（U・スマホは「必殺」）: 必殺ゲージが満タンのとき、まわり全部へ回転斬りを ${ULT.spins} 回続けます（出している間は当たりません）。ゲージは攻撃を当てる・倒す・攻撃を受けると溜まります（いま ${Math.floor(s.ult)} / ${Math.floor(s.value('ultGauge'))}）。<br>火 → 木 → 水 → 火 に強い（2 倍）／逆は弱い（0.5 倍）。光と闇はたがいに強い。通常攻撃は無属性です。属性の攻撃・耐性は、加護で伸ばせるようになります（まだ宿していません）。</div>`;
+    h += `<div class="mn-note">特殊攻撃（K・スマホは「特殊」）: 跳び斬り → 急降下の十字斬り。使うと ${SKILL.cd} 秒のリキャスト（ボタンに残り時間が出ます）。いまの属性は「${spName}」。<br>必殺技（U・スマホは「必殺」）: 必殺ゲージが満タンのとき、まわり全部へ回転斬りを ${ULT.spins} 回続けます（出している間は当たりません）。ゲージは攻撃を当てる・倒す・攻撃を受けると溜まります（いま ${Math.floor(s.ult)} / ${Math.floor(s.value('ultGauge'))}）。<br>火 → 木 → 水 → 火 に強い（2 倍）／逆は弱い（0.5 倍）。光と闇はたがいに強い。通常攻撃は無属性です。属性の攻撃・耐性は、加護で伸ばせるようになります（まだ宿していません）。</div>`;
     h += `<div class="mn-grp">イベントのボーナス（初めてクリアすると +${BONUS_STEP}）</div>`;
     for (const [id, ev] of Object.entries(BONUS_EVENTS)) {
       const got = !!s.done[id];

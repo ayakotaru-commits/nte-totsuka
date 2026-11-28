@@ -208,7 +208,7 @@ async function main() {
   const bigmap = new BigMap({ minimap, city, pois: labels.pois, canvas: $('bigmap'), onWarp: (x, z) => warpTo(x, z), touch: TOUCH });
   window.__bigmap = bigmap; window.__warpTo = warpTo; // 確認用
   const waypoints = new Waypoints(city.waypoints, scene, $('hud-goal'), world);
-  let hudTimeText = '', sklHold = 0, ultHold = 0;
+  let hudTimeText = '';
   const tod = new TimeOfDay({ renderer, scene, sky, sun, hemi, windowMats: built.windowMats });
   // 街を歩く人 (crowd.js。動きは crowdsim.js、通り道は props.json の crowd)。?nocrowd で無し、?crowd=人数 で上限を変える (確認用)
   const crowd = new Crowd(scene, props, { low: TOUCH, cap: Q.has('crowd') ? +Q.get('crowd') : undefined, park, viewSlots: parkInfo ? makeViewSlots(park, parkInfo.route) : null });   // 園内の人は park (千葉ドリームランド) があるとき
@@ -436,17 +436,17 @@ async function main() {
       const t = `HP ${Math.ceil(stats.hp)} / ${Math.round(stats.value('hp'))}`; if (hel.lastChild.textContent !== t) hel.lastChild.textContent = t;
       el.firstChild.style.width = (f * 100) + '%'; el.classList.toggle('winded', stats.winded);
     }
-    { // 技ゲージの帯 (特殊攻撃): 満タンでないあいだと、満タンになって少したつまで出す。足りて撃てるときは明るい
-      const f = stats.skill / stats.value('spGauge'), el = $('skl');
-      if (f < 0.999) sklHold = 1.2; else sklHold = Math.max(0, sklHold - dt);
-      el.hidden = sklHold <= 0;
-      if (!el.hidden) { el.firstChild.style.width = (f * 100) + '%'; el.classList.toggle('ready', stats.canSkill()); }
-    }
-    { // 必殺ゲージの帯: 溜まっている間 (0 でない・満タンでないとき) と、満タンのあいだ出す。撃てるときは金色に光る
-      const f = stats.ult / stats.value('ultGauge'), el = $('ult');
-      if (f > 0.001) ultHold = 1.2; else ultHold = Math.max(0, ultHold - dt);
-      el.hidden = ultHold <= 0;
-      if (!el.hidden) { el.firstChild.style.width = (f * 100) + '%'; el.classList.toggle('ready', stats.canUlt()); }
+    { // 特殊攻撃・必殺技のボタン (画面の丸いボタン): 使えない間は、時計のように回る影と残り秒 (特殊) / 溜まった % (必殺) を出す。使えるときは光る
+      const sk = stats.canSkill(), sf = stats.skillFrac, uf = stats.ult / stats.value('ultGauge'), ur = stats.canUlt();
+      for (const [ids, f, ready, txt] of [[['skl', 'tb-skill'], sf, sk, Math.ceil(stats.skillCd) + ''], [['ult', 'tb-ult'], uf, ur, Math.floor(uf * 100) + '%']]) {
+        for (const id of ids) {
+          const el = $(id); if (!el) continue;
+          el.style.setProperty('--p', (Math.min(1, f) * 360) + 'deg');
+          el.classList.toggle('ready', ready);
+          const t = ready ? '' : txt, n = el.querySelector('.cdt');
+          if (n && n.textContent !== t) n.textContent = t;
+        }
+      }
     }
     { const lb = tod.label(); if (lb !== hudTimeText) { hudTimeText = lb; $('hud-time').textContent = lb; } }
     let parkWant;
