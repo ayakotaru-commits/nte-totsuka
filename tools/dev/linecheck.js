@@ -1,6 +1,6 @@
 // 新しい線 (rail_ext の lines。段階 3a は京葉線の東京 → 八丁堀) の確認: 地図の印で地下のホームへ、終点に止まっている電車に乗る、トンネルの中のカメラ、
 // 次の駅で降りる、上りで終点へ戻る (止まった後に電車が消えると、そのホームに戻る)、範囲の端、地下の駅の真上の地上、東京駅の「のりかえ」。画面も撮る。
-// 使い方: node tools/dev/linecheck.js <出力フォルダ> [--line keiyo]   (準備は shot.js と同じ。20〜40 分)
+// 使い方: node tools/dev/linecheck.js <出力フォルダ> [--line keiyo] [--surface (地上の線)]   (準備は shot.js と同じ。20〜40 分)
 const { chromium } = require('playwright');
 const fs = require('fs');
 const http = require('http');
@@ -31,6 +31,7 @@ function terrain() {
   const city = flag('--city');
   const props = flag('--props');
   const extraQ = flag('--q') || '';
+  const surface = args.includes('--surface'); if (surface) args.splice(args.indexOf('--surface'), 1);   // 地上の線 (山手線など): 地下の駅・トンネルの項目を、地上の駅の見方に変える
   const stationName = flag('--station');   // 確かめる延長の駅 (無ければ最初の駅)
   const lineName = flag('--line');         // 確かめる線 (tokaido など。無ければその駅のホームに止まる最初の線)
   const [out] = args; const viewsFile = 'x';
@@ -105,7 +106,7 @@ function terrain() {
   await frames(2); await page.waitForFunction(() => window.__railext && window.__railext.stats.idle, null, { timeout: 600000 }).catch(() => {});
   await frames(2);
   warp.surf = await page.evaluate(() => { const p = window.__g.player.pos; return +window.__H(p.x, p.z).toFixed(2); });   // 区間を読み終わってからの地上の高さ
-  check(`地図の印「${S0}駅（京葉線ホーム）」で地下のホームの上に立つ`, warp.on && warp.on.startsWith(S0) && warp.surf - warp.y > 15 && Math.abs(warp.ground - warp.y) < 0.05, warp);
+  check(surface ? `地図の印「${S0}駅（${LN}ホーム）」でホームの上に立つ` : `地図の印「${S0}駅（京葉線ホーム）」で地下のホームの上に立つ`, warp.on && warp.on.startsWith(S0) && (surface || warp.surf - warp.y > 15) && Math.abs(warp.ground - warp.y) < 0.05, warp);
   // 数コマ動かしても地上へ飛び出さない (足元の高さ = ホーム)
   await page.evaluate(() => { const g = window.__g; for (let i = 0; i < 10; i++) g.player.update(1 / 30, { ax: 0, az: 0, pressed: () => false, held: () => false, endFrame() {} }, g.cam); });
   let s = await st();
@@ -115,7 +116,7 @@ function terrain() {
   await page.screenshot({ path: path.join(out, 'l1_platform.png'), timeout: 240000 });
   // カメラが地下の駅の箱の中 (地上でも土の中でもない)
   const camIn = await page.evaluate(() => { const c = window.__g.camera.position, W = window.__g.world; return { y: +c.y.toFixed(2), ug: !!W.underAt(c.x, c.z, c.y), d: +window.__g.cam.curDist.toFixed(2) }; });
-  check('カメラは地下の駅の中', camIn.ug && camIn.d > 3, camIn);
+  check(surface ? 'カメラは地上 (地下の箱の外)・ホームの近くに寄れる' : 'カメラは地下の駅の中', (surface ? !camIn.ug : camIn.ug) && camIn.d > 3, camIn);
 
   // 2. 止まっている下りの電車 (最初の駅は終点 = 止まった状態で始まる) の 3 両目の横に立って乗る
   const beside = (sel) => page.evaluate((sel) => {
@@ -154,7 +155,7 @@ function terrain() {
     return { d: +n.d.toFixed(2), dy: +(c.y - q.y).toFixed(2), inT: T.inTunnel(r, n.s), surf: +(window.__H(c.x, c.z) - c.y).toFixed(1) };
   });
   check('発車して電車と一緒に動く', s.riding && Math.hypot(s.x - p0.x, s.z - p0.z) > 50 && /km\/h/.test(s.info), { info: s.info });
-  check('トンネルの中: カメラは線路の上 (トンネルの中) から追う', tun.inT && tun.d < 1 && tun.dy > 2 && tun.dy < 5.3 && tun.surf > 10, tun);
+  check(surface ? '地上の区間: カメラは電車を外から追う (トンネルの中ではない)' : 'トンネルの中: カメラは線路の上 (トンネルの中) から追う', surface ? !tun.inT : (tun.inT && tun.d < 1 && tun.dy > 2 && tun.dy < 5.3 && tun.surf > 10), tun);
   await page.waitForTimeout(2500);
   await page.screenshot({ path: path.join(out, 'l3_tunnel_out.png'), timeout: 240000 });
   await press('KeyQ'); await frames(2);
@@ -170,7 +171,7 @@ function terrain() {
   await press('KeyF'); await frames(3);
   s = await st();
   const g1 = await page.evaluate(() => { const p = window.__g.player.pos, W = window.__g.world; return { y: +p.y.toFixed(2), g: +W.groundAt(p.x, p.z, p.y + 0.3).toFixed(2), surf: +window.__H(p.x, p.z).toFixed(2) }; });
-  check(`${S1}で降りる (地下のホームの上・案内)`, !s.riding && s.onPlat && s.info.includes(S1 + '駅 ' + LN + ' ホーム') && Math.abs(g1.y - g1.g) < 0.05 && g1.surf - g1.y > 10, { s, g1 });
+  check(`${S1}で降りる (地下のホームの上・案内)`, !s.riding && s.onPlat && s.info.includes(S1 + '駅 ' + LN + ' ホーム') && Math.abs(g1.y - g1.g) < 0.05 && (surface || g1.surf - g1.y > 10), { s, g1 });
   const edge = await page.evaluate(() => { const R = window.__ride, g = window.__g, p = g.player.pos, pf = R.onPlatform().pf, m = pf.left.length >> 1;
     const ux = pf.left[m][0] - pf.right[m][0], uz = pf.left[m][1] - pf.right[m][1], l = Math.hypot(ux, uz);
     const q = { x: p.x, y: p.y, z: p.z }; for (let k = 0; k < 40; k++) { q.x += ux / l * 0.25; q.z += uz / l * 0.25; g.world.resolve(q, 0.35); }
