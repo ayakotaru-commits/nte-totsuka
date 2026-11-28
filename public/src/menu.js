@@ -226,6 +226,7 @@ export class Menu {
     if (this.screen === 'charmake') return 'キャラメイク';
     if (this.screen === 'status') return 'ステータス';
     if (this.screen === 'bless') return '加護';
+    if (this.screen === 'items') return 'アイテム';
     if (this.screen === 'ask' || this.screen === 'place') return this.place.name;
     if (this.screen === 'shop') return this.shop.name;
     return 'メニュー';
@@ -240,11 +241,14 @@ export class Menu {
         <button class="mn-item" data-do="charmake">キャラメイク<small>体・髪型・髪色・目の色・肌の色・身長</small></button>
         ${this.status ? `<button class="mn-item" data-do="bless">加護<small>体に宿して能力を上げる（${Object.keys(this.status.equip).length} / ${BSLOTS.length}）</small></button>
         <button class="mn-item" data-do="status">ステータス<small>Lv ${this.status.level}</small></button>` : ''}
+        <button class="mn-item" data-do="items">アイテム<small>もらったものを確認する（${this.itemList().length}）</small></button>
         <button class="mn-item" data-do="map">地図<small>M</small></button>
         <button class="mn-item" data-do="time">時間帯を変える<small>T</small></button>
         <button class="mn-item" data-do="photo">撮影モード<small>I　画面の表示を消す</small></button>
         <button class="mn-item" data-do="help">操作の説明を出す・隠す<small>H</small></button>
         <button class="mn-item mn-close" data-do="close">閉じる<small>Tab</small></button></div>`;
+    } else if (this.screen === 'items') {
+      h += this.itemsHtml() + '<button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>';
     } else if (this.screen === 'bless') {
       h += this.blessHtml() + '<button class="mn-item mn-close" data-do="back">もどる<small>Esc</small></button>';
     } else if (this.screen === 'status') {
@@ -334,6 +338,20 @@ export class Menu {
     }
     this.el.innerHTML = h;
     if (this.screen === 'charmake' && this.cmTab === 'face') this.focusFace();
+  }
+
+  // 持ち物の一覧。伝説のうな○ー刀は、swarm/event.js が localStorage に覚えている印を見る
+  itemList() {
+    let legend = false;
+    try { legend = localStorage.getItem('totsuka.unaLegend') === '1'; } catch (e) { /* 読めなければ持っていない扱い */ }
+    const L = [{ name: '二刀の剣', kind: '武器', desc: '最初から持っている剣。', on: !legend }];
+    if (legend) L.push({ name: '伝説のうな○ー刀', kind: '武器', desc: 'うな○ー大量発生クエストのクリア報酬。刃に水玉が浮かぶ金色の剣で、金の軌跡を引く。', on: true });
+    return L;
+  }
+
+  itemsHtml() {
+    const L = this.itemList();
+    return '<div class="mn-list">' + L.map((o) => `<div class="mn-item${o.on ? ' on' : ''}"><span>${o.name}<br><small style="text-align:left;display:block">${o.desc}</small></span><small>${o.kind}${o.on ? '・使用中' : ''}</small></div>`).join('') + '</div><div class="mn-msg">イベントなどでもらったものが、ここに増えていきます。</div>';
   }
 
   // 加護の画面: 部位のタブ + その部位に宿せる (授かった) 加護の一覧。選ぶと宿す。宿している加護をもう一度選ぶと外す
@@ -426,6 +444,7 @@ export class Menu {
     else if (d === 'charmake') this.go('charmake');
     else if (d === 'status') this.go('status');
     else if (d === 'bless') this.go('bless');
+    else if (d === 'items') this.go('items');
     else if (d === 'facereset') this.resetFace();
     else if (d === 'back') this.go('main');
     else if (d === 'enter') this.enter();
@@ -444,7 +463,7 @@ export class Menu {
     const faceSlider = e.target && e.target.dataset && e.target.dataset.face && ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown'].includes(e.code); // 顔のスライダーは ← → をそのまま通し、↑↓・PageUp/Down はメニューが使う
     if (e.target && e.target.tagName === 'INPUT' && e.code !== 'Escape' && !faceSlider) return; // 色の選択枠の操作は、そのまま通す
     if (e.code === 'Escape') {
-      if (this.screen === 'wardrobe' || this.screen === 'charmake' || this.screen === 'status' || this.screen === 'bless') this.go('main');
+      if (this.screen === 'wardrobe' || this.screen === 'charmake' || this.screen === 'status' || this.screen === 'bless' || this.screen === 'items') this.go('main');
       else if (this.screen === 'ask') this.decline();
       else if (this.screen === 'shop') this.go('place');
       else this.close();
