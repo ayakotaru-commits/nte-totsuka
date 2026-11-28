@@ -1,4 +1,4 @@
-// 目的地マーカー: 光の柱 + 地面のリング + 画面上の距離表示
+// 目的地マーカー: 地面のリング + 画面上の距離表示 (光の柱は、持ち主の希望でやめた 2026-11)
 import * as THREE from 'three';
 import { H } from './terrain.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -11,8 +11,6 @@ export class Waypoints {
     this.items = this.list.map((w) => {
       const g = new THREE.Group();
       g.position.set(w.x, H(w.x, w.z), w.z);
-      const beamMat = new THREE.MeshBasicMaterial({ color: '#ffb02e', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false });
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 120, 16, 1, true).translate(0, 60, 0), beamMat);
       const ringMat = new THREE.MeshBasicMaterial({ color: '#ffd27a', transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
       const ring = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.0, 40).rotateX(-Math.PI / 2), ringMat);
       ring.position.y = 0.2;
@@ -20,11 +18,11 @@ export class Waypoints {
       el.className = 'label waypoint';
       const label = new CSS2DObject(el);
       label.position.y = 6;
-      g.add(beam, ring, label);
+      g.add(ring, label);
       scene.add(g);
       // 目的地が建物の中なら、その建物の外壁に着いた時点で到着とする
       const host = world ? world.query(w.x, w.z, w.x, w.z).find(b => world.contains(b, w.x, w.z)) : null;
-      if (host) { beam.scale.set(4, 1, 4); ring.visible = false; label.position.y = host.topY - H(w.x, w.z) + 6; }
+      if (host) { ring.visible = false; label.position.y = host.topY - H(w.x, w.z) + 6; }
       return { w, g, ring, el, host, reached: false };
     });
     this.t = 0;

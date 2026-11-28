@@ -81,7 +81,8 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await page.screenshot({ path: path.join(out, 'b_place.png') });
   await page.click('[data-shop=GU]'); await frames(2);
   ok((await st()).screen === 'shop', 'ジーユーの服の一覧');
-  ok(await page.evaluate(() => document.querySelectorAll('.mn-item[data-item]').length) === 3, 'GU の服は 3 点 (パーカー・T シャツ・デニム)');
+  const guN = JSON.parse(fs.readFileSync(path.join(PUBLIC, 'data', 'outfits.json'), 'utf8')).outfits.filter((o) => o.shop === 'GU').length;
+  ok(await page.evaluate(() => document.querySelectorAll('.mn-item[data-item]').length) === guN, `GU の服は outfits.json と同じ ${guN} 点`);
   await page.screenshot({ path: path.join(out, 'c_shop.png') });
   await page.click('[data-item=lyla_hoodie]'); await frames(2);
   let s = await st();
@@ -122,6 +123,25 @@ const ok = (c, m) => { console.log((c ? 'OK  ' : 'NG  ') + m); if (!c) bad++; };
   await page.evaluate((e) => { __g.player.pos.set(e.x, __g.player.pos.y, e.z); __g.player.vel.set(0, 5.5); }, ent.modi1);
   await frames(3);
   ok(!(await st()).open || true, '(走り抜けの確認は目視: 速さ 5.5 m/s の間は数えない)');
+
+  // 地図の印とワープ (入口の見た目・光の案内は shopentrance.js)
+  const marks = await page.evaluate(() => __bigmap.events.filter((e) => e.glyph === '服').map((e) => ({ n: e.name, x: e.x, z: e.z })));
+  ok(marks.length === 4, '地図に洋服屋の印が 4 つ (モディ 3・しらやま 1): ' + marks.map((m) => m.n).join(' / '));
+  for (const k of ['modi0', 'modi1', 'modi2', 'shirayama0']) {
+    const e = ent[k];
+    await goto(0, 40); await frames(3);
+    if ((await st()).open) { await page.keyboard.press('Escape'); await frames(2); }
+    await page.keyboard.press('KeyM'); await frames(3);   // 地図を開く (ワープは地図を閉じる)
+    await page.evaluate(([x, z]) => __warpTo(x, z), [e.x, e.z]); await frames(10);
+    const r = await page.evaluate(() => ({ x: __g.player.pos.x, y: __g.player.pos.y, z: __g.player.pos.z }));
+    const d = Math.hypot(r.x - e.x, r.z - e.z);
+    ok(d > e.r && d < e.r + 9, `${e.label}: 地図からワープすると入口の反応範囲のすぐ外に立つ (${d.toFixed(1)} m、反応半径 ${e.r} m)`);
+    ok(e.y === null || e.y === undefined || e.y < 1 || Math.abs(r.y - e.y) < 1.5, `${e.label}: 足元の高さが合う (y = ${r.y.toFixed(2)}、入口 y = ${e.y})`);
+    await frames(10);
+    ok(!(await st()).open, `${e.label}: ワープしただけでは「入りますか？」は出ない`);
+    ok(await page.evaluate(() => !document.getElementById('shop-hint').hidden), `${e.label}: 近づくと案内文が出る: ` + await page.evaluate(() => document.getElementById('shop-hint').textContent));
+    await page.screenshot({ path: path.join(out, 'w_' + k + '.png') });
+  }
   const sv = await page.evaluate(() => JSON.parse(localStorage.getItem('totsuka.save.v1')));
   ok(sv && sv.owned.includes('lyla_hoodie') && sv.money === 800 && sv.worn.tops === 'lyla_hoodie', '保存された (' + JSON.stringify(sv) + ')');
   await browser.close(); server.close();
